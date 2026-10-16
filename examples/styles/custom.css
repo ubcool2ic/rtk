@@ -1,0 +1,71 @@
+/* Custom colorful stylesheet demonstrating gradients, shadows, and state transitions */
+
+TFrame {
+    background: #1a1b26;
+    color: #c0caf5;
+}
+
+TLabel {
+    color: #7aa2f7;
+    font-size: 15;
+    font-weight: bold;
+}
+
+TButton {
+    background: #24283b;
+    color: #c0caf5;
+    border-radius: 8;
+    border: 1 #414868;
+    padding: 6 16;
+    box-shadow: 0 2 4 #00000088;
+    transition: 150ms;
+}
+
+TButton:hover {
+    background: #414868;
+    color: #ffffff;
+    box-shadow: 0 4 8 #000000aa;
+}
+
+TButton:pressed {
+    background: #1f2335;
+}
+
+Accent.TButton {
+    background: linear-gradient(135, #ff007a, #7aa2f7);
+    color: #ffffff;
+    border-radius: 12;
+    border: 0;
+    padding: 8 18;
+    font-weight: 700;
+    box-shadow: 0 4 10 #ff007a55;
+    transition: 180ms;
+}
+
+Accent.TButton:hover {
+    background: linear-gradient(135, #ff3399, #8bb2ff);
+    box-shadow: 0 6 16 #ff007a88;
+}
+
+TEntry {
+    background: #1f2335;
+    color: #c0caf5;
+    border-radius: 6;
+    border: 1 #414868;
+    padding: 6 10;
+}
+
+TEntry:focus {
+    border-color: #7aa2f7;
+    border-width: 2;
+}
+
+TCheckbutton {
+    color: #c0caf5;
+    font-size: 14;
+}
+
+TRadiobutton {
+    color: #c0caf5;
+    font-size: 14;
+}

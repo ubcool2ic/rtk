@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
@@ -20,6 +21,8 @@ struct App {
     modifiers: ModifiersState,
     occluded: bool,
     error: Option<Box<dyn Error>>,
+    last_frame: Instant,
+    last_sheet_poll: Instant,
 }
 
 impl Tk {
@@ -27,6 +30,7 @@ impl Tk {
     pub fn mainloop(self) -> Result<(), Box<dyn Error>> {
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Wait);
+        let now = Instant::now();
         let mut app = App {
             tk: self,
             surface: None,
@@ -35,6 +39,8 @@ impl Tk {
             modifiers: ModifiersState::empty(),
             occluded: false,
             error: None,
+            last_frame: now,
+            last_sheet_poll: now,
         };
         event_loop.run_app(&mut app)?;
         match app.error {
@@ -60,13 +66,36 @@ impl App {
         Ok(())
     }
 
-    fn schedule(&self, event_loop: &ActiveEventLoop) {
+    fn schedule(&mut self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
             event_loop.exit();
+            return;
+        }
+
+        // Hot reload check every 500ms
+        let now = Instant::now();
+        if now.duration_since(self.last_sheet_poll) >= Duration::from_millis(500) {
+            self.last_sheet_poll = now;
+            self.tk.poll_stylesheet();
+        }
+
+        if self.tk.is_animating() {
+            let elapsed = now.duration_since(self.last_frame).as_millis() as u32;
+            if elapsed > 0 {
+                self.tk.sim_advance_time(elapsed);
+                self.last_frame = now;
+            }
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+            event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(16)));
         } else if self.tk.dirty && !self.occluded {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
+            event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(500)));
+        } else {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(500)));
         }
     }
 
@@ -216,6 +245,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(false) => self.tk.clear_input(),
             WindowEvent::RedrawRequested => {
+                self.last_frame = Instant::now();
                 if let Err(error) = self.draw() {
                     eprintln!("rtk: render/surface error (will retry on the next event): {error}");
                     self.surface = None;

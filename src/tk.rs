@@ -1,7 +1,17 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::SystemTime;
+
+use tiny_skia::Pixmap;
 
 use crate::layout::{self, GridItem, GridOpts, PackItem, PackOpts, PlaceOpts, Rect, Size};
 use crate::render::TextEngine;
+use crate::style::{
+    ImageId, ResolvedStyle, State, StyleEngine, StyleError, StyleSpec,
+    StylesheetParser, Tokens, TransitionState,
+};
 use crate::var::VarSlot;
 use crate::widgets::{
     Binding, CanvasItem, CanvasItemKind, CanvasItemSlot, Color, DragPhase,
@@ -48,7 +58,12 @@ pub struct Tk {
     pub(crate) theme: Theme,
     drag_active: Option<WidgetId>,
     drag_start: (f32, f32),
-    scrollbar_drag: Option<(WidgetId, f32, usize)>, // (scrollbar_id, start_mouse_y, start_scroll)
+    scrollbar_drag: Option<(WidgetId, f32, usize)>,
+    // Advanced styling layer
+    pub(crate) style_engine: StyleEngine,
+    pub(crate) images: BTreeMap<ImageId, Pixmap>,
+    pub(crate) next_image_id: u32,
+    pub(crate) watched_stylesheet: Option<(PathBuf, SystemTime)>,
 }
 
 impl Default for Tk {
@@ -59,6 +74,7 @@ impl Default for Tk {
 
 impl Tk {
     pub fn new() -> Self {
+        let style_engine = StyleEngine::new(Tokens::light());
         Self {
             nodes: vec![WidgetSlot {
                 gen: 0,
@@ -83,6 +99,10 @@ impl Tk {
             drag_active: None,
             drag_start: (0.0, 0.0),
             scrollbar_drag: None,
+            style_engine,
+            images: BTreeMap::new(),
+            next_image_id: 1,
+            watched_stylesheet: None,
         }
     }
 
@@ -110,33 +130,290 @@ impl Tk {
         self.theme
     }
 
+    pub fn tokens(&self) -> &Tokens {
+        self.style_engine.tokens()
+    }
+
+    pub fn set_tokens(&mut self, tokens: Tokens) {
+        self.style_engine.set_tokens(tokens);
+        self.dirty = true;
+    }
+
     pub fn set_theme(&mut self, theme: Theme) {
         if self.theme == theme {
             return;
         }
         self.theme = theme;
         self.dirty = true;
+        let tokens = match theme {
+            Theme::Light => Tokens::light(),
+            Theme::Dark => Tokens::dark(),
+            Theme::Fluent => Tokens::fluent(),
+            Theme::Material => Tokens::material(),
+            Theme::HighContrast => Tokens::high_contrast(),
+        };
+        self.style_engine.set_tokens(tokens);
+
         let is_dark = theme == Theme::Dark;
+        let is_hc = theme == Theme::HighContrast;
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
                 if !node.style.bg_overridden {
                     node.style.bg = match node.kind {
                         Kind::Entry | Kind::Listbox => {
-                            if is_dark { Color::rgb(35, 35, 35) } else { Color::WHITE }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(35, 35, 35) } else { Color::WHITE }
                         }
                         Kind::Canvas => {
-                            if is_dark { Color::rgb(25, 25, 25) } else { Color::rgb(240, 240, 240) }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(25, 25, 25) } else { Color::rgb(240, 240, 240) }
                         }
                         _ => {
-                            if is_dark { Color::rgb(45, 45, 45) } else { Color::BG }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(45, 45, 45) } else { Color::BG }
                         }
                     };
                 }
                 if !node.style.fg_overridden {
-                    node.style.fg = if is_dark { Color::rgb(230, 230, 230) } else { Color::FG };
+                    node.style.fg = if is_hc {
+                        Color::WHITE
+                    } else if is_dark {
+                        Color::rgb(230, 230, 230)
+                    } else {
+                        Color::FG
+                    };
                 }
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Style API
+    // -----------------------------------------------------------------------
+
+    pub fn style_configure(&mut self, style_name: impl Into<String>, spec: StyleSpec) {
+        self.style_engine.configure(style_name, spec);
+        self.dirty = true;
+    }
+
+    pub fn style_map(&mut self, style_name: impl Into<String>, state: State, spec: StyleSpec) {
+        self.style_engine.map(style_name, state, spec);
+        self.dirty = true;
+    }
+
+    pub fn load_stylesheet(&mut self, css: &str) -> Result<usize, StyleError> {
+        let parser = StylesheetParser::new(css);
+        let count = parser.parse(&mut self.style_engine)?;
+        self.dirty = true;
+        Ok(count)
+    }
+
+    pub fn load_stylesheet_file(&mut self, path: impl AsRef<Path>) -> Result<usize, StyleError> {
+        let path = path.as_ref();
+        let content = fs::read_to_string(path).map_err(|e| StyleError {
+            line: 0,
+            message: format!("cannot read file {}: {e}", path.display()),
+        })?;
+        self.load_stylesheet(&content)
+    }
+
+    pub fn watch_stylesheet(&mut self, path: impl AsRef<Path>) -> bool {
+        let path = path.as_ref().to_path_buf();
+        if let Ok(meta) = fs::metadata(&path) {
+            if let Ok(mtime) = meta.modified() {
+                let _ = self.load_stylesheet_file(&path);
+                self.watched_stylesheet = Some((path, mtime));
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn poll_stylesheet(&mut self) -> bool {
+        let Some((path, last_mtime)) = self.watched_stylesheet.clone() else { return false };
+        if let Ok(meta) = fs::metadata(&path) {
+            if let Ok(mtime) = meta.modified() {
+                if mtime > last_mtime {
+                    self.watched_stylesheet = Some((path.clone(), mtime));
+                    let _ = self.load_stylesheet_file(&path);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn load_image(&mut self, path_or_png_bytes: impl AsRef<[u8]>) -> Option<ImageId> {
+        let bytes = path_or_png_bytes.as_ref();
+        let pixmap = if let Ok(s) = std::str::from_utf8(bytes) {
+            if let Ok(file_bytes) = fs::read(s) {
+                Pixmap::decode_png(&file_bytes).ok()
+            } else {
+                Pixmap::decode_png(bytes).ok()
+            }
+        } else {
+            Pixmap::decode_png(bytes).ok()
+        }?;
+        let id = ImageId(self.next_image_id);
+        self.next_image_id = self.next_image_id.saturating_add(1);
+        self.images.insert(id, pixmap);
+        Some(id)
+    }
+
+    pub fn widget_state(&self, id: WidgetId) -> State {
+        let Some(node) = self.node(id) else { return State::empty() };
+        let mut s = State::empty();
+        if node.disabled {
+            s |= State::DISABLED;
+        }
+        if self.hovered == Some(id) {
+            s |= State::HOVER;
+        }
+        if self.pressed == Some(id) {
+            s |= State::PRESSED;
+        }
+        if self.focused == Some(id) {
+            s |= State::FOCUSED;
+        }
+        if node.kind == Kind::Checkbutton {
+            if node.check.and_then(|v| v.get(self)).unwrap_or(false) {
+                s |= State::CHECKED;
+            }
+        } else if node.kind == Kind::Radiobutton {
+            if node.radio_var.and_then(|v| v.get(self)) == Some(node.radio_value) {
+                s |= State::CHECKED;
+            }
+        } else if node.kind == Kind::Listbox && node.list_selection.is_some() {
+            s |= State::SELECTED;
+        }
+        s
+    }
+
+    /// Resolves the concrete style for widget `id` by cascading:
+    /// theme default -> "TClass" -> "Named.TClass" -> Frame inheritance -> widget override -> state map -> legacy Opt.
+    /// Background colour currently shown, including an in-flight transition.
+    #[doc(hidden)]
+    pub fn displayed_bg(&self, id: WidgetId) -> Option<Color> {
+        let node = self.node(id)?;
+        match node.transition.as_ref() {
+            Some(transition) => Some(transition.current_bg()),
+            None => self.resolved_style(id).map(|style| style.bg),
+        }
+    }
+
+    pub fn resolved_style(&self, id: WidgetId) -> Option<ResolvedStyle> {
+        self.resolved_style_in(id, self.widget_state(id))
+    }
+
+    /// Resolves the cascade as if the widget were in `state`.
+    fn resolved_style_in(&self, id: WidgetId, state: State) -> Option<ResolvedStyle> {
+        let node = self.node(id)?;
+        let kind = node.kind;
+        let class_name = kind_class_name(kind);
+        let mut res = ResolvedStyle::default();
+
+        // 1. Theme default for class
+        if let Some(spec) = self.style_engine.lookup(class_name) {
+            spec.merge_into(&mut res);
+        }
+
+        // 2. Named style if specified on node
+        if let Some(named) = &node.named_style {
+            if named != class_name {
+                if let Some(spec) = self.style_engine.lookup(named) {
+                    spec.merge_into(&mut res);
+                }
+            }
+        }
+
+        // 3. Inherited properties from ancestor Frames (fg, font_family, font_size, font_weight, italic)
+        let mut ancestor = node.parent;
+        let mut inherited_fg = None;
+        let mut inherited_font_family = None;
+        let mut inherited_font_size = None;
+        let mut inherited_font_weight = None;
+        let mut inherited_italic = None;
+
+        while let Some(pid) = ancestor {
+            if let Some(pnode) = self.node(pid) {
+                if let Some(named) = &pnode.named_style {
+                    if let Some(spec) = self.style_engine.lookup(named) {
+                        if inherited_fg.is_none() { inherited_fg = spec.fg; }
+                        if inherited_font_family.is_none() { inherited_font_family = spec.font_family.clone(); }
+                        if inherited_font_size.is_none() { inherited_font_size = spec.font_size; }
+                        if inherited_font_weight.is_none() { inherited_font_weight = spec.font_weight; }
+                        if inherited_italic.is_none() { inherited_italic = spec.italic; }
+                    }
+                }
+                if let Some(ovr) = &pnode.style_override {
+                    if inherited_fg.is_none() { inherited_fg = ovr.fg; }
+                    if inherited_font_family.is_none() { inherited_font_family = ovr.font_family.clone(); }
+                    if inherited_font_size.is_none() { inherited_font_size = ovr.font_size; }
+                    if inherited_font_weight.is_none() { inherited_font_weight = ovr.font_weight; }
+                    if inherited_italic.is_none() { inherited_italic = ovr.italic; }
+                }
+                ancestor = pnode.parent;
+            } else {
+                break;
+            }
+        }
+        if let Some(c) = inherited_fg { res.fg = c; }
+        if let Some(ff) = inherited_font_family { res.font_family = ff; }
+        if let Some(fs) = inherited_font_size { res.font_size = fs; }
+        if let Some(fw) = inherited_font_weight { res.font_weight = fw; }
+        if let Some(it) = inherited_italic { res.italic = it; }
+
+        // 4. Per-widget override
+        if let Some(ovr) = &node.style_override {
+            ovr.merge_into(&mut res);
+        }
+
+        // 5. State maps for the requested states
+        let style_key = node.named_style.as_deref().unwrap_or(class_name);
+        for check_state in [
+            State::HOVER, State::FOCUSED, State::PRESSED,
+            State::CHECKED, State::SELECTED, State::DISABLED,
+        ] {
+            if state.contains(check_state) {
+                // Check specific named style then fallback to class
+                if let Some(spec) = self.style_engine.lookup_state(style_key, check_state) {
+                    spec.merge_into(&mut res);
+                } else if style_key != class_name {
+                    if let Some(spec) = self.style_engine.lookup_state(class_name, check_state) {
+                        spec.merge_into(&mut res);
+                    }
+                }
+            }
+        }
+
+        // 6. Legacy Opt::Bg/Fg/FontSize wins if explicitly set
+        if node.style.bg_overridden {
+            res.bg = node.style.bg;
+        }
+        if node.style.fg_overridden {
+            res.fg = node.style.fg;
+        }
+        if node.style.font_size != 14.0 {
+            res.font_size = node.style.font_size;
+        }
+
+        Some(res)
+    }
+
+    /// Advances simulated animation time by `ms` milliseconds for transitions.
+    pub fn sim_advance_time(&mut self, ms: u32) {
+        for slot in &mut self.nodes {
+            if let Some(node) = &mut slot.node {
+                if let Some(trans) = &mut node.transition {
+                    let done = trans.advance(ms);
+                    if done {
+                        node.transition = None;
+                    }
+                    self.dirty = true;
+                }
+            }
+        }
+    }
+
+    pub fn is_animating(&self) -> bool {
+        self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| n.transition.is_some())
     }
 
     pub fn title(&mut self, title: impl Into<String>) {
@@ -171,7 +448,12 @@ impl Tk {
             return Err(RtkError::InvalidParent);
         }
         let mut node = WidgetNode::new(kind, Some(parent), text);
-        if self.theme == Theme::Dark {
+        let is_hc = self.theme == Theme::HighContrast;
+        let is_dark = self.theme == Theme::Dark;
+        if is_hc {
+            node.style.bg = Color::BLACK;
+            node.style.fg = Color::WHITE;
+        } else if is_dark {
             node.style.bg = match kind {
                 Kind::Entry | Kind::Listbox => Color::rgb(35, 35, 35),
                 Kind::Canvas => Color::rgb(25, 25, 25),
@@ -293,6 +575,29 @@ impl Tk {
                 }
                 if let Some(node) = self.node_mut(id) {
                     node.command = Some(command);
+                }
+            }
+            Opt::Style(style_name) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.named_style = Some(style_name);
+                }
+            }
+            Opt::StyleOverride(spec) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.style_override = Some(spec);
+                }
+            }
+            Opt::Disabled(disabled) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.disabled = disabled;
+                }
+                if disabled && self.focused == Some(id) {
+                    self.traverse_focus(false);
+                }
+            }
+            Opt::Image(img_id) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.image = Some(img_id);
                 }
             }
         }
@@ -440,6 +745,19 @@ impl Tk {
         children.iter().filter_map(|id| self.node(*id)).any(|n| matches!(n.manager, Some(Manager::Pack(_))))
     }
 
+    /// Logical-pixel text size using the resolved font family, weight and slant.
+    pub(crate) fn measure_with(&mut self, text: &str, style: &ResolvedStyle) -> Size {
+        let scale = self.scale_factor;
+        let size = self.text_engine.measure_styled(
+            text,
+            style.font_size * scale,
+            style.font_family.as_deref(),
+            style.font_weight,
+            style.italic,
+        );
+        Size::new(size.width / scale, size.height / scale)
+    }
+
     pub(crate) fn measure(&mut self, text: &str, font_size: f32) -> Size {
         let size = self.text_engine.measure(text, font_size * self.scale_factor);
         Size::new(size.width / self.scale_factor, size.height / self.scale_factor)
@@ -456,11 +774,36 @@ impl Tk {
         }
         for id in order.into_iter().rev() {
             let Some(node) = self.node(id) else { continue };
-            let node = NodeSnapshot { list_items: node.list_items.clone(), text: node.text.clone(), scale: node.scale, range: node.range, canvas_size: node.canvas_size, progress_length: node.progress_length, list_height: node.list_height, parent: node.parent, kind: node.kind, style: node.style };
-            let (kind, style, nested) = (node.kind, node.style, node.parent.is_some());
+            let resolved = self.resolved_style(id).unwrap_or_default();
+            let node_snap = NodeSnapshot {
+                list_items: node.list_items.clone(),
+                text: node.text.clone(),
+                scale: node.scale,
+                range: node.range,
+                canvas_size: node.canvas_size,
+                progress_length: node.progress_length,
+                list_height: node.list_height,
+                parent: node.parent,
+                kind: node.kind,
+                style: node.style,
+                image: node.image,
+            };
+            let (kind, nested) = (node_snap.kind, node_snap.parent.is_some());
             let children = self.managed_children(id);
-            let char_width = self.measure("0", style.font_size).width.max(style.font_size * 0.5);
-            let specified = style.width.map(|chars| chars as f32 * char_width);
+            let char_width = self.measure_with("0", &resolved).width.max(resolved.font_size * 0.5);
+            let specified = node_snap.style.width.map(|chars| chars as f32 * char_width);
+
+            let pad_w = resolved.padding.left + resolved.padding.right;
+            let pad_h = resolved.padding.top + resolved.padding.bottom;
+            let mar_w = resolved.margin.left + resolved.margin.right;
+            let mar_h = resolved.margin.top + resolved.margin.bottom;
+
+            let image_extra_w = if let Some(img_id) = node_snap.image {
+                self.images.get(&img_id).map(|p| p.width() as f32 + 6.0).unwrap_or(0.0)
+            } else {
+                0.0
+            };
+
             let requested = match kind {
                 Kind::Frame => {
                     let size = if self.uses_pack(&children) {
@@ -470,42 +813,45 @@ impl Tk {
                     };
                     let border = if nested { 4.0 } else { 0.0 };
                     Size::new(
-                        (size.width + border).max(specified.unwrap_or(0.0)),
-                        size.height + border,
+                        (size.width + border + pad_w).max(specified.unwrap_or(0.0)),
+                        size.height + border + pad_h,
                     )
                 }
-                Kind::Scale => Size::new(specified.unwrap_or(160.0), 36.0),
-                Kind::Entry => Size::new(specified.unwrap_or(20.0 * char_width) + 12.0, style.font_size * 1.3 + 12.0),
+                Kind::Scale => Size::new(specified.unwrap_or(160.0) + pad_w, 36.0 + pad_h),
+                Kind::Entry => Size::new(specified.unwrap_or(20.0 * char_width) + 12.0 + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h),
                 Kind::Listbox => {
-                    let line_h = (style.font_size * 1.3 + 4.0).max(16.0);
-                    let max_w = node.list_items.iter().map(|item| self.measure(item, style.font_size).width).fold(0.0_f32, f32::max);
-                    Size::new(specified.unwrap_or(max_w + 24.0).max(80.0), (node.list_height as f32 * line_h).max(30.0))
+                    let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
+                    let max_w = node_snap.list_items.iter().map(|item| self.measure_with(item, &resolved).width).fold(0.0_f32, f32::max);
+                    Size::new(specified.unwrap_or(max_w + 24.0).max(80.0) + pad_w, (node_snap.list_height as f32 * line_h).max(30.0) + pad_h)
                 }
-                Kind::Scrollbar => Size::new(16.0, 100.0),
+                Kind::Scrollbar => Size::new(16.0 + pad_w, 100.0 + pad_h),
                 Kind::Radiobutton => {
-                    let measured = self.measure(&node.text, style.font_size);
-                    Size::new(specified.unwrap_or(measured.width) + 32.0, measured.height.max(16.0) + 8.0)
+                    let measured = self.measure_with(&node_snap.text, &resolved);
+                    Size::new(specified.unwrap_or(measured.width) + 32.0 + pad_w + image_extra_w, measured.height.max(16.0) + 8.0 + pad_h)
                 }
-                Kind::Canvas => Size::new(node.canvas_size.0, node.canvas_size.1),
+                Kind::Canvas => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
                 Kind::Spinbox => {
-                    let text = format!("{}", node.scale.and_then(|v| v.get(self)).unwrap_or(node.range.0));
-                    let m = self.measure(&text, style.font_size);
-                    Size::new(specified.unwrap_or(m.width + 50.0).max(70.0), style.font_size * 1.3 + 12.0)
+                    let text = format!("{}", node_snap.scale.and_then(|v| v.get(self)).unwrap_or(node_snap.range.0));
+                    let m = self.measure_with(&text, &resolved);
+                    Size::new(specified.unwrap_or(m.width + 50.0).max(70.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
-                Kind::ProgressBar => Size::new(node.progress_length, 20.0),
+                Kind::ProgressBar => Size::new(node_snap.progress_length + pad_w, 20.0 + pad_h),
                 _ => {
                     let text = self.widget_text(id).unwrap_or_default();
-                    let measured = self.measure(&text, style.font_size);
+                    let measured = self.measure_with(&text, &resolved);
                     let padding = match kind {
                         Kind::Label => 12.0,
                         Kind::Checkbutton => 40.0,
                         _ => 20.0,
                     };
-                    Size::new(specified.unwrap_or(measured.width) + padding, measured.height + 12.0)
+                    Size::new(
+                        specified.unwrap_or(measured.width) + padding + pad_w + image_extra_w,
+                        measured.height + 12.0 + pad_h,
+                    )
                 }
             };
             if let Some(node) = self.node_mut(id) {
-                node.requested = requested;
+                node.requested = Size::new(requested.width + mar_w, requested.height + mar_h);
             }
         }
     }
@@ -588,7 +934,7 @@ impl Tk {
 
     fn is_focusable(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| {
-            node.visible && node.kind.focusable() && node.clip.width > 0.0 && node.clip.height > 0.0
+            !node.disabled && node.visible && node.kind.focusable() && node.clip.width > 0.0 && node.clip.height > 0.0
         })
     }
 
@@ -627,14 +973,48 @@ impl Tk {
         })
     }
 
+    fn check_state_transition(&mut self, id: WidgetId, old_state: State) {
+        let new_state = self.widget_state(id);
+        if old_state == new_state {
+            return;
+        }
+        let Some(resolved) = self.resolved_style_in(id, new_state) else { return };
+        let Some(previous) = self.resolved_style_in(id, old_state) else { return };
+        if resolved.transition_ms > 0 {
+            if let Some(node) = self.node_mut(id) {
+                // Start from what is on screen: an in-flight transition, else the old state's style.
+                let from_bg = node.transition.as_ref().map(|t| t.current_bg()).unwrap_or(previous.bg);
+                let from_fg = node.transition.as_ref().map(|t| t.current_fg()).unwrap_or(previous.fg);
+                let from_border = node.transition.as_ref().map(|t| t.current_border()).unwrap_or(previous.border_color);
+                node.transition = Some(TransitionState::new(
+                    from_bg, resolved.bg,
+                    from_fg, resolved.fg,
+                    from_border, resolved.border_color,
+                    resolved.transition_ms,
+                ));
+            }
+        }
+    }
+
     #[doc(hidden)]
     pub fn sim_mouse_move(&mut self, x: f32, y: f32) {
         self.ensure_layout();
         self.pointer = (x, y);
         let hovered = self.hit_test(x, y);
         if self.hovered != hovered {
+            let prev = self.hovered;
             self.hovered = hovered;
             self.dirty = true;
+            if let Some(prev_id) = prev {
+                let mut prev_st = self.widget_state(prev_id);
+                prev_st.0 |= State::HOVER.bits(); // was hover
+                self.check_state_transition(prev_id, prev_st);
+            }
+            if let Some(new_id) = hovered {
+                let mut old_st = self.widget_state(new_id);
+                old_st.0 &= !State::HOVER.bits(); // was not hover
+                self.check_state_transition(new_id, old_st);
+            }
         }
 
         if let Some(canvas_id) = self.drag_active {
@@ -676,7 +1056,7 @@ impl Tk {
         }
 
         if let Some(id) = self.pressed {
-            if self.node(id).is_some_and(|node| node.kind == Kind::Scale) {
+            if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
                 self.drag_scale(id, x);
             }
         }
@@ -687,24 +1067,48 @@ impl Tk {
         self.ensure_layout();
         let (x, y) = self.pointer;
         let hit = self.hit_test(x, y);
+        let is_disabled = hit.and_then(|id| self.node(id)).map(|n| n.disabled).unwrap_or(false);
+
+        if is_disabled {
+            self.hovered = hit;
+            return;
+        }
+
         self.hovered = hit;
+        let prev_pressed = self.pressed;
         self.pressed = hit;
+        if let Some(prev) = prev_pressed {
+            self.check_state_transition(prev, self.widget_state(prev) | State::PRESSED);
+        }
+        if let Some(cur) = hit {
+            self.check_state_transition(cur, self.widget_state(cur).without(State::PRESSED));
+        }
+
         if hit.is_some_and(|id| self.is_focusable(id)) {
+            let prev_focus = self.focused;
             self.focused = hit;
+            if prev_focus != hit {
+                if let Some(pf) = prev_focus {
+                    self.check_state_transition(pf, self.widget_state(pf) | State::FOCUSED);
+                }
+                if let Some(nf) = hit {
+                    self.check_state_transition(nf, self.widget_state(nf).without(State::FOCUSED));
+                }
+            }
         }
         if let Some(id) = hit {
             let Some(node) = self.node(id) else { return };
             match node.kind {
                 Kind::Entry => {
                     let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
-                    let size = node.style.font_size;
                     let text = self.widget_text(id).unwrap_or_default();
+                    let font = self.resolved_style(id).unwrap_or_default();
                     let boundaries = clusters(&text);
                     let (mut low, mut high) = (0, boundaries.len());
                     while low < high {
                         let mid = low + (high - low) / 2;
                         let end = boundaries.get(mid).copied().unwrap_or(text.len());
-                        let width = self.measure(text.get(..end).unwrap_or_default(), size).width;
+                        let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
                         if width < target {
                             low = mid + 1;
                         } else {
@@ -713,8 +1117,8 @@ impl Tk {
                     }
                     let right = boundaries.get(low).copied().unwrap_or(text.len());
                     let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
-                    let rw = self.measure(text.get(..right).unwrap_or_default(), size).width;
-                    let lw = self.measure(text.get(..left).unwrap_or_default(), size).width;
+                    let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
+                    let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
                     let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
                     if let Some(node) = self.node_mut(id) {
                         node.cursor = cursor;
@@ -768,21 +1172,18 @@ impl Tk {
                                     0.0
                                 };
                                 if ry < thumb_y {
-                                    // page up
                                     let cur = target_node.list_scroll;
                                     let new_scroll = cur.saturating_sub(visible_count);
                                     if let Some(tn) = self.node_mut(target_id) {
                                         tn.list_scroll = new_scroll;
                                     }
                                 } else if ry > thumb_y + thumb_h {
-                                    // page down
                                     let cur = target_node.list_scroll;
                                     let new_scroll = (cur + visible_count).min(max_scroll);
                                     if let Some(tn) = self.node_mut(target_id) {
                                         tn.list_scroll = new_scroll;
                                     }
                                 } else {
-                                    // thumb drag start
                                     self.scrollbar_drag = Some((id, y, target_node.list_scroll));
                                 }
                             }
@@ -814,9 +1215,12 @@ impl Tk {
         }
         self.scrollbar_drag = None;
         if let Some(id) = self.pressed.take() {
-            if hit == Some(id) {
+            let is_disabled = self.node(id).map(|n| n.disabled).unwrap_or(false);
+            if hit == Some(id) && !is_disabled {
                 self.activate(id);
             }
+            // It was pressed until `take()` above.
+            self.check_state_transition(id, self.widget_state(id) | State::PRESSED);
         }
         self.hovered = hit.filter(|id| self.node(*id).is_some());
         self.dirty = true;
@@ -871,7 +1275,7 @@ impl Tk {
 
     fn run_command(&mut self, id: WidgetId) {
         let Some(node) = self.node_mut(id) else { return };
-        if node.command_running {
+        if node.disabled || node.command_running {
             return;
         }
         let Some(mut command) = node.command.take() else { return };
@@ -887,6 +1291,9 @@ impl Tk {
 
     fn activate(&mut self, id: WidgetId) {
         let Some(node) = self.node(id) else { return };
+        if node.disabled {
+            return;
+        }
         let (kind, check) = (node.kind, node.check);
         if kind == Kind::Checkbutton {
             if let Some(var) = check {
@@ -917,6 +1324,9 @@ impl Tk {
 
     fn set_scale(&mut self, id: WidgetId, value: i64) {
         let Some(node) = self.node(id) else { return };
+        if node.disabled {
+            return;
+        }
         let Some(var) = node.scale else { return };
         let (from, to) = node.range;
         let value = value.clamp(from.min(to), from.max(to));
@@ -931,6 +1341,9 @@ impl Tk {
             return;
         }
         let Some(node) = self.node(id) else { return };
+        if node.disabled {
+            return;
+        }
         let track = node.rect.inset(12.0, 0.0);
         let fraction = if track.width > 0.0 {
             ((x - track.x) / track.width).clamp(0.0, 1.0)
@@ -969,6 +1382,9 @@ impl Tk {
         }
         let Some(id) = self.focused else { return };
         let Some(node) = self.node(id) else { return };
+        if node.disabled {
+            return;
+        }
         match node.kind {
             Kind::Entry => {
                 if key == Key::Space {
@@ -1024,7 +1440,7 @@ impl Tk {
     pub fn sim_text(&mut self, text: &str) {
         self.ensure_layout();
         if let Some(id) = self.focused {
-            if self.node(id).is_some_and(|node| node.kind == Kind::Entry) {
+            if self.node(id).is_some_and(|node| node.kind == Kind::Entry && !node.disabled) {
                 self.edit_entry(id, None, text);
             }
         }
@@ -1196,7 +1612,6 @@ impl Tk {
     }
 
     fn canvas_add_item(&mut self, id: WidgetId, kind: CanvasItemKind) -> Option<CanvasItem> {
-        /// Upper bound on live items per canvas; creation beyond it returns None.
         const MAX_CANVAS_ITEMS: usize = 1 << 20;
         let node = self.node_mut(id)?;
         if node.kind != Kind::Canvas {
@@ -1204,7 +1619,6 @@ impl Tk {
         }
         let items = &mut node.canvas_items;
         let seq = items.iter().map(|slot| slot.seq).max().map_or(0, |max| max.saturating_add(1));
-        // Slots whose generation is exhausted are retired so stale ids never alias.
         let free = items.iter().position(|slot| slot.item.is_none() && slot.gen < u32::MAX);
         let item = if let Some(index) = free {
             let slot = items.get_mut(index)?;
@@ -1223,7 +1637,6 @@ impl Tk {
         Some(item)
     }
 
-    /// Deletes every item on the canvas (like `canvas.delete("all")`).
     pub fn canvas_clear(&mut self, id: WidgetId) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Canvas {
@@ -1314,6 +1727,23 @@ impl Tk {
     }
 }
 
+pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Frame => "TFrame",
+        Kind::Label => "TLabel",
+        Kind::Button => "TButton",
+        Kind::Entry => "TEntry",
+        Kind::Checkbutton => "TCheckbutton",
+        Kind::Scale => "TScale",
+        Kind::Listbox => "TListbox",
+        Kind::Scrollbar => "TScrollbar",
+        Kind::Radiobutton => "TRadiobutton",
+        Kind::Canvas => "TCanvas",
+        Kind::Spinbox => "TSpinbox",
+        Kind::ProgressBar => "TProgressbar",
+    }
+}
+
 fn join_text(text: &str, start: usize, end: usize, value: &str) -> String {
     let mut result = String::new();
     result.push_str(text.get(..start).unwrap_or_default());
@@ -1363,7 +1793,6 @@ pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
     clusters(text).into_iter().take_while(|boundary| *boundary <= cursor).last().unwrap_or(0)
 }
 
-/// Owned copy of the node fields needed while measuring (measuring borrows `self` mutably).
 struct NodeSnapshot {
     list_items: Vec<String>,
     text: String,
@@ -1375,4 +1804,5 @@ struct NodeSnapshot {
     parent: Option<WidgetId>,
     kind: Kind,
     style: crate::widgets::Style,
+    image: Option<ImageId>,
 }

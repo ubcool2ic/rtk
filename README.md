@@ -1,7 +1,9 @@
 # rtk
 
-A small tkinter-style GUI crate for Rust 1.85, edition 2021. Version 0.3 adds
-canvas drawing, listboxes, scrollbars, themes, place layout, and advanced widgets.
+A small tkinter-style GUI crate for Rust 1.85, edition 2021. Version 0.4 adds an
+advanced styling layer (design tokens, ttk-style named styles, state maps with animated
+transitions, rounded corners, shadows, gradients, fonts, CSS-like stylesheets with hot reload,
+five built-in themes) on top of the unchanged basic API.
 
 ## Features
 
@@ -65,6 +67,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tk.mainloop()
 }
 ```
+
+## Advanced styling (0.4)
+
+The basic options (`Opt::Bg`, `Opt::Fg`, `Opt::FontSize`, `set_theme`) still work and win
+when set explicitly. On top of them:
+
+- **Design tokens:** `tk.tokens()` / `tk.set_tokens(Tokens { palette, spacing, radius, type_scale, font_family })`.
+- **Named styles like ttk:** `tk.style_configure("Accent.TButton", StyleSpec { .. })` and
+  `tk.config(btn, Opt::Style("Accent.TButton".into()))`; per-widget `Opt::StyleOverride(spec)`.
+- **Cascade:** theme class defaults → `TButton` → `Accent.TButton` → inherited text properties
+  (colour, font) from ancestor Frames → per-widget override → state maps → basic options.
+  `tk.resolved_style(id)` shows the result.
+- **State maps:** `tk.style_map("TButton", State::HOVER, spec)` for hover, pressed, focused,
+  disabled (`Opt::Disabled(true)`), checked and selected, with animated colour transitions
+  (`transition_ms`, default 120 ms).
+- **Shape and effects:** border radius, border width/colour, drop shadows, linear gradients,
+  padding, margin, opacity; font family, weight, italic and size per widget.
+- **Images:** `tk.load_image(png_bytes)` and `Opt::Image(id)` on Buttons and Labels.
+
+## Styling & Stylesheets
+
+`rtk` includes a CSS-like stylesheet engine supporting class selectors, pseudo-classes (`:hover`, `:pressed`, `:focus`, `:disabled`), gradients, shadows, and hot reloading:
+
+```rust
+tk.load_stylesheet(r#"
+    TButton {
+        background: #3366ff;
+        color: white;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-weight: 700;
+    }
+
+    Accent.TButton:hover {
+        background: linear-gradient(135deg, #4a7dff, #7a5cff);
+        box-shadow: 0 4 8 #00000066;
+    }
+"#)?;
+
+// Watch file on disk for runtime hot reloading
+tk.watch_stylesheet("examples/styles/custom.css");
+```
+
+## Built-in Themes
+
+- `Theme::Light`
+- `Theme::Dark`
+- `Theme::Fluent` (radius 4, subtle shadows, #0067C0 accent)
+- `Theme::Material` (radius 10-20 pill buttons, elevation shadows, #6750A4 accent)
+- `Theme::HighContrast` (pure black/white, thick borders, yellow focus ring)
+
+![High contrast theme, live: focus ring and hover](docs/style-high-contrast.png)
+
+![Custom stylesheet (examples/styles/custom.css) over the dark theme](docs/style-custom-css.png)
+
+More: [Material](docs/style-material.png), [Fluent](docs/style-fluent.png). Run
+`cargo run --example styling -- --theme material` or `-- --css examples/styles/custom.css`.
+How this compares with ttk, CustomTkinter, Qt QSS, GTK CSS, Flutter, egui, iced, Slint and
+fltk-theme: [docs/STYLING_COMPETITORS.md](docs/STYLING_COMPETITORS.md).
 
 ## tkinter vs rtk
 

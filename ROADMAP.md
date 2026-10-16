@@ -1,5 +1,13 @@
 # Roadmap
 
+## Completed in 0.4
+
+- Design tokens, named styles, cascade with Frame inheritance, per-widget overrides.
+- State maps with animated transitions; disabled state.
+- Rounded corners, borders, shadows, linear gradients, padding/margin, opacity, per-widget fonts.
+- Fluent, Material and High Contrast themes; runtime theme switching.
+- CSS-like stylesheet loader with hot reload; images in Buttons/Labels.
+
 ## Completed in 0.3
 
 - Listbox with row selection, Up/Down/Home/End navigation, and wheel scrolling.
@@ -39,3 +47,6 @@
 - Menus, dialogs (messagebox, file chooser), multiple top-level windows.
 - Accessibility via `accesskit`, IME composition, ttk-style themable styles beyond Light/Dark.
 - Better dark-theme contrast for radio/check indicators.
+- Styling follow-ups: sub-control selectors (`TCheckbutton::indicator`), ID selectors,
+  radial gradients, true Gaussian blur, transitions for size/radius, theme-aware Scale/Progressbar
+  colours in stylesheets, colour transitions on keyboard (Tab) focus changes.

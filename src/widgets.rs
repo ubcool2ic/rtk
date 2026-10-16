@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::layout::{GridOpts, PackOpts, PlaceOpts, Rect, Size};
+use crate::style::{ImageId, StyleSpec, TransitionState};
 use crate::{RtkError, Tk, Var};
 
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
@@ -22,6 +23,7 @@ impl Color {
     pub const BG: Self = Self::rgb(217, 217, 217);
     pub const FG: Self = Self::rgb(25, 25, 25);
     pub const WHITE: Self = Self::rgb(255, 255, 255);
+    pub const BLACK: Self = Self::rgb(0, 0, 0);
     pub const ACTIVE: Self = Self::rgb(236, 236, 236);
 
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
@@ -38,6 +40,9 @@ pub enum Theme {
     #[default]
     Light,
     Dark,
+    Fluent,
+    Material,
+    HighContrast,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,8 +69,6 @@ pub(crate) enum CanvasItemKind {
 #[derive(Clone, Debug)]
 pub(crate) struct CanvasItemSlot {
     pub gen: u32,
-    /// Creation sequence; items are drawn oldest first so new items stack on top
-    /// even when they reuse a freed slot (tkinter display-list semantics).
     pub seq: u64,
     pub item: Option<CanvasItemKind>,
 }
@@ -82,6 +85,11 @@ pub enum Opt {
     TextVariable(Var<String>),
     TextVariableInt(Var<i64>),
     Command(Command),
+    // Advanced styling layer options
+    Style(String),
+    StyleOverride(StyleSpec),
+    Disabled(bool),
+    Image(ImageId),
 }
 
 pub struct Frame;
@@ -363,6 +371,12 @@ pub(crate) struct WidgetNode {
     pub canvas_drag_running: bool,
     // ProgressBar
     pub progress_length: f32,
+    // Advanced styling layer fields
+    pub named_style: Option<String>,
+    pub style_override: Option<StyleSpec>,
+    pub disabled: bool,
+    pub image: Option<ImageId>,
+    pub transition: Option<TransitionState>,
 }
 
 impl WidgetNode {
@@ -411,6 +425,11 @@ impl WidgetNode {
             canvas_drag: None,
             canvas_drag_running: false,
             progress_length: 100.0,
+            named_style: None,
+            style_override: None,
+            disabled: false,
+            image: None,
+            transition: None,
         }
     }
 }

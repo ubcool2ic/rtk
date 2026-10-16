@@ -1,10 +1,11 @@
 use std::error::Error;
 use std::path::Path;
 
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap};
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight, Wrap};
+use tiny_skia::{Color as SkColor, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, SpreadMode, Stroke, Transform};
 
 use crate::layout::{Rect, Size};
+use crate::style::{build_rounded_rect_path, ResolvedStyle, State};
 use crate::tk::cursor_boundary;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk};
@@ -26,25 +27,51 @@ impl TextEngine {
         self.fonts.db().faces().next().is_some()
     }
 
-    fn buffer(&mut self, text: &str, size: f32) -> Option<Buffer> {
+    fn buffer(
+        &mut self,
+        text: &str,
+        size: f32,
+        family_name: Option<&str>,
+        weight: u16,
+        italic: bool,
+    ) -> Option<Buffer> {
         if !self.has_fonts() || !size.is_finite() || size <= 0.0 {
             return None;
         }
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, size * 1.3));
         buffer.set_size(&mut self.fonts, None, None);
         buffer.set_wrap(&mut self.fonts, Wrap::None);
+
+        let mut attrs = Attrs::new();
+        if let Some(name) = family_name {
+            attrs = attrs.family(Family::Name(name));
+        } else {
+            attrs = attrs.family(Family::SansSerif);
+        }
+        attrs = attrs.weight(Weight(weight));
+        if italic {
+            attrs = attrs.style(Style::Italic);
+        }
+
         buffer.set_text(
             &mut self.fonts,
             text,
-            Attrs::new().family(Family::SansSerif),
+            attrs,
             Shaping::Advanced,
         );
         buffer.shape_until_scroll(&mut self.fonts, false);
         Some(buffer)
     }
 
-    pub fn measure(&mut self, text: &str, size: f32) -> Size {
-        let width = if let Some(buffer) = self.buffer(text, size) {
+    pub fn measure_styled(
+        &mut self,
+        text: &str,
+        size: f32,
+        family: Option<&str>,
+        weight: u16,
+        italic: bool,
+    ) -> Size {
+        let width = if let Some(buffer) = self.buffer(text, size, family, weight, italic) {
             buffer.layout_runs().map(|run| run.line_w).fold(0.0_f32, f32::max)
         } else {
             text.split('\n').map(|line| line.chars().count()).max().unwrap_or(0) as f32 * size * 0.6
@@ -52,27 +79,38 @@ impl TextEngine {
         Size::new(width, text.split('\n').count() as f32 * size * 1.3)
     }
 
-    fn draw(
+    pub fn measure(&mut self, text: &str, size: f32) -> Size {
+        self.measure_styled(text, size, None, 400, false)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_styled(
         &mut self,
         pixmap: &mut Pixmap,
         text: &str,
         appearance: (f32, Color),
+        family: Option<&str>,
+        weight: u16,
+        italic: bool,
         origin: (f32, f32),
         clip: Rect,
+        opacity: f32,
     ) {
         let (size, color) = appearance;
-        let Some(buffer) = self.buffer(text, size) else { return };
+        let Some(buffer) = self.buffer(text, size, family, weight, italic) else { return };
         let origin = (origin.0.round(), origin.1.round());
+        let effective_alpha = (color.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
+        let draw_color = Color::rgba(color.r, color.g, color.b, effective_alpha);
         buffer.draw(
             &mut self.fonts,
             &mut self.cache,
-            cosmic_text::Color::rgba(color.r, color.g, color.b, color.a),
-            |x, y, width, height, color| {
+            cosmic_text::Color::rgba(draw_color.r, draw_color.g, draw_color.b, draw_color.a),
+            |x, y, width, height, c| {
                 fill(
                     pixmap,
                     Rect::new(origin.0 + x as f32, origin.1 + y as f32, width as f32, height as f32),
                     clip,
-                    Color::rgba(color.r(), color.g(), color.b(), color.a()),
+                    Color::rgba(c.r(), c.g(), c.b(), c.a()),
                 );
             },
         );
@@ -134,6 +172,101 @@ fn fill_circle(pixmap: &mut Pixmap, cx: f32, cy: f32, r: f32, clip: Rect, color:
     }
 }
 
+/// Renders a styled widget background: drop shadow, rounded rect, linear gradient, border.
+fn render_styled_box(
+    pixmap: &mut Pixmap,
+    rect: Rect,
+    clip: Rect,
+    scale: f32,
+    style: &ResolvedStyle,
+    bg_override: Option<Color>,
+    border_override: Option<Color>,
+) {
+    let rect_scaled = rect.scaled(scale);
+    let clip_scaled = clip.scaled(scale);
+    let int_clip = rect_scaled.intersection(clip_scaled);
+    if int_clip.width <= 0.0 || int_clip.height <= 0.0 {
+        return;
+    }
+
+    let radius_scaled = style.radius * scale;
+    let opacity = style.opacity.clamp(0.0, 1.0);
+
+    // 1. Drop shadow (draw offset expanding low-alpha rounded rects)
+    if let Some(shadow) = style.shadow {
+        if shadow.color.a > 0 {
+            let blur_steps = 4;
+            let max_blur = (shadow.blur * scale).max(1.0);
+            for step in 1..=blur_steps {
+                let factor = step as f32 / blur_steps as f32;
+                let spread = factor * max_blur * 0.5;
+                let alpha = ((shadow.color.a as f32 / blur_steps as f32) * 0.8 * opacity).round() as u8;
+                if alpha == 0 {
+                    continue;
+                }
+                let shadow_rect = Rect::new(
+                    rect_scaled.x + shadow.dx * scale - spread,
+                    rect_scaled.y + shadow.dy * scale - spread,
+                    rect_scaled.width + 2.0 * spread,
+                    rect_scaled.height + 2.0 * spread,
+                );
+                if let Some(shadow_path) = build_rounded_rect_path(shadow_rect, radius_scaled + spread) {
+                    let mut paint = Paint::default();
+                    paint.set_color_rgba8(shadow.color.r, shadow.color.g, shadow.color.b, alpha);
+                    paint.anti_alias = true;
+                    pixmap.fill_path(&shadow_path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                }
+            }
+        }
+    }
+
+    // 2. Widget background (solid color or linear gradient)
+    if let Some(path) = build_rounded_rect_path(rect_scaled, radius_scaled) {
+        let mut paint = Paint { anti_alias: true, ..Paint::default() };
+
+        if let Some(grad) = &style.gradient {
+            let angle_rad = grad.angle_deg.to_radians();
+            let cx = rect_scaled.x + rect_scaled.width / 2.0;
+            let cy = rect_scaled.y + rect_scaled.height / 2.0;
+            let half_diag = ((rect_scaled.width).hypot(rect_scaled.height)) / 2.0;
+            let dx = angle_rad.sin() * half_diag;
+            let dy = -angle_rad.cos() * half_diag;
+            let start = Point::from_xy(cx - dx, cy - dy);
+            let end = Point::from_xy(cx + dx, cy + dy);
+            let stops: Vec<GradientStop> = grad.stops.iter().map(|(pos, col)| {
+                let a = (col.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
+                GradientStop::new(*pos, SkColor::from_rgba8(col.r, col.g, col.b, a))
+            }).collect();
+
+            if let Some(shader) = LinearGradient::new(start, end, stops, SpreadMode::Pad, Transform::identity()) {
+                paint.shader = shader;
+                pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            }
+        } else {
+            let bg = bg_override.unwrap_or(style.bg);
+            let effective_alpha = (bg.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
+            if effective_alpha > 0 {
+                paint.set_color_rgba8(bg.r, bg.g, bg.b, effective_alpha);
+                pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            }
+        }
+
+        // 3. Border
+        let border_w = style.border_width * scale;
+        if border_w > 0.0 {
+            let border_c = border_override.unwrap_or(style.border_color);
+            let effective_border_a = (border_c.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
+            if effective_border_a > 0 {
+                let mut stroke_paint = Paint::default();
+                stroke_paint.set_color_rgba8(border_c.r, border_c.g, border_c.b, effective_border_a);
+                stroke_paint.anti_alias = true;
+                let stroke = Stroke { width: border_w, ..Stroke::default() };
+                pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+            }
+        }
+    }
+}
+
 impl Tk {
     pub fn render_to_pixmap(&mut self, width: u32, height: u32) -> Result<Pixmap, RtkError> {
         self.sim_resize(width, height);
@@ -142,48 +275,69 @@ impl Tk {
             return Err(RtkError::InvalidImageSize);
         }
         let mut pixmap = Pixmap::new(width, height).ok_or(RtkError::InvalidImageSize)?;
-        let default_bg = if self.theme == Theme::Dark {
-            Color::rgb(45, 45, 45)
-        } else {
-            Color::BG
-        };
-        let bg = self.node(self.root()).map(|node| node.style.bg).unwrap_or(default_bg);
-        pixmap.fill(tiny_skia::Color::from_rgba8(bg.r, bg.g, bg.b, bg.a));
+        let root_style = self.resolved_style(self.root());
+        let default_bg = root_style.as_ref().map(|s| s.bg).unwrap_or(match self.theme {
+            Theme::Dark => Color::rgb(32, 32, 32),
+            Theme::HighContrast => Color::rgb(0, 0, 0),
+            _ => Color::BG,
+        });
+        pixmap.fill(tiny_skia::Color::from_rgba8(default_bg.r, default_bg.g, default_bg.b, default_bg.a));
         let scale = self.scale_factor;
 
+        let high_contrast = self.theme == Theme::HighContrast;
         let dark_mode = self.theme == Theme::Dark;
-        let border_light = if dark_mode { Color::rgb(70, 70, 70) } else { Color::rgb(250, 250, 250) };
-        let border_dark = if dark_mode { Color::rgb(20, 20, 20) } else { Color::rgb(110, 110, 110) };
-        let active_bg = if dark_mode { Color::rgb(60, 60, 60) } else { Color::ACTIVE };
 
         for id in self.paint_order.clone() {
             let Some(node) = self.node(id) else { continue };
-            let (kind, logical, logical_clip, style) = (node.kind, node.rect, node.clip, node.style);
+            let (kind, logical, logical_clip) = (node.kind, node.rect, node.clip);
             let (cursor, old_scroll, check) = (node.cursor, node.scroll_x, node.check);
+            let disabled = node.disabled;
+            let image_id = node.image;
+
+            let resolved = self.resolved_style(id).unwrap_or_default();
             let rect = logical.scaled(scale);
             let clip = logical_clip.scaled(scale);
             if clip.width <= 0.0 || clip.height <= 0.0 {
                 continue;
             }
-            let pressed = self.pressed == Some(id) && self.hovered == Some(id);
-            let bg = if kind.has_command() && self.hovered == Some(id) {
-                active_bg
-            } else {
-                style.bg
-            };
-            fill(&mut pixmap, rect, clip, bg);
 
-            if matches!(kind, Kind::Button | Kind::Entry | Kind::Spinbox) || (kind == Kind::Frame && id != self.root()) {
-                let raised = kind == Kind::Button && !pressed;
-                outline(
-                    &mut pixmap, rect, clip, scale,
-                    if raised { (border_light, border_dark) } else { (border_dark, border_light) },
+            // Interpolated colors if animating transition
+            let (draw_bg, draw_fg, draw_border) = if let Some(trans) = &node.transition {
+                (trans.current_bg(), trans.current_fg(), trans.current_border())
+            } else {
+                (resolved.bg, resolved.fg, resolved.border_color)
+            };
+
+            // Render background, rounded corners, gradient, drop shadow, and border
+            if kind != Kind::Radiobutton && kind != Kind::Checkbutton {
+                render_styled_box(
+                    &mut pixmap,
+                    logical,
+                    logical_clip,
+                    scale,
+                    &resolved,
+                    Some(draw_bg),
+                    Some(draw_border),
                 );
             }
-            if self.focused == Some(id) && kind.focusable() {
-                let color = Color::rgb(40, 95, 190);
-                outline(&mut pixmap, rect.inset(2.0 * scale, 2.0 * scale), clip, scale, (color, color));
+
+            // High contrast or focused focus ring
+            if self.focused == Some(id) && kind.focusable() && !disabled {
+                let focus_color = self.style_engine.tokens().palette.focus;
+                let ring_w = if high_contrast { 3.0 * scale } else { 2.0 * scale };
+                if resolved.radius > 0.0 && !high_contrast {
+                    if let Some(path) = build_rounded_rect_path(rect.inset(2.0 * scale, 2.0 * scale), (resolved.radius - 2.0).max(0.0) * scale) {
+                        let mut p = Paint::default();
+                        p.set_color_rgba8(focus_color.r, focus_color.g, focus_color.b, focus_color.a);
+                        p.anti_alias = true;
+                        let stroke = Stroke { width: ring_w, ..Stroke::default() };
+                        pixmap.stroke_path(&path, &p, &stroke, Transform::identity(), None);
+                    }
+                } else {
+                    outline(&mut pixmap, rect.inset(2.0 * scale, 2.0 * scale), clip, ring_w, (focus_color, focus_color));
+                }
             }
+
             if kind == Kind::Frame {
                 continue;
             }
@@ -192,34 +346,32 @@ impl Tk {
                 Kind::Scale => {
                     let track = logical.inset(12.0, 0.0);
                     let y = logical.y + logical.height / 2.0;
+                    let track_color = resolved.border_color;
                     fill(
                         &mut pixmap,
                         Rect::new(track.x, y - 2.0, track.width, 4.0).scaled(scale),
-                        clip, border_dark,
+                        clip, track_color,
                     );
                     let x = track.x + track.width * self.scale_fraction(id);
-                    fill(
-                        &mut pixmap,
-                        Rect::new(x - 5.0, y - 9.0, 10.0, 18.0).scaled(scale),
-                        clip, Color::rgb(65, 105, 175),
-                    );
+                    let thumb_rect = Rect::new(x - 5.0, y - 9.0, 10.0, 18.0);
+                    let thumb_color = resolved.fg;
+                    fill(&mut pixmap, thumb_rect.scaled(scale), clip, thumb_color);
                 }
                 Kind::ProgressBar => {
-                    outline(&mut pixmap, rect, clip, scale, (border_dark, border_light));
                     let val = node.scale.and_then(|v| v.get(self)).unwrap_or(0).clamp(0, 100);
                     let frac = (val as f32) / 100.0;
                     let inner = logical.inset(2.0, 2.0);
                     let filled_w = inner.width * frac;
                     if filled_w > 0.0 {
                         let fill_rect = Rect::new(inner.x, inner.y, filled_w, inner.height).scaled(scale);
-                        fill(&mut pixmap, fill_rect, clip, Color::rgb(40, 140, 220));
+                        fill(&mut pixmap, fill_rect, clip, resolved.fg);
                     }
                 }
                 Kind::Entry => {
                     let inner = logical.inset(6.0, 5.0);
                     let text = self.widget_text(id).unwrap_or_default();
                     let cursor = cursor_boundary(&text, cursor);
-                    let caret = self.measure(text.get(..cursor).unwrap_or_default(), style.font_size).width;
+                    let caret = self.measure_with(text.get(..cursor).unwrap_or_default(), &resolved).width;
                     let available = (inner.width - 1.0).max(0.0);
                     let mut scroll = old_scroll.max(0.0);
                     if caret < scroll {
@@ -227,7 +379,7 @@ impl Tk {
                     } else if caret > scroll + available {
                         scroll = caret - available;
                     }
-                    let total = self.measure(&text, style.font_size).width;
+                    let total = self.measure_with(&text, &resolved).width;
                     scroll = scroll.min((total - available).max(0.0));
                     if let Some(node) = self.node_mut(id) {
                         node.scroll_x = scroll;
@@ -235,17 +387,19 @@ impl Tk {
                     }
                     let origin = (
                         (inner.x - scroll) * scale,
-                        (logical.y + (logical.height - style.font_size * 1.3) / 2.0) * scale,
+                        (logical.y + (logical.height - resolved.font_size * 1.3) / 2.0) * scale,
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
-                    self.text_engine.draw(
-                        &mut pixmap, &text, (style.font_size * scale, style.fg), origin, text_clip,
+                    self.text_engine.draw_styled(
+                        &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
+                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                        origin, text_clip, resolved.opacity,
                     );
-                    if self.focused == Some(id) {
+                    if self.focused == Some(id) && !disabled {
                         fill(
                             &mut pixmap,
                             Rect::new(inner.x - scroll + caret, inner.y, 1.0, inner.height).scaled(scale),
-                            text_clip, style.fg,
+                            text_clip, draw_fg,
                         );
                     }
                 }
@@ -254,41 +408,45 @@ impl Tk {
                     let text = format!("{}", node.scale.and_then(|v| v.get(self)).unwrap_or(node.range.0));
                     let origin = (
                         (inner.x + 6.0) * scale,
-                        (inner.y + (inner.height - style.font_size * 1.3) / 2.0) * scale,
+                        (inner.y + (inner.height - resolved.font_size * 1.3) / 2.0) * scale,
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
-                    self.text_engine.draw(
-                        &mut pixmap, &text, (style.font_size * scale, style.fg), origin, text_clip,
+                    self.text_engine.draw_styled(
+                        &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
+                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                        origin, text_clip, resolved.opacity,
                     );
                     // Buttons on the right
                     let btn_rect = Rect::new(logical.x + logical.width - 20.0, logical.y, 20.0, logical.height).scaled(scale);
                     fill(&mut pixmap, btn_rect, clip, if dark_mode { Color::rgb(55, 55, 55) } else { Color::BG });
-                    outline(&mut pixmap, btn_rect, clip, scale, (border_light, border_dark));
+                    outline(&mut pixmap, btn_rect, clip, scale, (resolved.border_color, resolved.border_color));
                     let half_h = btn_rect.height / 2.0;
-                    fill(&mut pixmap, Rect::new(btn_rect.x, btn_rect.y + half_h, btn_rect.width, scale), clip, border_dark);
-                    // Arrow text
+                    fill(&mut pixmap, Rect::new(btn_rect.x, btn_rect.y + half_h, btn_rect.width, scale), clip, resolved.border_color);
                     let up_text = "▲";
                     let dn_text = "▼";
                     let up_m = self.measure(up_text, 8.0);
                     let dn_m = self.measure(dn_text, 8.0);
-                    self.text_engine.draw(
-                        &mut pixmap, up_text, (8.0 * scale, style.fg),
+                    self.text_engine.draw_styled(
+                        &mut pixmap, up_text, (8.0 * scale, draw_fg),
+                        None, 400, false,
                         (btn_rect.x + (btn_rect.width - up_m.width * scale) / 2.0, btn_rect.y + (half_h - up_m.height * scale) / 2.0),
-                        clip,
+                        clip, resolved.opacity,
                     );
-                    self.text_engine.draw(
-                        &mut pixmap, dn_text, (8.0 * scale, style.fg),
+                    self.text_engine.draw_styled(
+                        &mut pixmap, dn_text, (8.0 * scale, draw_fg),
+                        None, 400, false,
                         (btn_rect.x + (btn_rect.width - dn_m.width * scale) / 2.0, btn_rect.y + half_h + (half_h - dn_m.height * scale) / 2.0),
-                        clip,
+                        clip, resolved.opacity,
                     );
                 }
                 Kind::Listbox => {
-                    outline(&mut pixmap, rect, clip, scale, (border_dark, border_light));
-                    let line_h = (style.font_size * 1.3 + 4.0).max(16.0);
+                    let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
                     let start = node.list_scroll;
                     let count = node.list_height;
                     let items = node.list_items.clone();
                     let sel = node.list_selection;
+                    let sel_bg = self.style_engine.tokens().palette.select_bg;
+                    let sel_fg = self.style_engine.tokens().palette.select_fg;
                     for i in 0..count {
                         let item_idx = start + i;
                         if item_idx >= items.len() {
@@ -302,21 +460,21 @@ impl Tk {
                         );
                         let is_selected = sel == Some(item_idx);
                         if is_selected {
-                            fill(&mut pixmap, row_rect.scaled(scale), clip, Color::rgb(40, 95, 190));
+                            fill(&mut pixmap, row_rect.scaled(scale), clip, sel_bg);
                         }
-                        let item_fg = if is_selected { Color::WHITE } else { style.fg };
+                        let item_fg = if is_selected { sel_fg } else { draw_fg };
                         let origin = (
                             (row_rect.x + 4.0) * scale,
-                            (row_rect.y + (row_rect.height - style.font_size * 1.3) / 2.0) * scale,
+                            (row_rect.y + (row_rect.height - resolved.font_size * 1.3) / 2.0) * scale,
                         );
-                        self.text_engine.draw(
-                            &mut pixmap, &items[item_idx], (style.font_size * scale, item_fg), origin, clip.intersection(row_rect.scaled(scale)),
+                        self.text_engine.draw_styled(
+                            &mut pixmap, &items[item_idx], (resolved.font_size * scale, item_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, clip.intersection(row_rect.scaled(scale)), resolved.opacity,
                         );
                     }
                 }
                 Kind::Scrollbar => {
-                    fill(&mut pixmap, rect, clip, if dark_mode { Color::rgb(35, 35, 35) } else { Color::rgb(230, 230, 230) });
-                    outline(&mut pixmap, rect, clip, scale, (border_dark, border_light));
                     let target_info = node.scroll_target.and_then(|tid| self.node(tid)).map(|t| (t.list_items.len(), t.list_height, t.list_scroll));
                     if let Some((total, visible, scroll)) = target_info {
                         if total > visible {
@@ -330,9 +488,8 @@ impl Tk {
                                 0.0
                             };
                             let thumb_rect = Rect::new(logical.x + 1.0, logical.y + thumb_y, logical.width - 2.0, thumb_h).scaled(scale);
-                            let thumb_color = if dark_mode { Color::rgb(80, 80, 80) } else { Color::rgb(170, 170, 170) };
+                            let thumb_color = resolved.fg;
                             fill(&mut pixmap, thumb_rect, clip, thumb_color);
-                            outline(&mut pixmap, thumb_rect, clip, scale, (border_light, border_dark));
                         }
                     }
                 }
@@ -340,8 +497,8 @@ impl Tk {
                     let circle_cx = (logical.x + 12.0) * scale;
                     let circle_cy = (logical.y + logical.height / 2.0) * scale;
                     let circle_r = 6.0 * scale;
-                    fill_circle(&mut pixmap, circle_cx, circle_cy, circle_r, clip, if dark_mode { Color::rgb(35, 35, 35) } else { Color::WHITE });
-                    // Outline
+                    let inner_bg = if high_contrast { Color::BLACK } else if dark_mode { Color::rgb(45, 45, 45) } else { Color::WHITE };
+                    fill_circle(&mut pixmap, circle_cx, circle_cy, circle_r, clip, inner_bg);
                     let mut pb = PathBuilder::new();
                     let d = circle_r * 0.552_284_8;
                     pb.move_to(circle_cx, circle_cy - circle_r);
@@ -352,23 +509,27 @@ impl Tk {
                     pb.close();
                     if let Some(path) = pb.finish() {
                         let mut paint = Paint::default();
-                        paint.set_color_rgba8(border_dark.r, border_dark.g, border_dark.b, border_dark.a);
+                        let border_c = if high_contrast { Color::WHITE } else if dark_mode { Color::rgb(180, 180, 180) } else { draw_border };
+                        paint.set_color_rgba8(border_c.r, border_c.g, border_c.b, border_c.a);
                         paint.anti_alias = true;
-                        pixmap.stroke_path(&path, &paint, &Stroke::default(), Transform::identity(), None);
+                        let sw = if high_contrast { 2.0 * scale } else { scale };
+                        pixmap.stroke_path(&path, &paint, &Stroke { width: sw, ..Stroke::default() }, Transform::identity(), None);
                     }
                     let is_selected = node.radio_var.and_then(|v| v.get(self)) == Some(node.radio_value);
                     if is_selected {
-                        fill_circle(&mut pixmap, circle_cx, circle_cy, 3.0 * scale, clip, Color::rgb(40, 95, 190));
+                        let dot_color = self.style_engine.tokens().palette.accent;
+                        fill_circle(&mut pixmap, circle_cx, circle_cy, 3.5 * scale, clip, dot_color);
                     }
                     let text = node.text.clone();
-                    let text = text.as_str();
-                    let measured = self.measure(text, style.font_size);
+                    let measured = self.measure_with(&text, &resolved);
                     let origin = (
                         (logical.x + 24.0) * scale,
                         (logical.y + (logical.height - measured.height) / 2.0) * scale,
                     );
-                    self.text_engine.draw(
-                        &mut pixmap, text, (style.font_size * scale, style.fg), origin, clip,
+                    self.text_engine.draw_styled(
+                        &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
+                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                        origin, clip, resolved.opacity,
                     );
                 }
                 Kind::Canvas => {
@@ -376,7 +537,7 @@ impl Tk {
                     let h = rect.height.round() as u32;
                     if w > 0 && h > 0 {
                         if let Some(mut sub) = Pixmap::new(w, h) {
-                            sub.fill(tiny_skia::Color::from_rgba8(style.bg.r, style.bg.g, style.bg.b, style.bg.a));
+                            sub.fill(tiny_skia::Color::from_rgba8(draw_bg.r, draw_bg.g, draw_bg.b, draw_bg.a));
                             let mut items = node.canvas_items.clone();
                             items.sort_by_key(|slot| slot.seq);
                             for slot in items {
@@ -427,10 +588,12 @@ impl Tk {
                                         }
                                     }
                                     CanvasItemKind::Text { x, y, text, color } => {
-                                        self.text_engine.draw(
-                                            &mut sub, &text, (style.font_size * scale, color),
+                                        self.text_engine.draw_styled(
+                                            &mut sub, &text, (resolved.font_size * scale, color),
+                                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                                             (x * scale, y * scale),
                                             Rect::new(0.0, 0.0, w as f32, h as f32),
+                                            resolved.opacity,
                                         );
                                     }
                                 }
@@ -452,25 +615,30 @@ impl Tk {
                             }
                         }
                     }
-                    outline(&mut pixmap, rect, clip, scale, (border_dark, border_light));
                 }
                 _ => {
                     let text = self.widget_text(id).unwrap_or_default();
-                    let measured = self.measure(&text, style.font_size);
+                    let measured = self.measure_with(&text, &resolved);
+                    let state = self.widget_state(id);
+                    let pressed = state.contains(State::PRESSED);
                     let shift = if pressed { 1.0 } else { 0.0 };
                     let mut text_rect = logical;
+
                     if kind == Kind::Checkbutton {
                         let square = Rect::new(
                             logical.x + 7.0,
                             logical.y + (logical.height - 14.0) / 2.0,
                             14.0, 14.0,
                         ).within(logical);
-                        fill(&mut pixmap, square.scaled(scale), clip, if dark_mode { Color::rgb(35, 35, 35) } else { Color::WHITE });
-                        outline(&mut pixmap, square.scaled(scale), clip, scale, (border_dark, border_light));
+                        let check_bg = if high_contrast { Color::BLACK } else if dark_mode { Color::rgb(45, 45, 45) } else { Color::WHITE };
+                        let check_border = if high_contrast { Color::WHITE } else if dark_mode { Color::rgb(180, 180, 180) } else { draw_border };
+                        fill(&mut pixmap, square.scaled(scale), clip, check_bg);
+                        outline(&mut pixmap, square.scaled(scale), clip, if high_contrast { 2.0 * scale } else { scale }, (check_border, check_border));
                         if check.and_then(|var| var.get(self)).unwrap_or(false) {
+                            let fill_c = self.style_engine.tokens().palette.accent;
                             fill(
                                 &mut pixmap, square.inset(3.0, 3.0).scaled(scale),
-                                clip, Color::rgb(40, 95, 190),
+                                clip, fill_c,
                             );
                         }
                         text_rect = Rect::new(
@@ -478,15 +646,41 @@ impl Tk {
                             (logical.width - 28.0).max(0.0), logical.height,
                         ).within(logical);
                     }
-                    self.text_engine.draw(
+
+                    // Optional Image left of text
+                    let mut image_offset = 0.0;
+                    if let Some(img_id) = image_id {
+                        if let Some(img_pixmap) = self.images.get(&img_id) {
+                            let img_w = img_pixmap.width() as f32;
+                            let img_h = img_pixmap.height() as f32;
+                            let img_x = (text_rect.x + resolved.padding.left + shift) * scale;
+                            let img_y = (text_rect.y + (text_rect.height - img_h) / 2.0 + shift) * scale;
+                            pixmap.draw_pixmap(
+                                img_x.round() as i32,
+                                img_y.round() as i32,
+                                img_pixmap.as_ref(),
+                                &tiny_skia::PixmapPaint::default(),
+                                Transform::identity(),
+                                None,
+                            );
+                            image_offset = img_w + 6.0;
+                        }
+                    }
+
+                    let origin = (
+                        (text_rect.x + (text_rect.width - measured.width) / 2.0 + image_offset / 2.0 + shift) * scale,
+                        (text_rect.y + (text_rect.height - measured.height) / 2.0 + shift) * scale,
+                    );
+                    self.text_engine.draw_styled(
                         &mut pixmap,
                         &text,
-                        (style.font_size * scale, style.fg),
-                        (
-                            (text_rect.x + (text_rect.width - measured.width) / 2.0 + shift) * scale,
-                            (text_rect.y + (text_rect.height - measured.height) / 2.0 + shift) * scale,
-                        ),
+                        (resolved.font_size * scale, draw_fg),
+                        resolved.font_family.as_deref(),
+                        resolved.font_weight,
+                        resolved.italic,
+                        origin,
                         clip.intersection(text_rect.inset(4.0, 2.0).scaled(scale)),
+                        resolved.opacity,
                     );
                 }
             }

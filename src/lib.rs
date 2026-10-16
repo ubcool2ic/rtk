@@ -3,11 +3,13 @@
 mod app;
 pub mod layout;
 mod render;
+pub mod style;
 mod tk;
 mod var;
 mod widgets;
 
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
+pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
 pub use tk::{Key, Tk};
 pub use var::Var;
 pub use widgets::{

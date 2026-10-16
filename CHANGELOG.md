@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+- Advanced styling layer (`src/style.rs`) on top of the unchanged basic API: design tokens
+  (`Tokens`, `Palette`, `Radius`, `TypeScale`), ttk-style named styles (`style_configure`,
+  `Opt::Style`), per-widget `Opt::StyleOverride`, Frame inheritance of text properties,
+  and `resolved_style`.
+- State maps (`style_map`) for hover/pressed/focused/disabled/checked/selected, `Opt::Disabled`,
+  and animated colour transitions (`sim_advance_time`, `is_animating`; the window keeps redrawing while animating).
+- Rounded corners, borders, drop shadows (layered approximation), linear gradients, padding,
+  margin, opacity; font family, weight, italic and size per widget.
+- Themes `Fluent`, `Material`, `HighContrast` (yellow focus ring), plus improved Dark indicators;
+  runtime switching keeps named styles.
+- CSS-like stylesheets: `load_stylesheet`, `load_stylesheet_file`, `watch_stylesheet` +
+  `poll_stylesheet` hot reload; errors carry the line number.
+- Images on Buttons/Labels (`load_image`, `Opt::Image`).
+- `examples/styling.rs`, `examples/styles/custom.css`, `tests/styling.rs`, and
+  `docs/STYLING_COMPETITORS.md`.
+
+### Fixed after verifying the model output
+- Transitions started from the *new* colour (no visible animation); they now start from the
+  previous state's resolved style, including press/release and click focus changes.
+- Layout measured text without the resolved font family/weight/slant, clipping bold titles; Entry caret hit-testing too.
+- Stylesheet `border` rejected `1px` and `solid`; lengths accept `px`.
+- Disabled widgets had no visual change; every class now has a muted, 55 %-opacity disabled map.
+- Compile errors (missing `ImageId`, private fields, borrow errors), clippy warnings, and test access to private internals.
+
 ## 0.3.0
 
 ### Added
