@@ -194,7 +194,11 @@ impl ApplicationHandler for App {
                     WinitKey::Character(text) if text.as_str() == " " => Some(Key::Space),
                     _ => None,
                 };
-                if !self.modifiers.control_key() && !self.modifiers.super_key() {
+                if accepts_key_input(
+                    self.modifiers.control_key(),
+                    self.modifiers.alt_key(),
+                    self.modifiers.super_key(),
+                ) {
                     if let Some(key) = key {
                         self.tk.sim_key(key);
                     } else if let Some(text) = event.text {
@@ -218,5 +222,24 @@ impl ApplicationHandler for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.schedule(event_loop);
+    }
+}
+
+/// Ctrl/Super chords are shortcuts, not text. Ctrl+Alt is how Windows reports
+/// AltGr, which produces real characters (e.g. `@`, `€` on many layouts).
+pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
+    !logo && (!ctrl || alt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accepts_key_input;
+
+    #[test]
+    fn altgr_text_is_accepted_but_shortcuts_are_not() {
+        assert!(accepts_key_input(false, false, false));
+        assert!(accepts_key_input(true, true, false)); // AltGr on Windows
+        assert!(!accepts_key_input(true, false, false)); // Ctrl+V etc.
+        assert!(!accepts_key_input(false, false, true));
     }
 }

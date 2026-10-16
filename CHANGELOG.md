@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Accept AltGr (Ctrl+Alt) text input on Windows.
+- Independent review (REVIEW.md) with 6 new regression tests.
+
 ## 0.2.0
 
 ### Fixed after review
