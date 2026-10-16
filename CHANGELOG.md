@@ -2,6 +2,12 @@
 
 ## 0.2.0
 
+### Fixed after review
+
+- Zero-area clipped fills no longer leak pixels outside widgets (Entry text overflowed its box at scroll 0).
+- Restored layout unit tests; added tests/vars.rs (get/set, equal-set no-op, trace loop guard, destroyed Var).
+- Verified counter and form interactively on an X display with xdotool.
+
 ### Stability
 
 - Generational widget IDs, subtree destruction, slot reuse, and stale-ID checks.
