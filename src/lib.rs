@@ -1,9 +1,4 @@
 //! A small, software-rendered, tkinter-style GUI.
-//!
-//! Fallible constructors return `Result`; handle-based mutations return `bool`
-//! (`false` means rejected), and queries return `Option`. Invalid or stale
-//! handles never index the arena unchecked. Widget handles belong to their
-//! originating [`Tk`]; variable handles additionally validate toolkit ownership.
 
 mod app;
 pub mod layout;
@@ -12,11 +7,13 @@ mod tk;
 mod var;
 mod widgets;
 
-pub use layout::{Anchor, Fill, GridOpts, PackOpts, Rect, Side, Sticky};
+pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use tk::{Key, Tk};
 pub use var::Var;
 pub use widgets::{
-    Button, Checkbutton, Color, Command, Entry, Frame, Label, Opt, Scale, WidgetId,
+    Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Command, DragPhase,
+    Entry, Frame, Label, Listbox, Opt, ProgressBar, Radiobutton, Scale, Scrollbar, Spinbox,
+    Theme, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

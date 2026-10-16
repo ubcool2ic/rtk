@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use crate::layout::{self, GridItem, GridOpts, PackItem, PackOpts, Rect, Size};
+use crate::layout::{self, GridItem, GridOpts, PackItem, PackOpts, PlaceOpts, Rect, Size};
 use crate::render::TextEngine;
 use crate::var::VarSlot;
-use crate::widgets::{Binding, Kind, Manager, WidgetNode, WidgetSlot};
+use crate::widgets::{
+    Binding, CanvasItem, CanvasItemKind, CanvasItemSlot, Color, DragPhase,
+    Kind, Manager, Theme, WidgetNode, WidgetSlot,
+};
 use crate::{Opt, RtkError, WidgetId};
 
 const MAX_ENTRY_BYTES: usize = 64 * 1024;
@@ -15,6 +18,8 @@ pub enum Key {
     Delete,
     Left,
     Right,
+    Up,
+    Down,
     Home,
     End,
     Tab,
@@ -23,11 +28,6 @@ pub enum Key {
     Space,
 }
 
-/// Owns widgets, variables, callbacks, layout, and the software renderer.
-///
-/// Constructors return `Result`, mutations taking handles return `bool`, and
-/// queries return `Option`. False/None means invalid, stale, or incompatible.
-/// Widget handles must only be used with their originating toolkit.
 pub struct Tk {
     nodes: Vec<WidgetSlot>,
     free: Vec<u32>,
@@ -45,6 +45,10 @@ pub struct Tk {
     viewport: (u32, u32),
     pointer: (f32, f32),
     pub(crate) scale_factor: f32,
+    pub(crate) theme: Theme,
+    drag_active: Option<WidgetId>,
+    drag_start: (f32, f32),
+    scrollbar_drag: Option<(WidgetId, f32, usize)>, // (scrollbar_id, start_mouse_y, start_scroll)
 }
 
 impl Default for Tk {
@@ -75,6 +79,10 @@ impl Tk {
             viewport: (640, 480),
             pointer: (0.0, 0.0),
             scale_factor: 1.0,
+            theme: Theme::Light,
+            drag_active: None,
+            drag_start: (0.0, 0.0),
+            scrollbar_drag: None,
         }
     }
 
@@ -98,12 +106,44 @@ impl Tk {
         self.node(id).is_some()
     }
 
+    pub fn theme(&self) -> Theme {
+        self.theme
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        if self.theme == theme {
+            return;
+        }
+        self.theme = theme;
+        self.dirty = true;
+        let is_dark = theme == Theme::Dark;
+        for slot in &mut self.nodes {
+            if let Some(node) = &mut slot.node {
+                if !node.style.bg_overridden {
+                    node.style.bg = match node.kind {
+                        Kind::Entry | Kind::Listbox => {
+                            if is_dark { Color::rgb(35, 35, 35) } else { Color::WHITE }
+                        }
+                        Kind::Canvas => {
+                            if is_dark { Color::rgb(25, 25, 25) } else { Color::rgb(240, 240, 240) }
+                        }
+                        _ => {
+                            if is_dark { Color::rgb(45, 45, 45) } else { Color::BG }
+                        }
+                    };
+                }
+                if !node.style.fg_overridden {
+                    node.style.fg = if is_dark { Color::rgb(230, 230, 230) } else { Color::FG };
+                }
+            }
+        }
+    }
+
     pub fn title(&mut self, title: impl Into<String>) {
         self.window_title = title.into();
         self.dirty = true;
     }
 
-    /// Initial window dimensions in logical pixels; zero is permitted.
     pub fn geometry(&mut self, width: u32, height: u32) {
         self.window_size = Some((width, height));
         self.sim_resize(width, height);
@@ -130,7 +170,15 @@ impl Tk {
         if !self.node(parent).is_some_and(|node| node.kind == Kind::Frame) {
             return Err(RtkError::InvalidParent);
         }
-        let node = WidgetNode::new(kind, Some(parent), text);
+        let mut node = WidgetNode::new(kind, Some(parent), text);
+        if self.theme == Theme::Dark {
+            node.style.bg = match kind {
+                Kind::Entry | Kind::Listbox => Color::rgb(35, 35, 35),
+                Kind::Canvas => Color::rgb(25, 25, 25),
+                _ => Color::rgb(45, 45, 45),
+            };
+            node.style.fg = Color::rgb(230, 230, 230);
+        }
         let id = if let Some(index) = self.free.pop() {
             let Some(slot) = self.nodes.get_mut(index as usize) else {
                 return Err(RtkError::ArenaFull);
@@ -150,8 +198,6 @@ impl Tk {
         Ok(id)
     }
 
-    /// Removes a subtree iteratively. Destroying the root also requests quit.
-    /// Slots whose generation is exhausted are retired rather than wrapped.
     pub fn destroy(&mut self, id: WidgetId) -> bool {
         let Some(node) = self.node(id) else { return false };
         let parent = node.parent;
@@ -181,6 +227,9 @@ impl Tk {
             if self.pressed == Some(current) {
                 self.pressed = None;
             }
+            if self.drag_active == Some(current) {
+                self.drag_active = None;
+            }
         }
         if id == self.root() {
             self.quit();
@@ -201,11 +250,13 @@ impl Tk {
             Opt::Bg(color) => {
                 if let Some(node) = self.node_mut(id) {
                     node.style.bg = color;
+                    node.style.bg_overridden = true;
                 }
             }
             Opt::Fg(color) => {
                 if let Some(node) = self.node_mut(id) {
                     node.style.fg = color;
+                    node.style.fg_overridden = true;
                 }
             }
             Opt::Width(chars) => {
@@ -280,13 +331,11 @@ impl Tk {
                 self.dirty = true;
             }
         }
-        // A trace may destroy this entry. No arena borrow survives notification.
         if let Some(Binding::Text(var)) = binding {
             var.set(self, text);
         }
     }
 
-    /// Returns the current bound/static text, including sanitized Entry text.
     pub fn widget_text(&self, id: WidgetId) -> Option<String> {
         let node = self.node(id)?;
         let text = match node.binding {
@@ -300,13 +349,23 @@ impl Tk {
 
     fn set_manager(&mut self, id: WidgetId, manager: Manager) -> bool {
         let Some(parent) = self.node(id).and_then(|node| node.parent) else { return false };
-        let pack = matches!(manager, Manager::Pack(_));
         let Some(parent_node) = self.node(parent) else { return false };
-        if parent_node.children.iter().copied().filter(|sibling| *sibling != id).any(|sibling| {
-            self.node(sibling).and_then(|node| node.manager)
-                .is_some_and(|other| matches!(other, Manager::Pack(_)) != pack)
-        }) {
-            return false;
+        match manager {
+            Manager::Pack(_) => {
+                if parent_node.children.iter().copied().filter(|sibling| *sibling != id).any(|sibling| {
+                    self.node(sibling).and_then(|n| n.manager).is_some_and(|m| matches!(m, Manager::Grid(_)))
+                }) {
+                    return false;
+                }
+            }
+            Manager::Grid(_) => {
+                if parent_node.children.iter().copied().filter(|sibling| *sibling != id).any(|sibling| {
+                    self.node(sibling).and_then(|n| n.manager).is_some_and(|m| matches!(m, Manager::Pack(_)))
+                }) {
+                    return false;
+                }
+            }
+            Manager::Place(_) => {}
         }
         if let Some(node) = self.node_mut(id) {
             node.manager = Some(manager);
@@ -321,6 +380,10 @@ impl Tk {
 
     pub fn grid(&mut self, id: WidgetId, options: GridOpts) -> bool {
         self.set_manager(id, Manager::Grid(options))
+    }
+
+    pub fn place(&mut self, id: WidgetId, options: PlaceOpts) -> bool {
+        self.set_manager(id, Manager::Place(options))
     }
 
     pub fn grid_columnconfigure(&mut self, parent: WidgetId, column: usize, weight: u32) -> bool {
@@ -348,7 +411,7 @@ impl Tk {
     fn managed_children(&self, id: WidgetId) -> Vec<WidgetId> {
         self.node(id).map(|node| {
             node.children.iter().copied()
-                .filter(|child| self.node(*child).is_some_and(|node| node.manager.is_some()))
+                .filter(|child| self.node(*child).is_some_and(|n| n.manager.is_some()))
                 .collect()
         }).unwrap_or_default()
     }
@@ -374,8 +437,7 @@ impl Tk {
     }
 
     fn uses_pack(&self, children: &[WidgetId]) -> bool {
-        children.first().and_then(|id| self.node(*id))
-            .is_some_and(|node| matches!(node.manager, Some(Manager::Pack(_))))
+        children.iter().filter_map(|id| self.node(*id)).any(|n| matches!(n.manager, Some(Manager::Pack(_))))
     }
 
     pub(crate) fn measure(&mut self, text: &str, font_size: f32) -> Size {
@@ -394,34 +456,53 @@ impl Tk {
         }
         for id in order.into_iter().rev() {
             let Some(node) = self.node(id) else { continue };
+            let node = NodeSnapshot { list_items: node.list_items.clone(), text: node.text.clone(), scale: node.scale, range: node.range, canvas_size: node.canvas_size, progress_length: node.progress_length, list_height: node.list_height, parent: node.parent, kind: node.kind, style: node.style };
             let (kind, style, nested) = (node.kind, node.style, node.parent.is_some());
             let children = self.managed_children(id);
             let char_width = self.measure("0", style.font_size).width.max(style.font_size * 0.5);
             let specified = style.width.map(|chars| chars as f32 * char_width);
-            let requested = if kind == Kind::Frame {
-                let size = if self.uses_pack(&children) {
-                    layout::pack_request(&self.pack_items(&children))
-                } else {
-                    layout::grid_request(&self.grid_items(&children))
-                };
-                let border = if nested { 4.0 } else { 0.0 };
-                Size::new(
-                    (size.width + border).max(specified.unwrap_or(0.0)),
-                    size.height + border,
-                )
-            } else if kind == Kind::Scale {
-                Size::new(specified.unwrap_or(160.0), 36.0)
-            } else if kind == Kind::Entry {
-                Size::new(specified.unwrap_or(20.0 * char_width) + 12.0, style.font_size * 1.3 + 12.0)
-            } else {
-                let text = self.widget_text(id).unwrap_or_default();
-                let measured = self.measure(&text, style.font_size);
-                let padding = match kind {
-                    Kind::Label => 12.0,
-                    Kind::Checkbutton => 40.0,
-                    _ => 20.0,
-                };
-                Size::new(specified.unwrap_or(measured.width) + padding, measured.height + 12.0)
+            let requested = match kind {
+                Kind::Frame => {
+                    let size = if self.uses_pack(&children) {
+                        layout::pack_request(&self.pack_items(&children))
+                    } else {
+                        layout::grid_request(&self.grid_items(&children))
+                    };
+                    let border = if nested { 4.0 } else { 0.0 };
+                    Size::new(
+                        (size.width + border).max(specified.unwrap_or(0.0)),
+                        size.height + border,
+                    )
+                }
+                Kind::Scale => Size::new(specified.unwrap_or(160.0), 36.0),
+                Kind::Entry => Size::new(specified.unwrap_or(20.0 * char_width) + 12.0, style.font_size * 1.3 + 12.0),
+                Kind::Listbox => {
+                    let line_h = (style.font_size * 1.3 + 4.0).max(16.0);
+                    let max_w = node.list_items.iter().map(|item| self.measure(item, style.font_size).width).fold(0.0_f32, f32::max);
+                    Size::new(specified.unwrap_or(max_w + 24.0).max(80.0), (node.list_height as f32 * line_h).max(30.0))
+                }
+                Kind::Scrollbar => Size::new(16.0, 100.0),
+                Kind::Radiobutton => {
+                    let measured = self.measure(&node.text, style.font_size);
+                    Size::new(specified.unwrap_or(measured.width) + 32.0, measured.height.max(16.0) + 8.0)
+                }
+                Kind::Canvas => Size::new(node.canvas_size.0, node.canvas_size.1),
+                Kind::Spinbox => {
+                    let text = format!("{}", node.scale.and_then(|v| v.get(self)).unwrap_or(node.range.0));
+                    let m = self.measure(&text, style.font_size);
+                    Size::new(specified.unwrap_or(m.width + 50.0).max(70.0), style.font_size * 1.3 + 12.0)
+                }
+                Kind::ProgressBar => Size::new(node.progress_length, 20.0),
+                _ => {
+                    let text = self.widget_text(id).unwrap_or_default();
+                    let measured = self.measure(&text, style.font_size);
+                    let padding = match kind {
+                        Kind::Label => 12.0,
+                        Kind::Checkbutton => 40.0,
+                        _ => 20.0,
+                    };
+                    Size::new(specified.unwrap_or(measured.width) + padding, measured.height + 12.0)
+                }
             };
             if let Some(node) = self.node_mut(id) {
                 node.requested = requested;
@@ -461,19 +542,37 @@ impl Tk {
             let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
             self.paint_order.push(id);
             let children = self.managed_children(id);
-            let rects = if self.uses_pack(&children) {
-                layout::pack(content, &self.pack_items(&children))
-            } else {
+
+            let pack_children: Vec<_> = children.iter().copied()
+                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Pack(_))))).collect();
+            let grid_children: Vec<_> = children.iter().copied()
+                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Grid(_))))).collect();
+            let place_children: Vec<_> = children.iter().copied()
+                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Place(_))))).collect();
+
+            if !pack_children.is_empty() {
+                let rects = layout::pack(content, &self.pack_items(&pack_children));
+                for (child, child_rect) in pack_children.into_iter().zip(rects).rev() {
+                    pending.push((child, child_rect, content.within(clip)));
+                }
+            } else if !grid_children.is_empty() {
                 let (columns, rows): (Vec<_>, Vec<_>) = self.node(id).map(|node| {
                     (
                         node.columns.iter().map(|(&i, &w)| (i, w)).collect(),
                         node.rows.iter().map(|(&i, &w)| (i, w)).collect(),
                     )
                 }).unwrap_or_default();
-                layout::grid(content, &self.grid_items(&children), &columns, &rows)
-            };
-            for (child, child_rect) in children.into_iter().zip(rects).rev() {
-                pending.push((child, child_rect, content.within(clip)));
+                let rects = layout::grid(content, &self.grid_items(&grid_children), &columns, &rows);
+                for (child, child_rect) in grid_children.into_iter().zip(rects).rev() {
+                    pending.push((child, child_rect, content.within(clip)));
+                }
+            }
+            for child in place_children.into_iter().rev() {
+                let Some(cnode) = self.node(child) else { continue };
+                if let Some(Manager::Place(opts)) = cnode.manager {
+                    let prect = layout::place_rect(content, cnode.requested, opts);
+                    pending.push((child, prect, content.within(clip)));
+                }
             }
         }
         if !self.focused.is_some_and(|id| self.is_focusable(id)) {
@@ -502,7 +601,6 @@ impl Tk {
         self.focused.filter(|id| self.node(*id).is_some())
     }
 
-    /// Physical viewport size. At the default scale this equals logical size.
     #[doc(hidden)]
     pub fn sim_resize(&mut self, width: u32, height: u32) {
         self.viewport = (width, height);
@@ -523,12 +621,12 @@ impl Tk {
 
     fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
         self.paint_order.iter().rev().copied().find(|id| {
-            self.is_focusable(*id)
-                && self.node(*id).is_some_and(|node| node.clip.contains(x, y))
+            self.node(*id).is_some_and(|node| {
+                node.visible && (node.kind.focusable() || node.kind == Kind::Canvas || node.kind == Kind::Scrollbar) && node.clip.contains(x, y)
+            })
         })
     }
 
-    /// Pointer coordinates are logical pixels.
     #[doc(hidden)]
     pub fn sim_mouse_move(&mut self, x: f32, y: f32) {
         self.ensure_layout();
@@ -538,6 +636,45 @@ impl Tk {
             self.hovered = hovered;
             self.dirty = true;
         }
+
+        if let Some(canvas_id) = self.drag_active {
+            if let Some(node) = self.node(canvas_id) {
+                let cx = x - node.rect.x;
+                let cy = y - node.rect.y;
+                self.dispatch_canvas_drag(canvas_id, cx, cy, DragPhase::Move);
+            }
+        }
+
+        if let Some((scrollbar_id, start_my, start_scroll)) = self.scrollbar_drag {
+            if let Some(node) = self.node(scrollbar_id) {
+                let target = node.scroll_target;
+                let bar_h = node.rect.height;
+                if let Some(target_id) = target {
+                    if let Some(target_node) = self.node(target_id) {
+                        let total = target_node.list_items.len();
+                        let visible_count = target_node.list_height.max(1);
+                        if total > visible_count && bar_h > 0.0 {
+                            let track_h = bar_h;
+                            let thumb_h = (track_h * (visible_count as f32 / total as f32)).clamp(16.0, track_h);
+                            let avail = track_h - thumb_h;
+                            let max_scroll = total - visible_count;
+                            let dy = y - start_my;
+                            let d_scroll = if avail > 0.0 {
+                                ((dy / avail) * max_scroll as f32).round() as i64
+                            } else {
+                                0
+                            };
+                            let new_scroll = (start_scroll as i64 + d_scroll).clamp(0, max_scroll as i64) as usize;
+                            if let Some(tn) = self.node_mut(target_id) {
+                                tn.list_scroll = new_scroll;
+                                self.dirty = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if let Some(id) = self.pressed {
             if self.node(id).is_some_and(|node| node.kind == Kind::Scale) {
                 self.drag_scale(id, x);
@@ -552,7 +689,9 @@ impl Tk {
         let hit = self.hit_test(x, y);
         self.hovered = hit;
         self.pressed = hit;
-        self.focused = hit;
+        if hit.is_some_and(|id| self.is_focusable(id)) {
+            self.focused = hit;
+        }
         if let Some(id) = hit {
             let Some(node) = self.node(id) else { return };
             match node.kind {
@@ -561,7 +700,6 @@ impl Tk {
                     let size = node.style.font_size;
                     let text = self.widget_text(id).unwrap_or_default();
                     let boundaries = clusters(&text);
-                    // Binary search avoids quadratic shaping for a large entry.
                     let (mut low, mut high) = (0, boundaries.len());
                     while low < high {
                         let mid = low + (high - low) / 2;
@@ -583,6 +721,80 @@ impl Tk {
                     }
                 }
                 Kind::Scale => self.drag_scale(id, x),
+                Kind::Listbox => {
+                    let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
+                    let local_y = y - node.rect.y;
+                    let row_idx = node.list_scroll + (local_y / line_h).floor() as usize;
+                    if row_idx < node.list_items.len() {
+                        self.listbox_select(id, Some(row_idx));
+                    }
+                }
+                Kind::Spinbox => {
+                    let rx = x - node.rect.x;
+                    let rw = node.rect.width;
+                    let ry = y - node.rect.y;
+                    let rh = node.rect.height;
+                    if rx >= rw - 20.0 {
+                        let (from, to) = node.range;
+                        let step = if to >= from { 1 } else { -1 };
+                        let old = node.scale.and_then(|v| v.get(self)).unwrap_or(from);
+                        let val = if ry < rh / 2.0 {
+                            old.saturating_add(step)
+                        } else {
+                            old.saturating_sub(step)
+                        };
+                        let val = val.clamp(from.min(to), from.max(to));
+                        if let Some(var) = node.scale {
+                            var.set(self, val);
+                        }
+                    }
+                }
+                Kind::Scrollbar => {
+                    let target = node.scroll_target;
+                    let ry = y - node.rect.y;
+                    let bar_h = node.rect.height;
+                    if let Some(target_id) = target {
+                        if let Some(target_node) = self.node(target_id) {
+                            let total = target_node.list_items.len();
+                            let visible_count = target_node.list_height.max(1);
+                            if total > visible_count && bar_h > 0.0 {
+                                let track_h = bar_h;
+                                let thumb_h = (track_h * (visible_count as f32 / total as f32)).clamp(16.0, track_h);
+                                let avail = track_h - thumb_h;
+                                let max_scroll = total - visible_count;
+                                let thumb_y = if max_scroll > 0 {
+                                    avail * (target_node.list_scroll as f32 / max_scroll as f32)
+                                } else {
+                                    0.0
+                                };
+                                if ry < thumb_y {
+                                    // page up
+                                    let cur = target_node.list_scroll;
+                                    let new_scroll = cur.saturating_sub(visible_count);
+                                    if let Some(tn) = self.node_mut(target_id) {
+                                        tn.list_scroll = new_scroll;
+                                    }
+                                } else if ry > thumb_y + thumb_h {
+                                    // page down
+                                    let cur = target_node.list_scroll;
+                                    let new_scroll = (cur + visible_count).min(max_scroll);
+                                    if let Some(tn) = self.node_mut(target_id) {
+                                        tn.list_scroll = new_scroll;
+                                    }
+                                } else {
+                                    // thumb drag start
+                                    self.scrollbar_drag = Some((id, y, target_node.list_scroll));
+                                }
+                            }
+                        }
+                    }
+                }
+                Kind::Canvas => {
+                    let (local_x, local_y) = (x - node.rect.x, y - node.rect.y);
+                    self.drag_active = Some(id);
+                    self.drag_start = (local_x, local_y);
+                    self.dispatch_canvas_drag(id, local_x, local_y, DragPhase::Press);
+                }
                 _ => {}
             }
         }
@@ -593,6 +805,14 @@ impl Tk {
     pub fn sim_mouse_up(&mut self) {
         self.ensure_layout();
         let hit = self.hit_test(self.pointer.0, self.pointer.1);
+        if let Some(canvas_id) = self.drag_active.take() {
+            if let Some(node) = self.node(canvas_id) {
+                let cx = self.pointer.0 - node.rect.x;
+                let cy = self.pointer.1 - node.rect.y;
+                self.dispatch_canvas_drag(canvas_id, cx, cy, DragPhase::Release);
+            }
+        }
+        self.scrollbar_drag = None;
         if let Some(id) = self.pressed.take() {
             if hit == Some(id) {
                 self.activate(id);
@@ -609,6 +829,46 @@ impl Tk {
         self.sim_mouse_up();
     }
 
+    #[doc(hidden)]
+    pub fn sim_wheel(&mut self, dy_lines: f32) {
+        self.ensure_layout();
+        let (x, y) = self.pointer;
+        let hit = self.hit_test(x, y);
+        if let Some(id) = hit {
+            let Some(node) = self.node(id) else { return };
+            if node.kind == Kind::Listbox {
+                let total = node.list_items.len();
+                let visible = node.list_height.max(1);
+                if total > visible {
+                    let max_scroll = total - visible;
+                    let d = (-dy_lines).round() as i64;
+                    let cur = node.list_scroll as i64;
+                    let new_scroll = (cur + d).clamp(0, max_scroll as i64) as usize;
+                    if let Some(node) = self.node_mut(id) {
+                        node.list_scroll = new_scroll;
+                    }
+                    self.dirty = true;
+                }
+            }
+        }
+    }
+
+    fn dispatch_canvas_drag(&mut self, id: WidgetId, cx: f32, cy: f32, phase: DragPhase) {
+        let Some(node) = self.node_mut(id) else { return };
+        if node.canvas_drag_running {
+            return;
+        }
+        let Some(mut cb) = node.canvas_drag.take() else { return };
+        node.canvas_drag_running = true;
+        cb(self, cx, cy, phase);
+        if let Some(node) = self.node_mut(id) {
+            node.canvas_drag_running = false;
+            if node.canvas_drag.is_none() {
+                node.canvas_drag = Some(cb);
+            }
+        }
+    }
+
     fn run_command(&mut self, id: WidgetId) {
         let Some(node) = self.node_mut(id) else { return };
         if node.command_running {
@@ -617,8 +877,6 @@ impl Tk {
         let Some(mut command) = node.command.take() else { return };
         node.command_running = true;
         command(self);
-        // Revalidate both slot and generation; a newly allocated widget may
-        // already occupy this slot. A replacement command always wins.
         if let Some(node) = self.node_mut(id) {
             node.command_running = false;
             if node.command.is_none() {
@@ -636,8 +894,12 @@ impl Tk {
                     var.set(self, !value);
                 }
             }
+        } else if kind == Kind::Radiobutton {
+            if let Some(var) = node.radio_var {
+                var.set(self, node.radio_value);
+            }
         }
-        if matches!(kind, Kind::Button | Kind::Checkbutton) {
+        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton) {
             self.run_command(id);
         }
     }
@@ -715,7 +977,7 @@ impl Tk {
                     self.edit_entry(id, Some(key), "");
                 }
             }
-            Kind::Button | Kind::Checkbutton if matches!(key, Key::Enter | Key::Space) => {
+            Kind::Button | Kind::Checkbutton | Kind::Radiobutton if matches!(key, Key::Enter | Key::Space) => {
                 self.activate(id);
             }
             Kind::Scale if matches!(key, Key::Left | Key::Right) => {
@@ -723,6 +985,36 @@ impl Tk {
                 let old = node.scale.and_then(|var| var.get(self)).unwrap_or(from);
                 let increasing = (key == Key::Right) == (to >= from);
                 self.set_scale(id, if increasing { old.saturating_add(1) } else { old.saturating_sub(1) });
+            }
+            Kind::Listbox => {
+                let total = node.list_items.len();
+                if total > 0 {
+                    let sel = node.list_selection;
+                    let new_sel = match key {
+                        Key::Up => Some(sel.unwrap_or(0).saturating_sub(1)),
+                        Key::Down => Some((sel.map_or(0, |s| s + 1)).min(total - 1)),
+                        Key::Home => Some(0),
+                        Key::End => Some(total - 1),
+                        _ => sel,
+                    };
+                    if new_sel != sel {
+                        self.listbox_select(id, new_sel);
+                    }
+                }
+            }
+            Kind::Spinbox if matches!(key, Key::Up | Key::Down) => {
+                let (from, to) = node.range;
+                let step = if to >= from { 1 } else { -1 };
+                let old = node.scale.and_then(|v| v.get(self)).unwrap_or(from);
+                let val = if key == Key::Up {
+                    old.saturating_add(step)
+                } else {
+                    old.saturating_sub(step)
+                };
+                let val = val.clamp(from.min(to), from.max(to));
+                if let Some(var) = node.scale {
+                    var.set(self, val);
+                }
             }
             _ => {}
         }
@@ -768,7 +1060,6 @@ impl Tk {
             _ => {}
         }
         if let Some(new_text) = replacement {
-            // Joining may merge clusters on either side of the insertion.
             cursor = cursor_boundary(&new_text, cursor);
             if let Some(node) = self.node_mut(id) {
                 node.cursor = cursor;
@@ -784,7 +1075,242 @@ impl Tk {
         self.focused = None;
         self.pressed = None;
         self.hovered = None;
+        self.drag_active = None;
+        self.scrollbar_drag = None;
         self.dirty = true;
+    }
+
+    // Listbox methods
+    pub fn listbox_insert(&mut self, id: WidgetId, index: usize, text: impl Into<String>) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Listbox {
+            return false;
+        }
+        let item = text.into();
+        if index >= node.list_items.len() {
+            node.list_items.push(item);
+        } else {
+            node.list_items.insert(index, item);
+            if let Some(sel) = node.list_selection {
+                if index <= sel {
+                    node.list_selection = Some(sel + 1);
+                }
+            }
+        }
+        self.dirty = true;
+        true
+    }
+
+    pub fn listbox_delete(&mut self, id: WidgetId, first: usize, last: usize) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Listbox || first >= node.list_items.len() {
+            return false;
+        }
+        let end = (last.saturating_add(1)).min(node.list_items.len());
+        if first < end {
+            node.list_items.drain(first..end);
+            if let Some(sel) = node.list_selection {
+                if sel >= first && sel < end {
+                    node.list_selection = None;
+                } else if sel >= end {
+                    node.list_selection = Some(sel - (end - first));
+                }
+            }
+            let total = node.list_items.len();
+            let vis = node.list_height.max(1);
+            let max_scroll = total.saturating_sub(vis);
+            node.list_scroll = node.list_scroll.min(max_scroll);
+            self.dirty = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn listbox_get(&self, id: WidgetId) -> Vec<String> {
+        self.node(id)
+            .filter(|n| n.kind == Kind::Listbox)
+            .map(|n| n.list_items.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn listbox_curselection(&self, id: WidgetId) -> Option<usize> {
+        self.node(id)
+            .filter(|n| n.kind == Kind::Listbox)
+            .and_then(|n| n.list_selection)
+    }
+
+    pub fn listbox_select(&mut self, id: WidgetId, index: Option<usize>) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Listbox {
+            return false;
+        }
+        if let Some(idx) = index {
+            if idx >= node.list_items.len() {
+                return false;
+            }
+            node.list_selection = Some(idx);
+            let vis = node.list_height.max(1);
+            if idx < node.list_scroll {
+                node.list_scroll = idx;
+            } else if idx >= node.list_scroll + vis {
+                node.list_scroll = idx + 1 - vis;
+            }
+        } else {
+            node.list_selection = None;
+        }
+        self.dirty = true;
+        self.run_command(id);
+        true
+    }
+
+    // Scrollbar methods
+    pub fn link_scrollbar(&mut self, scrollbar: WidgetId, listbox: WidgetId) -> bool {
+        let is_sb = self.node(scrollbar).is_some_and(|n| n.kind == Kind::Scrollbar);
+        let is_lb = self.node(listbox).is_some_and(|n| n.kind == Kind::Listbox);
+        if !is_sb || !is_lb {
+            return false;
+        }
+        if let Some(node) = self.node_mut(scrollbar) {
+            node.scroll_target = Some(listbox);
+        }
+        self.dirty = true;
+        true
+    }
+
+    // Canvas methods
+    pub fn canvas_create_rect(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::Rect { x0, y0, x1, y1, color })
+    }
+
+    pub fn canvas_create_oval(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::Oval { x0, y0, x1, y1, color })
+    }
+
+    pub fn canvas_create_line(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::Line { x0, y0, x1, y1, color })
+    }
+
+    pub fn canvas_create_text(&mut self, id: WidgetId, x: f32, y: f32, text: impl Into<String>, color: Color) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::Text { x, y, text: text.into(), color })
+    }
+
+    fn canvas_add_item(&mut self, id: WidgetId, kind: CanvasItemKind) -> Option<CanvasItem> {
+        /// Upper bound on live items per canvas; creation beyond it returns None.
+        const MAX_CANVAS_ITEMS: usize = 1 << 20;
+        let node = self.node_mut(id)?;
+        if node.kind != Kind::Canvas {
+            return None;
+        }
+        let items = &mut node.canvas_items;
+        let seq = items.iter().map(|slot| slot.seq).max().map_or(0, |max| max.saturating_add(1));
+        // Slots whose generation is exhausted are retired so stale ids never alias.
+        let free = items.iter().position(|slot| slot.item.is_none() && slot.gen < u32::MAX);
+        let item = if let Some(index) = free {
+            let slot = items.get_mut(index)?;
+            slot.item = Some(kind);
+            slot.seq = seq;
+            CanvasItem { index: u32::try_from(index).ok()?, gen: slot.gen }
+        } else {
+            if items.len() >= MAX_CANVAS_ITEMS {
+                return None;
+            }
+            let index = u32::try_from(items.len()).ok()?;
+            items.push(CanvasItemSlot { gen: 0, seq, item: Some(kind) });
+            CanvasItem { index, gen: 0 }
+        };
+        self.dirty = true;
+        Some(item)
+    }
+
+    /// Deletes every item on the canvas (like `canvas.delete("all")`).
+    pub fn canvas_clear(&mut self, id: WidgetId) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Canvas {
+            return false;
+        }
+        for slot in node.canvas_items.iter_mut().filter(|slot| slot.item.is_some()) {
+            slot.item = None;
+            slot.gen = slot.gen.saturating_add(1);
+        }
+        self.dirty = true;
+        true
+    }
+
+    pub fn canvas_delete(&mut self, id: WidgetId, item: CanvasItem) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Canvas {
+            return false;
+        }
+        let Some(slot) = node.canvas_items.get_mut(item.index as usize) else { return false };
+        if slot.gen != item.gen || slot.item.is_none() {
+            return false;
+        }
+        slot.item = None;
+        slot.gen = slot.gen.saturating_add(1);
+        self.dirty = true;
+        true
+    }
+
+    pub fn canvas_move(&mut self, id: WidgetId, item: CanvasItem, dx: f32, dy: f32) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Canvas {
+            return false;
+        }
+        let Some(slot) = node.canvas_items.get_mut(item.index as usize) else { return false };
+        if slot.gen != item.gen {
+            return false;
+        }
+        let Some(kind) = slot.item.as_mut() else { return false };
+        match kind {
+            CanvasItemKind::Rect { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Oval { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Line { x0, y0, x1, y1, .. } => {
+                *x0 += dx;
+                *y0 += dy;
+                *x1 += dx;
+                *y1 += dy;
+            }
+            CanvasItemKind::Text { x, y, .. } => {
+                *x += dx;
+                *y += dy;
+            }
+        }
+        self.dirty = true;
+        true
+    }
+
+    pub fn canvas_coords(&self, id: WidgetId, item: CanvasItem) -> Option<[f32; 4]> {
+        let node = self.node(id)?;
+        if node.kind != Kind::Canvas {
+            return None;
+        }
+        let slot = node.canvas_items.get(item.index as usize)?;
+        if slot.gen != item.gen {
+            return None;
+        }
+        match slot.item.as_ref()? {
+            CanvasItemKind::Rect { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Oval { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Line { x0, y0, x1, y1, .. } => Some([*x0, *y0, *x1, *y1]),
+            CanvasItemKind::Text { x, y, .. } => Some([*x, *y, *x, *y]),
+        }
+    }
+
+    pub fn canvas_items(&self, id: WidgetId) -> usize {
+        self.node(id)
+            .filter(|n| n.kind == Kind::Canvas)
+            .map(|n| n.canvas_items.iter().filter(|s| s.item.is_some()).count())
+            .unwrap_or(0)
+    }
+
+    pub fn canvas_bind_drag(&mut self, id: WidgetId, cb: impl FnMut(&mut Tk, f32, f32, DragPhase) + 'static) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Canvas {
+            return false;
+        }
+        node.canvas_drag = Some(Box::new(cb));
+        true
     }
 }
 
@@ -811,7 +1337,6 @@ fn clean_entry(text: &str) -> String {
     clean_entry_limit(text, MAX_ENTRY_BYTES)
 }
 
-/// A deliberately small grapheme approximation, not Unicode segmentation.
 pub(crate) fn clusters(text: &str) -> Vec<usize> {
     let mut result = vec![0];
     let mut previous = '\0';
@@ -836,4 +1361,18 @@ pub(crate) fn clusters(text: &str) -> Vec<usize> {
 
 pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
     clusters(text).into_iter().take_while(|boundary| *boundary <= cursor).last().unwrap_or(0)
+}
+
+/// Owned copy of the node fields needed while measuring (measuring borrows `self` mutably).
+struct NodeSnapshot {
+    list_items: Vec<String>,
+    text: String,
+    scale: Option<crate::Var<i64>>,
+    range: (i64, i64),
+    canvas_size: (f32, f32),
+    progress_length: f32,
+    list_height: usize,
+    parent: Option<WidgetId>,
+    kind: Kind,
+    style: crate::widgets::Style,
 }

@@ -1,5 +1,17 @@
 # Roadmap
 
+## Completed in 0.3
+
+- Listbox with row selection, Up/Down/Home/End navigation, and wheel scrolling.
+- Vertical Scrollbar linked to Listbox with trough paging and thumb dragging.
+- Radiobutton with shared `Var<i64>` group selection.
+- Canvas with retained items (rect, oval, line, text) and reentrant drag events.
+- Place geometry manager with absolute and relative positioning math.
+- Light and Dark themes with runtime switching.
+- Spinbox with up/down arrows and integer clamping.
+- ProgressBar bound to `0..=100` values.
+- Tab focus navigation covering all interactive widgets except Canvas.
+
 ## Completed in 0.2
 
 - Generational widget IDs, safe stale-handle rejection, subtree destruction.
@@ -16,45 +28,14 @@
 - Horizontal integer Scale with dragging, keyboard stepping, and command.
 - Shared real/headless event handlers and deterministic integration tests.
 
-## Geometry and core behavior
-
-- Place manager with absolute and relative positioning.
-- More complete Tk-compatible pack ordering/reordering.
-- Visibility controls and reparenting.
-- Cross-toolkit widget-handle validation.
-- Runtime window geometry requests and richer constraints.
-- Event bindings, timers, and scheduled callbacks.
-- Cached measurements, shaped buffers, and partial redraws.
-
-## Widgets
-
-- Canvas with retained drawing items and hit testing.
-- Radiobutton and grouped selection.
-- Floating-point Scale and configurable step sizes.
-- Listbox and selection models.
-- Multiline Text.
-- Scrollbars and scrollable containers.
-
-## Text and platform integration
+## Future Work
 
 - Complete Unicode grapheme segmentation and bidirectional caret movement.
-- Text selection, undo/redo, and clipboard support.
-- IME composition, preedit, and surrounding-text integration.
-- Accessibility trees, actions, focus, and announcements.
-- Native menus, context menus, and keyboard accelerators.
-- File, color, message, and other dialogs.
-- Multiple windows and shared application-level state.
-
-## Styling
-
-- Themes and ttk-like styling.
-- State-dependent typography, borders, spacing, and colors.
-- Consistent dark mode and high-contrast behavior.
-- Optional vector icons and richer relief styles.
-
-## Quality
-
-- Cross-platform CI and interactive backend/minimize/HiDPI smoke tests.
-- Deterministic font fixtures and additional fontless rendering tests.
-- Wider property testing of text, geometry, and event sequences.
-- Performance benchmarks for large widget trees and long entry text.
+- Text selection, clipboard, undo/redo.
+- Floating-point Scale and custom step sizes.
+- Multiline Text widget.
+- Clipboard copy/paste in Entry (skipped in 0.3 to avoid a new dependency; `arboard` is the candidate).
+- Horizontal Scrollbar, Scrollbar for Canvas, Canvas tags/hit-testing per item, polygons and arcs.
+- Menus, dialogs (messagebox, file chooser), multiple top-level windows.
+- Accessibility via `accesskit`, IME composition, ttk-style themable styles beyond Light/Dark.
+- Better dark-theme contrast for radio/check indicators.

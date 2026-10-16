@@ -5,7 +5,7 @@ use std::sync::Arc;
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
@@ -14,7 +14,6 @@ use crate::{Key, Tk};
 
 struct App {
     tk: Tk,
-    // Drop the surface before its context and window.
     surface: Option<Surface<Arc<Window>, Arc<Window>>>,
     context: Option<Context<Arc<Window>>>,
     window: Option<Arc<Window>>,
@@ -168,6 +167,13 @@ impl ApplicationHandler for App {
             WindowEvent::CursorLeft { .. } => {
                 self.tk.sim_mouse_move(f32::NEG_INFINITY, f32::NEG_INFINITY);
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let dy = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(pos) => (pos.y / 20.0) as f32,
+                };
+                self.tk.sim_wheel(dy);
+            }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 if state == ElementState::Pressed {
                     self.tk.sim_mouse_down();
@@ -182,6 +188,8 @@ impl ApplicationHandler for App {
                     WinitKey::Named(NamedKey::Delete) => Some(Key::Delete),
                     WinitKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
                     WinitKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
+                    WinitKey::Named(NamedKey::ArrowUp) => Some(Key::Up),
+                    WinitKey::Named(NamedKey::ArrowDown) => Some(Key::Down),
                     WinitKey::Named(NamedKey::Home) => Some(Key::Home),
                     WinitKey::Named(NamedKey::End) => Some(Key::End),
                     WinitKey::Named(NamedKey::Tab) => Some(if self.modifiers.shift_key() {
@@ -211,7 +219,6 @@ impl ApplicationHandler for App {
                 if let Err(error) = self.draw() {
                     eprintln!("rtk: render/surface error (will retry on the next event): {error}");
                     self.surface = None;
-                    // Avoid a busy retry loop while a surface is unavailable.
                     self.tk.dirty = false;
                 }
             }
@@ -225,8 +232,6 @@ impl ApplicationHandler for App {
     }
 }
 
-/// Ctrl/Super chords are shortcuts, not text. Ctrl+Alt is how Windows reports
-/// AltGr, which produces real characters (e.g. `@`, `€` on many layouts).
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
 }
@@ -238,8 +243,8 @@ mod tests {
     #[test]
     fn altgr_text_is_accepted_but_shortcuts_are_not() {
         assert!(accepts_key_input(false, false, false));
-        assert!(accepts_key_input(true, true, false)); // AltGr on Windows
-        assert!(!accepts_key_input(true, false, false)); // Ctrl+V etc.
+        assert!(accepts_key_input(true, true, false));
+        assert!(!accepts_key_input(true, false, false));
         assert!(!accepts_key_input(false, false, true));
     }
 }

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::layout::{GridOpts, PackOpts, Rect, Size};
+use crate::layout::{GridOpts, PackOpts, PlaceOpts, Rect, Size};
 use crate::{RtkError, Tk, Var};
 
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
@@ -33,7 +33,45 @@ impl Color {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Theme {
+    #[default]
+    Light,
+    Dark,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragPhase {
+    Press,
+    Move,
+    Release,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CanvasItem {
+    pub index: u32,
+    pub gen: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CanvasItemKind {
+    Rect { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
+    Oval { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
+    Line { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
+    Text { x: f32, y: f32, text: String, color: Color },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CanvasItemSlot {
+    pub gen: u32,
+    /// Creation sequence; items are drawn oldest first so new items stack on top
+    /// even when they reuse a freed slot (tkinter display-list semantics).
+    pub seq: u64,
+    pub item: Option<CanvasItemKind>,
+}
+
 pub type Command = Box<dyn FnMut(&mut Tk)>;
+pub type CanvasDragCallback = Box<dyn FnMut(&mut Tk, f32, f32, DragPhase)>;
 
 pub enum Opt {
     Text(String),
@@ -52,6 +90,12 @@ pub struct Button;
 pub struct Entry;
 pub struct Checkbutton;
 pub struct Scale;
+pub struct Listbox;
+pub struct Scrollbar;
+pub struct Radiobutton;
+pub struct Canvas;
+pub struct Spinbox;
+pub struct ProgressBar;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -110,7 +154,6 @@ impl Checkbutton {
 
 #[allow(clippy::new_ret_no_self)]
 impl Scale {
-    /// An integer horizontal scale; reversed and equal endpoints are supported.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -130,6 +173,97 @@ impl Scale {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Listbox {
+    pub fn new(tk: &mut Tk, parent: WidgetId, height_rows: usize) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Listbox, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.list_height = height_rows.max(1);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Scrollbar {
+    pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
+        tk.add(Kind::Scrollbar, parent, String::new())
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Radiobutton {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        text: impl Into<String>,
+        var: Var<i64>,
+        value: i64,
+    ) -> Result<WidgetId, RtkError> {
+        if var.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Radiobutton, parent, text.into())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.radio_var = Some(var);
+            node.radio_value = value;
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Canvas {
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Canvas, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Spinbox {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        from: i64,
+        to: i64,
+        var: Var<i64>,
+    ) -> Result<WidgetId, RtkError> {
+        if var.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Spinbox, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.range = (from, to);
+            node.scale = Some(var);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl ProgressBar {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        length: f32,
+        var: Var<i64>,
+    ) -> Result<WidgetId, RtkError> {
+        if var.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::ProgressBar, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.progress_length = length.max(10.0);
+            node.scale = Some(var);
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -138,15 +272,33 @@ pub(crate) enum Kind {
     Entry,
     Checkbutton,
     Scale,
+    Listbox,
+    Scrollbar,
+    Radiobutton,
+    Canvas,
+    Spinbox,
+    ProgressBar,
 }
 
 impl Kind {
     pub fn focusable(self) -> bool {
-        matches!(self, Self::Button | Self::Entry | Self::Checkbutton | Self::Scale)
+        matches!(
+            self,
+            Self::Button
+                | Self::Entry
+                | Self::Checkbutton
+                | Self::Scale
+                | Self::Listbox
+                | Self::Radiobutton
+                | Self::Spinbox
+        )
     }
 
     pub fn has_command(self) -> bool {
-        matches!(self, Self::Button | Self::Checkbutton | Self::Scale)
+        matches!(
+            self,
+            Self::Button | Self::Checkbutton | Self::Scale | Self::Listbox | Self::Radiobutton
+        )
     }
 }
 
@@ -154,6 +306,7 @@ impl Kind {
 pub(crate) enum Manager {
     Pack(PackOpts),
     Grid(GridOpts),
+    Place(PlaceOpts),
 }
 
 #[derive(Clone, Copy)]
@@ -168,6 +321,8 @@ pub(crate) struct Style {
     pub fg: Color,
     pub font_size: f32,
     pub width: Option<u32>,
+    pub bg_overridden: bool,
+    pub fg_overridden: bool,
 }
 
 pub(crate) struct WidgetNode {
@@ -191,6 +346,23 @@ pub(crate) struct WidgetNode {
     pub visible: bool,
     pub cursor: usize,
     pub scroll_x: f32,
+    // Listbox
+    pub list_items: Vec<String>,
+    pub list_height: usize,
+    pub list_selection: Option<usize>,
+    pub list_scroll: usize,
+    // Scrollbar
+    pub scroll_target: Option<WidgetId>,
+    // Radiobutton
+    pub radio_var: Option<Var<i64>>,
+    pub radio_value: i64,
+    // Canvas
+    pub canvas_size: (f32, f32),
+    pub canvas_items: Vec<CanvasItemSlot>,
+    pub canvas_drag: Option<CanvasDragCallback>,
+    pub canvas_drag_running: bool,
+    // ProgressBar
+    pub progress_length: f32,
 }
 
 impl WidgetNode {
@@ -206,10 +378,16 @@ impl WidgetNode {
             scale: None,
             range: (0, 100),
             style: Style {
-                bg: if kind == Kind::Entry { Color::WHITE } else { Color::BG },
+                bg: if matches!(kind, Kind::Entry | Kind::Listbox) {
+                    Color::WHITE
+                } else {
+                    Color::BG
+                },
                 fg: Color::FG,
                 font_size: 14.0,
                 width: None,
+                bg_overridden: false,
+                fg_overridden: false,
             },
             command: None,
             command_running: false,
@@ -221,6 +399,18 @@ impl WidgetNode {
             clip: Rect::default(),
             visible: false,
             scroll_x: 0.0,
+            list_items: Vec::new(),
+            list_height: 5,
+            list_selection: None,
+            list_scroll: 0,
+            scroll_target: None,
+            radio_var: None,
+            radio_value: 0,
+            canvas_size: (100.0, 100.0),
+            canvas_items: Vec::new(),
+            canvas_drag: None,
+            canvas_drag_running: false,
+            progress_length: 100.0,
         }
     }
 }

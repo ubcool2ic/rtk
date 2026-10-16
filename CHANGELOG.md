@@ -1,9 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-- Accept AltGr (Ctrl+Alt) text input on Windows.
-- Independent review (REVIEW.md) with 6 new regression tests.
+### Added
+- `Listbox`: text row list with selection, Up/Down/Home/End key movement, mouse wheel scrolling (`sim_wheel`), and selection change command callbacks.
+- `Scrollbar`: vertical scrollbar linked to `Listbox`, supporting trough page clicks and thumb dragging.
+- `Radiobutton`: circular radio button bound to a `Var<i64>` and specific value.
+- `Canvas`: vector drawing canvas supporting rectangle, oval, line, and text items with generational `CanvasItem` handles and `canvas_bind_drag` callback handling.
+- `place` geometry manager: absolute and relative layout (`x`, `y`, `relx`, `rely`, `width`, `height`, `relwidth`, `relheight`, `anchor`). Pure math function `place_rect`.
+- Themes: `Theme::Light` and `Theme::Dark` via `set_theme` and `theme()`.
+- `Spinbox`: entry-like number display with increment/decrement arrow buttons and arrow key stepping.
+- `ProgressBar`: horizontal progress bar bound to a `Var<i64>` (0..=100).
+- Extended Tab focus traversal to Listbox, Radiobutton, and Spinbox (excluding Canvas).
+- Comprehensive headless tests in `tests/features.rs` and rich demo in `examples/demo.rs`.
+- `canvas_clear` (like `delete("all")`).
+
+### Fixed / hardened (after verifying the model output)
+- Canvas items drawn in creation order, so a new item reusing a freed slot stacks on top.
+- Canvas item slots with exhausted generations are retired; at most 2^20 live items per canvas.
+- `canvas_move` on text items now moves y as well as x.
+- Borrow errors, tiny-skia 0.11 mask API misuse, and clippy warnings fixed in generated code; the layout unit tests it dropped were restored.
+- Accept AltGr (Ctrl+Alt) text input on Windows; independent review in REVIEW.md with regression tests.
 
 ## 0.2.0
 

@@ -1,22 +1,46 @@
 # rtk
 
-A small tkinter-style GUI crate for Rust 1.85, edition 2021. Version 0.2 focuses
-on safe widget lifetimes, reentrant callbacks, and headless testing.
+A small tkinter-style GUI crate for Rust 1.85, edition 2021. Version 0.3 adds
+canvas drawing, listboxes, scrollbars, themes, place layout, and advanced widgets.
 
 ## Features
 
 - Frame, Label, Button, single-line Entry, Checkbutton, and integer Scale.
+- Listbox, Scrollbar, Radiobutton, Canvas, Spinbox, and ProgressBar.
+- Themes: `Theme::Light` and `Theme::Dark` with automatic palette switching.
+- Absolute and relative geometry placement via `tk.place` and `PlaceOpts`.
+- Retained Canvas items (rect, oval, line, text) and drag gestures.
 - Generational widget IDs, subtree destruction, and typed variable handles.
 - Live string/integer text bindings and boolean/integer control bindings.
 - Synchronous variable traces with a reentrant-notification guard.
-- Pack and grid, weighted tracks, spans, padding, anchors, and bounded shrinking.
+- Pack, grid, and place layout managers with weighted tracks and anchors.
 - Tab/Shift+Tab traversal; Space/Enter button activation; visible focus rings.
 - Entry Unicode cluster-aware editing, clipped text, and horizontal caret scroll.
 - Software rendering with cosmic-text, tiny-skia, and softbuffer.
-- Logical-pixel layout with scale-factor-aware text, rendering, and pointer input.
-- Headless PNG rendering and the same event handlers used by the winit backend.
+- Headless PNG rendering and event simulation methods (`sim_*`).
 
-This remains a small desktop toolkit, not a Tk binding or a complete text editor.
+![demo, light theme](docs/demo.png)
+
+![demo, dark theme](docs/demo-dark.png)
+
+Screenshots of `examples/demo.rs` on X11 after interacting with it (typed into the Entry, picked a radio button, dragged the Scale, scrolled and selected in the Listbox, drew on the Canvas, toggled the dark theme).
+
+## Widgets
+
+| Widget | Description |
+|---|---|
+| `Frame` | Container for grouping and nesting layout managers |
+| `Label` | Static or variable-bound text display |
+| `Button` | Clickable button with command callback |
+| `Entry` | Single-line text input with caret navigation |
+| `Checkbutton` | Checkbox toggling a `Var<bool>` |
+| `Radiobutton` | Radio button selecting a value in a `Var<i64>` group |
+| `Scale` | Integer slider bound to a `Var<i64>` |
+| `Spinbox` | Incremental number spinner bound to a `Var<i64>` |
+| `ProgressBar` | Horizontal progress indicator bound to `0..=100` |
+| `Listbox` | Scrollable list of text items with selection |
+| `Scrollbar` | Vertical scrollbar linkable to a `Listbox` |
+| `Canvas` | Vector canvas supporting rect, oval, line, text, and drag events |
 
 ## Example
 
@@ -42,7 +66,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`examples/widgets.rs` demonstrates Checkbutton, Scale, and variable traces.
+## tkinter vs rtk
+
+| tkinter (Python) | rtk (Rust) |
+|---|---|
+| `root = tk.Tk()` | `let mut tk = Tk::new(); let root = tk.root();` |
+| `lbl = tk.Label(root, text="Hi")` | `let lbl = Label::new(&mut tk, root, "Hi")?;` |
+| `lbl.pack(side="left", padx=4)` | `tk.pack(lbl, PackOpts { side: Side::Left, padx: 4.0, ..Default::default() });` |
+| `e.grid(row=0, column=1, sticky="ew")` | `tk.grid(e, GridOpts { row: 0, column: 1, sticky: Sticky::E \| Sticky::W, ..Default::default() });` |
+| `w.place(relx=.5, rely=.5, anchor="center")` | `tk.place(w, PlaceOpts { relx: 0.5, rely: 0.5, anchor: Anchor::Center, ..Default::default() });` |
+| `v = tk.IntVar(); v.set(3)` | `let v = tk.int_var(0); v.set(&mut tk, 3);` |
+| `btn.config(text="New")` | `tk.config(btn, Opt::Text("New".into()));` |
+| `Button(root, command=f)` | `tk.set_command(btn, \|tk\| { ... });` |
+| `lb.insert(END, "x"); lb.curselection()` | `tk.listbox_insert(lb, usize::MAX, "x"); tk.listbox_curselection(lb)` |
+| `c.create_oval(0,0,10,10); c.delete("all")` | `tk.canvas_create_oval(c, 0.,0.,10.,10., color); tk.canvas_clear(c);` |
+| `root.mainloop()` | `tk.mainloop()?;` |
+
+Widget handles are small `Copy` ids into an arena owned by `Tk`, so callbacks
+receive `&mut Tk` instead of capturing `Rc<RefCell<..>>` widgets.
 
 ## Handle and error contract
 
@@ -130,6 +171,7 @@ Scale defaults to 1.0; screenshot dimensions are physical pixels.
 `geometry(w, h)` specifies the initial window size in logical pixels.
 `mainloop()` consumes Tk and must run on the main thread.
 
+
 ## Build and test
 
 ```sh
@@ -137,22 +179,10 @@ cargo build --all-targets
 cargo test --all-targets
 cargo clippy --all-targets -- -D warnings
 
-cargo run --example hello
-cargo run --example counter
-cargo run --example form
-cargo run --example widgets
-cargo run --example screenshot -- hello.png
-RTK_PNG=test-render.png cargo test --test render
+cargo run --example demo
+cargo run --example demo -- --dark
+cargo run --example demo -- --png docs/demo.png
 ```
-
-Interactive Linux builds may require development packages for X11/Wayland and
-libxkbcommon. System fonts improve text output but are not required for safe
-headless operation.
-
-Dependency requirements remain winit 0.30, softbuffer 0.4, tiny-skia 0.11, and
-cosmic-text 0.12; no additional runtime or test dependencies were introduced.
-The repository's resolver configuration prefers Rust-version-compatible
-transitive releases. `ci/rust.yml` can be installed as a GitHub Actions workflow.
 
 ## Limitations
 
@@ -161,6 +191,7 @@ accessibility integration, timers, native dialogs, and multiple windows remain
 future work. Rendering favors clarity over caching/performance. Backend
 availability and platform-specific minimize behavior still require interactive
 smoke tests on supported operating systems.
+
 
 ## License
 

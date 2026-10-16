@@ -16,7 +16,7 @@ pub(crate) fn length(value: f32) -> f32 {
     }
 }
 
-fn position(value: f32) -> f32 {
+pub(crate) fn position(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(-1_000_000_000.0, 1_000_000_000.0)
     } else {
@@ -149,7 +149,7 @@ pub enum Anchor {
 }
 
 impl Anchor {
-    fn fractions(self) -> (f32, f32) {
+    pub fn fractions(self) -> (f32, f32) {
         match self {
             Self::Center => (0.5, 0.5),
             Self::N => (0.5, 0.0),
@@ -162,6 +162,57 @@ impl Anchor {
             Self::Sw => (0.0, 1.0),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PlaceOpts {
+    pub x: f32,
+    pub y: f32,
+    pub relx: f32,
+    pub rely: f32,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub relwidth: Option<f32>,
+    pub relheight: Option<f32>,
+    pub anchor: Anchor,
+}
+
+pub fn place_rect(container: Rect, requested: Size, opts: PlaceOpts) -> Rect {
+    let container = container.normalized();
+    let relx = if opts.relx.is_finite() { opts.relx } else { 0.0 };
+    let rely = if opts.rely.is_finite() { opts.rely } else { 0.0 };
+    let anchor_x = container.x + position(opts.x) + relx * container.width;
+    let anchor_y = container.y + position(opts.y) + rely * container.height;
+
+    let w = if let Some(w) = opts.width {
+        length(w)
+    } else if let Some(rw) = opts.relwidth {
+        if rw.is_finite() {
+            (rw * container.width).max(0.0)
+        } else {
+            0.0
+        }
+    } else {
+        requested.width
+    };
+
+    let h = if let Some(h) = opts.height {
+        length(h)
+    } else if let Some(rh) = opts.relheight {
+        if rh.is_finite() {
+            (rh * container.height).max(0.0)
+        } else {
+            0.0
+        }
+    } else {
+        requested.height
+    };
+
+    let (frac_x, frac_y) = opts.anchor.fractions();
+    let left = anchor_x - frac_x * w;
+    let top = anchor_y - frac_y * h;
+
+    Rect::new(left, top, w, h).within(container)
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -491,8 +542,36 @@ pub fn grid(
         })
         .collect()
 }
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn place_anchors_test() {
+        let container = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let requested = Size::new(20.0, 10.0);
+        let opts = PlaceOpts {
+            x: 50.0,
+            y: 50.0,
+            anchor: Anchor::Center,
+            ..Default::default()
+        };
+        let r = place_rect(container, requested, opts);
+        assert_eq!(r, Rect::new(40.0, 45.0, 20.0, 10.0));
+
+        let opts_nw = PlaceOpts {
+            x: 10.0,
+            y: 20.0,
+            anchor: Anchor::Nw,
+            ..Default::default()
+        };
+        let r_nw = place_rect(container, requested, opts_nw);
+        assert_eq!(r_nw, Rect::new(10.0, 20.0, 20.0, 10.0));
+    }
+}
+#[cfg(test)]
+mod legacy_tests {
     use super::*;
 
     fn slave(width: f32, height: f32, opts: PackOpts) -> PackItem {
