@@ -1,9 +1,28 @@
-//! Pure geometry: no windows, fonts, or toolkit state.
+//! Pure, bounded geometry, independent of fonts and windows.
 //!
-//! Padding is external. Pack consumes a cavity in insertion order. Grid first
-//! satisfies individual tracks, then spanning constraints, then applies weights.
+//! Nonfinite dimensions and padding become zero. Grid indices are capped at
+//! 4095, spans at the remaining track count, and undersized grids shrink.
+//! Results are contained in the normalized parent rectangle.
 
 use std::ops::{BitOr, BitOrAssign};
+
+pub(crate) const MAX_TRACKS: usize = 4096;
+
+pub(crate) fn length(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 10_000_000.0)
+    } else {
+        0.0
+    }
+}
+
+fn position(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(-1_000_000_000.0, 1_000_000_000.0)
+    } else {
+        0.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Size {
@@ -12,8 +31,8 @@ pub struct Size {
 }
 
 impl Size {
-    pub const fn new(width: f32, height: f32) -> Self {
-        Self { width, height }
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width: length(width), height: length(height) }
     }
 }
 
@@ -28,32 +47,55 @@ pub struct Rect {
 impl Rect {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
         Self {
-            x,
-            y,
-            width: width.max(0.0),
-            height: height.max(0.0),
+            x: position(x),
+            y: position(y),
+            width: length(width),
+            height: length(height),
         }
     }
 
+    fn normalized(self) -> Self {
+        Self::new(self.x, self.y, self.width, self.height)
+    }
+
     pub fn inset(self, x: f32, y: f32) -> Self {
-        let x = x.max(0.0).min(self.width / 2.0);
-        let y = y.max(0.0).min(self.height / 2.0);
+        let rect = self.normalized();
+        let x = length(x).min(rect.width / 2.0);
+        let y = length(y).min(rect.height / 2.0);
         Self::new(
-            self.x + x,
-            self.y + y,
-            self.width - 2.0 * x,
-            self.height - 2.0 * y,
+            rect.x + x,
+            rect.y + y,
+            rect.width - 2.0 * x,
+            rect.height - 2.0 * y,
         )
     }
 
     pub fn intersection(self, other: Self) -> Self {
-        let x = self.x.max(other.x);
-        let y = self.y.max(other.y);
+        let a = self.normalized();
+        let b = other.normalized();
+        let x = a.x.max(b.x);
+        let y = a.y.max(b.y);
         Self::new(
             x,
             y,
-            (self.x + self.width).min(other.x + other.width) - x,
-            (self.y + self.height).min(other.y + other.height) - y,
+            (a.x + a.width).min(b.x + b.width) - x,
+            (a.y + a.height).min(b.y + b.height) - y,
+        )
+    }
+
+    /// Clamps even empty rectangles' origins into the parent.
+    pub fn within(self, parent: Self) -> Self {
+        let parent = parent.normalized();
+        let rect = self.normalized();
+        let right = parent.x + parent.width;
+        let bottom = parent.y + parent.height;
+        let x = rect.x.clamp(parent.x, right);
+        let y = rect.y.clamp(parent.y, bottom);
+        Self::new(
+            x,
+            y,
+            ((rect.x + rect.width).min(right) - x).max(0.0),
+            ((rect.y + rect.height).min(bottom) - y).max(0.0),
         )
     }
 
@@ -62,6 +104,15 @@ impl Rect {
             && y >= self.y
             && x < self.x + self.width
             && y < self.y + self.height
+    }
+
+    pub(crate) fn scaled(self, scale: f32) -> Self {
+        Self::new(
+            self.x * scale,
+            self.y * scale,
+            self.width * scale,
+            self.height * scale,
+        )
     }
 }
 
@@ -194,8 +245,8 @@ pub struct GridItem {
 
 fn padded(size: Size, x: f32, y: f32) -> Size {
     Size::new(
-        size.width.max(0.0) + 2.0 * x.max(0.0),
-        size.height.max(0.0) + 2.0 * y.max(0.0),
+        length(size.width) + 2.0 * length(x),
+        length(size.height) + 2.0 * length(y),
     )
 }
 
@@ -209,20 +260,18 @@ pub fn pack_request(items: &[PackItem]) -> Size {
     for item in items {
         let size = padded(item.requested, item.opts.padx, item.opts.pady);
         if horizontal(item.opts.side) {
-            height = height.max(used_h + size.height);
-            used_w += size.width;
+            height = length(height.max(used_h + size.height));
+            used_w = length(used_w + size.width);
         } else {
-            width = width.max(used_w + size.width);
-            used_h += size.height;
+            width = length(width.max(used_w + size.width));
+            used_h = length(used_h + size.height);
         }
     }
     Size::new(width.max(used_w), height.max(used_h))
 }
 
-// Like Tk's XExpansion/YExpansion: orthogonal slaves impose constraints on
-// expansion too, so an expanding top slave cannot starve a later left slave.
 fn expansion(items: &[PackItem], axis_x: bool, mut available: f32) -> f32 {
-    let mut count = 0;
+    let mut count = 0_usize;
     let mut limit = available;
     for item in items {
         let size = padded(item.requested, item.opts.padx, item.opts.pady);
@@ -237,10 +286,12 @@ fn expansion(items: &[PackItem], axis_x: bool, mut available: f32) -> f32 {
     if count > 0 {
         limit = limit.min(available / count as f32);
     }
-    limit.max(0.0)
+    length(limit)
 }
 
-pub fn pack(mut cavity: Rect, items: &[PackItem]) -> Vec<Rect> {
+pub fn pack(container: Rect, items: &[PackItem]) -> Vec<Rect> {
+    let container = container.normalized();
+    let mut cavity = container;
     let mut result = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         let opts = item.opts;
@@ -249,7 +300,7 @@ pub fn pack(mut cavity: Rect, items: &[PackItem]) -> Vec<Rect> {
         let available = if axis_x { cavity.width } else { cavity.height };
         let needed = if axis_x { size.width } else { size.height };
         let extra = if opts.expand {
-            expansion(&items[index..], axis_x, available)
+            expansion(items.get(index..).unwrap_or_default(), axis_x, available)
         } else {
             0.0
         };
@@ -258,76 +309,91 @@ pub fn pack(mut cavity: Rect, items: &[PackItem]) -> Vec<Rect> {
             Side::Top => {
                 let parcel = Rect::new(cavity.x, cavity.y, cavity.width, amount);
                 cavity.y += amount;
-                cavity.height -= amount;
+                cavity.height = (cavity.height - amount).max(0.0);
                 parcel
             }
             Side::Bottom => {
-                cavity.height -= amount;
+                cavity.height = (cavity.height - amount).max(0.0);
                 Rect::new(cavity.x, cavity.y + cavity.height, cavity.width, amount)
             }
             Side::Left => {
                 let parcel = Rect::new(cavity.x, cavity.y, amount, cavity.height);
                 cavity.x += amount;
-                cavity.width -= amount;
+                cavity.width = (cavity.width - amount).max(0.0);
                 parcel
             }
             Side::Right => {
-                cavity.width -= amount;
+                cavity.width = (cavity.width - amount).max(0.0);
                 Rect::new(cavity.x + cavity.width, cavity.y, amount, cavity.height)
             }
         };
-        let inner = parcel.inset(opts.padx, opts.pady);
+        let inner = parcel.within(container).inset(opts.padx, opts.pady);
         let width = if matches!(opts.fill, Fill::X | Fill::Both) {
             inner.width
         } else {
-            item.requested.width.max(0.0).min(inner.width)
+            length(item.requested.width).min(inner.width)
         };
         let height = if matches!(opts.fill, Fill::Y | Fill::Both) {
             inner.height
         } else {
-            item.requested.height.max(0.0).min(inner.height)
+            length(item.requested.height).min(inner.height)
         };
         let (ax, ay) = opts.anchor.fractions();
-        result.push(Rect::new(
-            inner.x + (inner.width - width) * ax,
-            inner.y + (inner.height - height) * ay,
-            width,
-            height,
-        ));
+        result.push(
+            Rect::new(
+                inner.x + (inner.width - width) * ax,
+                inner.y + (inner.height - height) * ay,
+                width,
+                height,
+            )
+            .within(container),
+        );
     }
     result
 }
 
+fn span(start: usize, count: usize) -> (usize, usize) {
+    let start = start.min(MAX_TRACKS - 1);
+    (start, count.max(1).min(MAX_TRACKS - start))
+}
+
+fn specification(item: &GridItem, axis_x: bool) -> (usize, usize, f32) {
+    let opts = item.opts;
+    let size = padded(item.requested, opts.padx, opts.pady);
+    let (start, count) = if axis_x {
+        span(opts.column, opts.columnspan)
+    } else {
+        span(opts.row, opts.rowspan)
+    };
+    (start, count, if axis_x { size.width } else { size.height })
+}
+
 fn tracks(items: &[GridItem], axis_x: bool) -> Vec<f32> {
-    let specifications: Vec<_> = items
+    let count = items
         .iter()
         .map(|item| {
-            let opts = item.opts;
-            let size = padded(item.requested, opts.padx, opts.pady);
-            if axis_x {
-                (opts.column, opts.columnspan.max(1), size.width)
-            } else {
-                (opts.row, opts.rowspan.max(1), size.height)
-            }
+            let (start, count, _) = specification(item, axis_x);
+            start + count
         })
-        .collect();
-    let count = specifications
-        .iter()
-        .map(|&(start, span, _)| start + span)
         .max()
         .unwrap_or(0);
     let mut tracks = vec![0.0_f32; count];
-    for &(start, span, needed) in &specifications {
-        if span == 1 {
-            tracks[start] = tracks[start].max(needed);
+    for item in items {
+        let (start, count, needed) = specification(item, axis_x);
+        if count == 1 {
+            if let Some(track) = tracks.get_mut(start) {
+                *track = track.max(needed);
+            }
         }
     }
-    for &(start, span, needed) in &specifications {
-        if span > 1 {
-            let range = &mut tracks[start..start + span];
-            let deficit = (needed - range.iter().sum::<f32>()).max(0.0);
-            for track in range {
-                *track += deficit / span as f32;
+    for item in items {
+        let (start, count, needed) = specification(item, axis_x);
+        if count > 1 {
+            if let Some(range) = tracks.get_mut(start..start + count) {
+                let deficit = (needed - range.iter().sum::<f32>()).max(0.0);
+                for track in range {
+                    *track += deficit / count as f32;
+                }
             }
         }
     }
@@ -342,25 +408,47 @@ pub fn grid_request(items: &[GridItem]) -> Size {
 }
 
 fn weighted(mut tracks: Vec<f32>, available: f32, weights: &[(usize, u32)]) -> Vec<f32> {
-    if let Some(last) = weights.iter().map(|&(index, _)| index).max() {
+    let last = weights.iter().filter(|(i, _)| *i < MAX_TRACKS).map(|(i, _)| *i).max();
+    if let Some(last) = last {
         tracks.resize(tracks.len().max(last + 1), 0.0);
     }
-    let extra = (available - tracks.iter().sum::<f32>()).max(0.0);
-    let total: f32 = weights.iter().map(|&(_, weight)| weight as f32).sum();
-    if total > 0.0 {
-        for &(index, weight) in weights {
-            tracks[index] += extra * weight as f32 / total;
+    let requested: f32 = tracks.iter().sum();
+    if requested > available && requested > 0.0 {
+        let ratio = available / requested;
+        for track in &mut tracks {
+            *track *= ratio;
+        }
+    } else {
+        let extra = (available - requested).max(0.0);
+        let total: f64 = weights
+            .iter()
+            .filter(|(i, _)| *i < MAX_TRACKS)
+            .map(|(_, weight)| f64::from(*weight))
+            .sum();
+        if total > 0.0 {
+            for &(index, weight) in weights {
+                if let Some(track) = tracks.get_mut(index) {
+                    *track += (f64::from(extra) * f64::from(weight) / total) as f32;
+                }
+            }
         }
     }
     tracks
 }
 
+fn track_range(tracks: &[f32], start: usize, count: usize, available: f32) -> (f32, f32) {
+    let offset = tracks.get(..start).unwrap_or_default().iter().sum::<f32>().min(available);
+    let size = tracks
+        .get(start..start + count)
+        .unwrap_or_default()
+        .iter()
+        .sum::<f32>()
+        .min((available - offset).max(0.0));
+    (offset, size)
+}
+
 fn sticky_axis(start: f32, available: f32, requested: f32, low: bool, high: bool) -> (f32, f32) {
-    let size = if low && high {
-        available
-    } else {
-        requested.max(0.0).min(available)
-    };
+    let size = if low && high { available } else { length(requested).min(available) };
     let offset = if low {
         0.0
     } else if high {
@@ -377,42 +465,32 @@ pub fn grid(
     column_weights: &[(usize, u32)],
     row_weights: &[(usize, u32)],
 ) -> Vec<Rect> {
+    let container = container.normalized();
     let columns = weighted(tracks(items, true), container.width, column_weights);
     let rows = weighted(tracks(items, false), container.height, row_weights);
     items
         .iter()
         .map(|item| {
             let opts = item.opts;
-            let cell = Rect::new(
-                container.x + columns[..opts.column].iter().sum::<f32>(),
-                container.y + rows[..opts.row].iter().sum::<f32>(),
-                columns[opts.column..opts.column + opts.columnspan.max(1)]
-                    .iter()
-                    .sum(),
-                rows[opts.row..opts.row + opts.rowspan.max(1)]
-                    .iter()
-                    .sum(),
-            )
-            .inset(opts.padx, opts.pady);
+            let (column, columnspan) = span(opts.column, opts.columnspan);
+            let (row, rowspan) = span(opts.row, opts.rowspan);
+            let (dx, width) = track_range(&columns, column, columnspan, container.width);
+            let (dy, height) = track_range(&rows, row, rowspan, container.height);
+            let cell = Rect::new(container.x + dx, container.y + dy, width, height)
+                .within(container)
+                .inset(opts.padx, opts.pady);
             let (x, width) = sticky_axis(
-                cell.x,
-                cell.width,
-                item.requested.width,
-                opts.sticky.contains(Sticky::W),
-                opts.sticky.contains(Sticky::E),
+                cell.x, cell.width, item.requested.width,
+                opts.sticky.contains(Sticky::W), opts.sticky.contains(Sticky::E),
             );
             let (y, height) = sticky_axis(
-                cell.y,
-                cell.height,
-                item.requested.height,
-                opts.sticky.contains(Sticky::N),
-                opts.sticky.contains(Sticky::S),
+                cell.y, cell.height, item.requested.height,
+                opts.sticky.contains(Sticky::N), opts.sticky.contains(Sticky::S),
             );
-            Rect::new(x, y, width, height)
+            Rect::new(x, y, width, height).within(container)
         })
         .collect()
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

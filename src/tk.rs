@@ -1,25 +1,50 @@
-use std::any::Any;
+use std::sync::Arc;
 
 use crate::layout::{self, GridItem, GridOpts, PackItem, PackOpts, Rect, Size};
 use crate::render::TextEngine;
-use crate::widgets::{Binding, Kind, Manager, WidgetNode};
-use crate::{Opt, WidgetId};
+use crate::var::VarSlot;
+use crate::widgets::{Binding, Kind, Manager, WidgetNode, WidgetSlot};
+use crate::{Opt, RtkError, WidgetId};
 
-/// Owns the widget arena, variables, callbacks, and text renderer.
+const MAX_ENTRY_BYTES: usize = 64 * 1024;
+
+/// Keys understood by the real backend and the headless event harness.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Key {
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Home,
+    End,
+    Tab,
+    ShiftTab,
+    Enter,
+    Space,
+}
+
+/// Owns widgets, variables, callbacks, layout, and the software renderer.
 ///
-/// All public mutation happens through `&mut Tk`; handles contain no shared
-/// mutable pointers. Widgets are retained until this `Tk` is dropped.
+/// Constructors return `Result`, mutations taking handles return `bool`, and
+/// queries return `Option`. False/None means invalid, stale, or incompatible.
+/// Widget handles must only be used with their originating toolkit.
 pub struct Tk {
-    pub(crate) nodes: Vec<WidgetNode>,
-    pub(crate) vars: Vec<Box<dyn Any>>,
+    nodes: Vec<WidgetSlot>,
+    free: Vec<u32>,
+    pub(crate) vars: Vec<VarSlot>,
+    pub(crate) var_owner: Arc<()>,
     pub(crate) text_engine: TextEngine,
     pub(crate) dirty: bool,
     pub(crate) window_title: String,
-    pub(crate) window_size: Option<(u32, u32)>,
+    window_size: Option<(u32, u32)>,
     pub(crate) quit_requested: bool,
     pub(crate) focused: Option<WidgetId>,
     pub(crate) hovered: Option<WidgetId>,
     pub(crate) pressed: Option<WidgetId>,
+    pub(crate) paint_order: Vec<WidgetId>,
+    viewport: (u32, u32),
+    pointer: (f32, f32),
+    pub(crate) scale_factor: f32,
 }
 
 impl Default for Tk {
@@ -31,8 +56,13 @@ impl Default for Tk {
 impl Tk {
     pub fn new() -> Self {
         Self {
-            nodes: vec![WidgetNode::new(Kind::Frame, None, String::new())],
+            nodes: vec![WidgetSlot {
+                gen: 0,
+                node: Some(WidgetNode::new(Kind::Frame, None, String::new())),
+            }],
+            free: Vec::new(),
             vars: Vec::new(),
+            var_owner: Arc::new(()),
             text_engine: TextEngine::new(),
             dirty: true,
             window_title: "rtk".into(),
@@ -41,11 +71,31 @@ impl Tk {
             focused: None,
             hovered: None,
             pressed: None,
+            paint_order: Vec::new(),
+            viewport: (640, 480),
+            pointer: (0.0, 0.0),
+            scale_factor: 1.0,
         }
     }
 
     pub fn root(&self) -> WidgetId {
-        WidgetId(0)
+        WidgetId { index: 0, gen: 0 }
+    }
+
+    pub(crate) fn node(&self, id: WidgetId) -> Option<&WidgetNode> {
+        self.nodes.get(id.index as usize)
+            .filter(|slot| slot.gen == id.gen)?
+            .node.as_ref()
+    }
+
+    pub(crate) fn node_mut(&mut self, id: WidgetId) -> Option<&mut WidgetNode> {
+        self.nodes.get_mut(id.index as usize)
+            .filter(|slot| slot.gen == id.gen)?
+            .node.as_mut()
+    }
+
+    pub fn contains(&self, id: WidgetId) -> bool {
+        self.node(id).is_some()
     }
 
     pub fn title(&mut self, title: impl Into<String>) {
@@ -53,151 +103,259 @@ impl Tk {
         self.dirty = true;
     }
 
-    /// Overrides the initial window size, in physical pixels.
+    /// Initial window dimensions in logical pixels; zero is permitted.
     pub fn geometry(&mut self, width: u32, height: u32) {
-        assert!(width > 0 && height > 0, "geometry must be nonzero");
         self.window_size = Some((width, height));
-        self.dirty = true;
+        self.sim_resize(width, height);
     }
 
     pub fn quit(&mut self) {
         self.quit_requested = true;
     }
 
+    pub fn is_quit_requested(&self) -> bool {
+        self.quit_requested
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
-    pub(crate) fn add(&mut self, kind: Kind, parent: WidgetId, text: String) -> WidgetId {
-        assert_eq!(self.nodes[parent.0 as usize].kind, Kind::Frame, "parent must be a frame");
-        let id = WidgetId(u32::try_from(self.nodes.len()).expect("widget arena is full"));
-        self.nodes.push(WidgetNode::new(kind, Some(parent), text));
-        self.nodes[parent.0 as usize].children.push(id);
+    pub(crate) fn add(
+        &mut self,
+        kind: Kind,
+        parent: WidgetId,
+        text: String,
+    ) -> Result<WidgetId, RtkError> {
+        if !self.node(parent).is_some_and(|node| node.kind == Kind::Frame) {
+            return Err(RtkError::InvalidParent);
+        }
+        let node = WidgetNode::new(kind, Some(parent), text);
+        let id = if let Some(index) = self.free.pop() {
+            let Some(slot) = self.nodes.get_mut(index as usize) else {
+                return Err(RtkError::ArenaFull);
+            };
+            let id = WidgetId { index, gen: slot.gen };
+            slot.node = Some(node);
+            id
+        } else {
+            let index = u32::try_from(self.nodes.len()).map_err(|_| RtkError::ArenaFull)?;
+            self.nodes.push(WidgetSlot { gen: 0, node: Some(node) });
+            WidgetId { index, gen: 0 }
+        };
+        if let Some(parent) = self.node_mut(parent) {
+            parent.children.push(id);
+        }
         self.dirty = true;
-        id
+        Ok(id)
     }
 
-    pub fn config(&mut self, id: WidgetId, option: Opt) {
-        let index = id.0 as usize;
-        match option {
-            Opt::Text(text) => {
-                if self.nodes[index].kind == Kind::Entry {
-                    self.entry_set(id, text);
-                } else {
-                    self.nodes[index].text = text;
+    /// Removes a subtree iteratively. Destroying the root also requests quit.
+    /// Slots whose generation is exhausted are retired rather than wrapped.
+    pub fn destroy(&mut self, id: WidgetId) -> bool {
+        let Some(node) = self.node(id) else { return false };
+        let parent = node.parent;
+        if let Some(parent) = parent.and_then(|parent| self.node_mut(parent)) {
+            parent.children.retain(|child| *child != id);
+        }
+        let mut pending = vec![id];
+        while let Some(current) = pending.pop() {
+            let Some(slot) = self.nodes.get_mut(current.index as usize) else { continue };
+            if slot.gen != current.gen {
+                continue;
+            }
+            let Some(node) = slot.node.take() else { continue };
+            pending.extend(node.children);
+            if let Some(next) = slot.gen.checked_add(1) {
+                slot.gen = next;
+                if current.index != 0 {
+                    self.free.push(current.index);
                 }
             }
-            Opt::Bg(color) => self.nodes[index].style.bg = color,
-            Opt::Fg(color) => self.nodes[index].style.fg = color,
-            Opt::Width(chars) => self.nodes[index].style.width = Some(chars),
+            if self.focused == Some(current) {
+                self.focused = None;
+            }
+            if self.hovered == Some(current) {
+                self.hovered = None;
+            }
+            if self.pressed == Some(current) {
+                self.pressed = None;
+            }
+        }
+        if id == self.root() {
+            self.quit();
+        }
+        self.dirty = true;
+        true
+    }
+
+    pub fn config(&mut self, id: WidgetId, option: Opt) -> bool {
+        let Some(kind) = self.node(id).map(|node| node.kind) else { return false };
+        match option {
+            Opt::Text(text) if kind == Kind::Entry => return self.entry_set(id, text),
+            Opt::Text(text) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.text = text;
+                }
+            }
+            Opt::Bg(color) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.style.bg = color;
+                }
+            }
+            Opt::Fg(color) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.style.fg = color;
+                }
+            }
+            Opt::Width(chars) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.style.width = Some(chars.min(100_000));
+                }
+            }
             Opt::FontSize(size) => {
-                assert!(size.is_finite() && size > 0.0, "font size must be positive and finite");
-                self.nodes[index].style.font_size = size;
+                if !size.is_finite() || !(1.0..=512.0).contains(&size) {
+                    return false;
+                }
+                if let Some(node) = self.node_mut(id) {
+                    node.style.font_size = size;
+                }
             }
             Opt::TextVariable(var) => {
-                self.nodes[index].binding = Some(Binding::Text(var));
-                self.nodes[index].cursor = var.get(self).len();
+                let Some(text) = var.get(self) else { return false };
+                if let Some(node) = self.node_mut(id) {
+                    node.binding = Some(Binding::Text(var));
+                    node.cursor = clean_entry(&text).len();
+                }
             }
             Opt::TextVariableInt(var) => {
-                assert_ne!(self.nodes[index].kind, Kind::Entry, "entries need string variables");
-                self.nodes[index].binding = Some(Binding::Int(var));
+                if kind == Kind::Entry || var.get(self).is_none() {
+                    return false;
+                }
+                if let Some(node) = self.node_mut(id) {
+                    node.binding = Some(Binding::Int(var));
+                }
             }
             Opt::Command(command) => {
-                assert_eq!(self.nodes[index].kind, Kind::Button, "commands require buttons");
-                self.nodes[index].command = Some(command);
+                if !kind.has_command() {
+                    return false;
+                }
+                if let Some(node) = self.node_mut(id) {
+                    node.command = Some(command);
+                }
             }
         }
         self.dirty = true;
+        true
     }
 
-    pub fn set_command(&mut self, id: WidgetId, command: impl FnMut(&mut Tk) + 'static) {
-        self.config(id, Opt::Command(Box::new(command)));
+    pub fn set_command(&mut self, id: WidgetId, command: impl FnMut(&mut Tk) + 'static) -> bool {
+        self.config(id, Opt::Command(Box::new(command)))
     }
 
-    pub fn entry_get(&self, id: WidgetId) -> String {
-        assert_eq!(self.nodes[id.0 as usize].kind, Kind::Entry, "not an entry");
-        self.display_text(id)
+    pub fn entry_get(&self, id: WidgetId) -> Option<String> {
+        if self.node(id)?.kind != Kind::Entry {
+            return None;
+        }
+        self.widget_text(id)
     }
 
-    pub fn entry_set(&mut self, id: WidgetId, text: impl Into<String>) {
-        assert_eq!(self.nodes[id.0 as usize].kind, Kind::Entry, "not an entry");
-        let text = text.into();
-        // Entries are single-line, including when set programmatically.
-        let text: String = text.chars().filter(|c| !c.is_control()).collect();
-        self.nodes[id.0 as usize].cursor = text.len();
+    pub fn entry_set(&mut self, id: WidgetId, text: impl Into<String>) -> bool {
+        if !self.node(id).is_some_and(|node| node.kind == Kind::Entry) {
+            return false;
+        }
+        let text = clean_entry(&text.into());
+        if let Some(node) = self.node_mut(id) {
+            node.cursor = text.len();
+        }
         self.write_entry(id, text);
+        true
     }
 
     fn write_entry(&mut self, id: WidgetId, text: String) {
-        if let Some(Binding::Text(var)) = self.nodes[id.0 as usize].binding {
-            var.set(self, text.clone());
-        }
-        self.nodes[id.0 as usize].text = text;
-        self.dirty = true;
-    }
-
-    pub(crate) fn display_text(&self, id: WidgetId) -> String {
-        let node = &self.nodes[id.0 as usize];
-        match node.binding {
-            Some(Binding::Text(var)) => var.get(self),
-            Some(Binding::Int(var)) => var.get(self).to_string(),
-            None => node.text.clone(),
-        }
-    }
-
-    fn check_manager(&self, id: WidgetId, pack: bool) {
-        let parent = self.nodes[id.0 as usize].parent.expect("cannot manage the root");
-        for &sibling in &self.nodes[parent.0 as usize].children {
-            if sibling != id {
-                if let Some(manager) = self.nodes[sibling.0 as usize].manager {
-                    assert_eq!(
-                        matches!(manager, Manager::Pack(_)),
-                        pack,
-                        "cannot mix pack and grid in one parent"
-                    );
-                }
+        let binding = self.node(id).and_then(|node| node.binding);
+        if let Some(node) = self.node_mut(id) {
+            if node.text != text {
+                node.text.clone_from(&text);
+                self.dirty = true;
             }
         }
+        // A trace may destroy this entry. No arena borrow survives notification.
+        if let Some(Binding::Text(var)) = binding {
+            var.set(self, text);
+        }
     }
 
-    pub fn pack(&mut self, id: WidgetId, options: PackOpts) {
-        self.check_manager(id, true);
-        self.nodes[id.0 as usize].manager = Some(Manager::Pack(options));
-        self.dirty = true;
+    /// Returns the current bound/static text, including sanitized Entry text.
+    pub fn widget_text(&self, id: WidgetId) -> Option<String> {
+        let node = self.node(id)?;
+        let text = match node.binding {
+            Some(Binding::Text(var)) => var.get(self).unwrap_or_else(|| node.text.clone()),
+            Some(Binding::Int(var)) => var.get(self).map(|value| value.to_string())
+                .unwrap_or_else(|| node.text.clone()),
+            None => node.text.clone(),
+        };
+        Some(if node.kind == Kind::Entry { clean_entry(&text) } else { text })
     }
 
-    pub fn grid(&mut self, id: WidgetId, options: GridOpts) {
-        self.check_manager(id, false);
-        self.nodes[id.0 as usize].manager = Some(Manager::Grid(options));
+    fn set_manager(&mut self, id: WidgetId, manager: Manager) -> bool {
+        let Some(parent) = self.node(id).and_then(|node| node.parent) else { return false };
+        let pack = matches!(manager, Manager::Pack(_));
+        let Some(parent_node) = self.node(parent) else { return false };
+        if parent_node.children.iter().copied().filter(|sibling| *sibling != id).any(|sibling| {
+            self.node(sibling).and_then(|node| node.manager)
+                .is_some_and(|other| matches!(other, Manager::Pack(_)) != pack)
+        }) {
+            return false;
+        }
+        if let Some(node) = self.node_mut(id) {
+            node.manager = Some(manager);
+        }
         self.dirty = true;
+        true
     }
 
-    pub fn grid_columnconfigure(&mut self, parent: WidgetId, column: usize, weight: u32) {
-        let node = &mut self.nodes[parent.0 as usize];
-        assert_eq!(node.kind, Kind::Frame, "grid parent must be a frame");
-        node.columns.insert(column, weight);
-        self.dirty = true;
+    pub fn pack(&mut self, id: WidgetId, options: PackOpts) -> bool {
+        self.set_manager(id, Manager::Pack(options))
     }
 
-    pub fn grid_rowconfigure(&mut self, parent: WidgetId, row: usize, weight: u32) {
-        let node = &mut self.nodes[parent.0 as usize];
-        assert_eq!(node.kind, Kind::Frame, "grid parent must be a frame");
-        node.rows.insert(row, weight);
+    pub fn grid(&mut self, id: WidgetId, options: GridOpts) -> bool {
+        self.set_manager(id, Manager::Grid(options))
+    }
+
+    pub fn grid_columnconfigure(&mut self, parent: WidgetId, column: usize, weight: u32) -> bool {
+        self.configure_track(parent, column, weight, true)
+    }
+
+    pub fn grid_rowconfigure(&mut self, parent: WidgetId, row: usize, weight: u32) -> bool {
+        self.configure_track(parent, row, weight, false)
+    }
+
+    fn configure_track(&mut self, parent: WidgetId, index: usize, weight: u32, column: bool) -> bool {
+        let Some(node) = self.node_mut(parent) else { return false };
+        if node.kind != Kind::Frame || index >= layout::MAX_TRACKS {
+            return false;
+        }
+        if column {
+            node.columns.insert(index, weight);
+        } else {
+            node.rows.insert(index, weight);
+        }
         self.dirty = true;
+        true
     }
 
     fn managed_children(&self, id: WidgetId) -> Vec<WidgetId> {
-        self.nodes[id.0 as usize]
-            .children
-            .iter()
-            .copied()
-            .filter(|child| self.nodes[child.0 as usize].manager.is_some())
-            .collect()
+        self.node(id).map(|node| {
+            node.children.iter().copied()
+                .filter(|child| self.node(*child).is_some_and(|node| node.manager.is_some()))
+                .collect()
+        }).unwrap_or_default()
     }
 
     fn pack_items(&self, children: &[WidgetId]) -> Vec<PackItem> {
         children.iter().filter_map(|id| {
-            let node = &self.nodes[id.0 as usize];
+            let node = self.node(*id)?;
             match node.manager {
                 Some(Manager::Pack(opts)) => Some(PackItem { requested: node.requested, opts }),
                 _ => None,
@@ -207,7 +365,7 @@ impl Tk {
 
     fn grid_items(&self, children: &[WidgetId]) -> Vec<GridItem> {
         children.iter().filter_map(|id| {
-            let node = &self.nodes[id.0 as usize];
+            let node = self.node(*id)?;
             match node.manager {
                 Some(Manager::Grid(opts)) => Some(GridItem { requested: node.requested, opts }),
                 _ => None,
@@ -215,244 +373,467 @@ impl Tk {
         }).collect()
     }
 
-    fn update_requested(&mut self, id: WidgetId) -> Size {
-        let children = self.managed_children(id);
-        for &child in &children {
-            self.update_requested(child);
+    fn uses_pack(&self, children: &[WidgetId]) -> bool {
+        children.first().and_then(|id| self.node(*id))
+            .is_some_and(|node| matches!(node.manager, Some(Manager::Pack(_))))
+    }
+
+    pub(crate) fn measure(&mut self, text: &str, font_size: f32) -> Size {
+        let size = self.text_engine.measure(text, font_size * self.scale_factor);
+        Size::new(size.width / self.scale_factor, size.height / self.scale_factor)
+    }
+
+    fn update_requested(&mut self) {
+        let mut order = Vec::new();
+        let mut pending = vec![self.root()];
+        while let Some(id) = pending.pop() {
+            if self.node(id).is_some() {
+                order.push(id);
+                pending.extend(self.managed_children(id));
+            }
         }
-        let index = id.0 as usize;
-        let kind = self.nodes[index].kind;
-        let style = self.nodes[index].style;
-        let mut requested = if kind == Kind::Frame {
-            let mut size = if children.first().is_some_and(|child| {
-                matches!(self.nodes[child.0 as usize].manager, Some(Manager::Pack(_)))
-            }) {
-                layout::pack_request(&self.pack_items(&children))
+        for id in order.into_iter().rev() {
+            let Some(node) = self.node(id) else { continue };
+            let (kind, style, nested) = (node.kind, node.style, node.parent.is_some());
+            let children = self.managed_children(id);
+            let char_width = self.measure("0", style.font_size).width.max(style.font_size * 0.5);
+            let specified = style.width.map(|chars| chars as f32 * char_width);
+            let requested = if kind == Kind::Frame {
+                let size = if self.uses_pack(&children) {
+                    layout::pack_request(&self.pack_items(&children))
+                } else {
+                    layout::grid_request(&self.grid_items(&children))
+                };
+                let border = if nested { 4.0 } else { 0.0 };
+                Size::new(
+                    (size.width + border).max(specified.unwrap_or(0.0)),
+                    size.height + border,
+                )
+            } else if kind == Kind::Scale {
+                Size::new(specified.unwrap_or(160.0), 36.0)
+            } else if kind == Kind::Entry {
+                Size::new(specified.unwrap_or(20.0 * char_width) + 12.0, style.font_size * 1.3 + 12.0)
             } else {
-                layout::grid_request(&self.grid_items(&children))
+                let text = self.widget_text(id).unwrap_or_default();
+                let measured = self.measure(&text, style.font_size);
+                let padding = match kind {
+                    Kind::Label => 12.0,
+                    Kind::Checkbutton => 40.0,
+                    _ => 20.0,
+                };
+                Size::new(specified.unwrap_or(measured.width) + padding, measured.height + 12.0)
             };
-            if self.nodes[index].parent.is_some() {
-                size.width += 4.0;
-                size.height += 4.0;
-            }
-            size
-        } else {
-            let text = self.display_text(id);
-            let measured = self.text_engine.measure(&text, style.font_size);
-            let char_width = self.text_engine.measure("0", style.font_size).width
-                .max(style.font_size * 0.5);
-            let text_width = style.width.map(|chars| chars as f32 * char_width);
-            match kind {
-                Kind::Label => Size::new(text_width.unwrap_or(measured.width) + 12.0, measured.height + 8.0),
-                Kind::Button => Size::new(text_width.unwrap_or(measured.width) + 20.0, measured.height + 12.0),
-                Kind::Entry => Size::new(
-                    text_width.unwrap_or(20.0 * char_width) + 12.0,
-                    style.font_size * 1.3 + 12.0,
-                ),
-                Kind::Frame => unreachable!(),
-            }
-        };
-        if kind == Kind::Frame {
-            if let Some(chars) = style.width {
-                let char_width = self.text_engine.measure("0", style.font_size).width
-                    .max(style.font_size * 0.5);
-                requested.width = requested.width.max(chars as f32 * char_width);
+            if let Some(node) = self.node_mut(id) {
+                node.requested = requested;
             }
         }
-        self.nodes[index].requested = requested;
-        requested
     }
 
     pub(crate) fn initial_size(&mut self) -> (u32, u32) {
         if let Some(size) = self.window_size {
             return size;
         }
-        let requested = self.update_requested(self.root());
-        (
-            requested.width.ceil().max(200.0) as u32,
-            requested.height.ceil().max(100.0) as u32,
-        )
+        self.update_requested();
+        let size = self.node(self.root()).map(|node| node.requested).unwrap_or_default();
+        (size.width.ceil().max(200.0) as u32, size.height.ceil().max(100.0) as u32)
     }
 
-    pub(crate) fn layout(&mut self, width: u32, height: u32) {
-        self.update_requested(self.root());
-        for node in &mut self.nodes {
-            node.visible = false;
+    pub(crate) fn layout(&mut self) {
+        self.update_requested();
+        for slot in &mut self.nodes {
+            if let Some(node) = &mut slot.node {
+                node.visible = false;
+            }
         }
-        let rect = Rect::new(0.0, 0.0, width as f32, height as f32);
-        self.place_tree(self.root(), rect, rect);
-    }
-
-    fn place_tree(&mut self, id: WidgetId, rect: Rect, parent_clip: Rect) {
-        let index = id.0 as usize;
-        let clip = rect.intersection(parent_clip);
-        let node = &mut self.nodes[index];
-        node.rect = rect;
-        node.clip = clip;
-        node.visible = true;
-        let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
-        let children = self.managed_children(id);
-        let Some(first) = children.first() else { return };
-        let rects = if matches!(self.nodes[first.0 as usize].manager, Some(Manager::Pack(_))) {
-            layout::pack(content, &self.pack_items(&children))
-        } else {
-            let columns: Vec<_> = self.nodes[index].columns.iter().map(|(&i, &w)| (i, w)).collect();
-            let rows: Vec<_> = self.nodes[index].rows.iter().map(|(&i, &w)| (i, w)).collect();
-            layout::grid(content, &self.grid_items(&children), &columns, &rows)
-        };
-        for (child, child_rect) in children.into_iter().zip(rects) {
-            self.place_tree(child, child_rect, clip.intersection(content));
+        self.paint_order.clear();
+        let rect = Rect::new(
+            0.0, 0.0,
+            self.viewport.0 as f32 / self.scale_factor,
+            self.viewport.1 as f32 / self.scale_factor,
+        );
+        let mut pending = vec![(self.root(), rect, rect)];
+        while let Some((id, rect, parent_clip)) = pending.pop() {
+            let Some(node) = self.node_mut(id) else { continue };
+            let clip = rect.within(parent_clip);
+            node.rect = rect;
+            node.clip = clip;
+            node.visible = true;
+            let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
+            self.paint_order.push(id);
+            let children = self.managed_children(id);
+            let rects = if self.uses_pack(&children) {
+                layout::pack(content, &self.pack_items(&children))
+            } else {
+                let (columns, rows): (Vec<_>, Vec<_>) = self.node(id).map(|node| {
+                    (
+                        node.columns.iter().map(|(&i, &w)| (i, w)).collect(),
+                        node.rows.iter().map(|(&i, &w)| (i, w)).collect(),
+                    )
+                }).unwrap_or_default();
+                layout::grid(content, &self.grid_items(&children), &columns, &rows)
+            };
+            for (child, child_rect) in children.into_iter().zip(rects).rev() {
+                pending.push((child, child_rect, content.within(clip)));
+            }
+        }
+        if !self.focused.is_some_and(|id| self.is_focusable(id)) {
+            self.focused = None;
         }
     }
 
-    fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
-        self.nodes.iter().enumerate().rev().find_map(|(index, node)| {
-            (node.visible
-                && matches!(node.kind, Kind::Button | Kind::Entry)
-                && node.rect.contains(x, y)
-                && node.clip.contains(x, y))
-                .then_some(WidgetId(index as u32))
+    fn ensure_layout(&mut self) {
+        if self.dirty {
+            self.layout();
+        }
+    }
+
+    fn is_focusable(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| {
+            node.visible && node.kind.focusable() && node.clip.width > 0.0 && node.clip.height > 0.0
         })
     }
 
-    pub(crate) fn pointer_move(&mut self, x: f32, y: f32) {
-        let hovered = self.hit_test(x, y)
-            .filter(|id| self.nodes[id.0 as usize].kind == Kind::Button);
-        if hovered != self.hovered {
+    pub fn widget_rect(&mut self, id: WidgetId) -> Option<Rect> {
+        self.ensure_layout();
+        self.node(id).filter(|node| node.visible).map(|node| node.rect)
+    }
+
+    pub fn focused_widget(&self) -> Option<WidgetId> {
+        self.focused.filter(|id| self.node(*id).is_some())
+    }
+
+    /// Physical viewport size. At the default scale this equals logical size.
+    #[doc(hidden)]
+    pub fn sim_resize(&mut self, width: u32, height: u32) {
+        self.viewport = (width, height);
+        self.dirty = true;
+        self.layout();
+    }
+
+    #[doc(hidden)]
+    pub fn sim_scale_factor(&mut self, factor: f64) -> bool {
+        if !factor.is_finite() || !(0.1..=16.0).contains(&factor) {
+            return false;
+        }
+        self.scale_factor = factor as f32;
+        self.dirty = true;
+        self.layout();
+        true
+    }
+
+    fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
+        self.paint_order.iter().rev().copied().find(|id| {
+            self.is_focusable(*id)
+                && self.node(*id).is_some_and(|node| node.clip.contains(x, y))
+        })
+    }
+
+    /// Pointer coordinates are logical pixels.
+    #[doc(hidden)]
+    pub fn sim_mouse_move(&mut self, x: f32, y: f32) {
+        self.ensure_layout();
+        self.pointer = (x, y);
+        let hovered = self.hit_test(x, y);
+        if self.hovered != hovered {
             self.hovered = hovered;
             self.dirty = true;
         }
+        if let Some(id) = self.pressed {
+            if self.node(id).is_some_and(|node| node.kind == Kind::Scale) {
+                self.drag_scale(id, x);
+            }
+        }
     }
 
-    pub(crate) fn pointer_press(&mut self, x: f32, y: f32) {
-        self.pointer_move(x, y);
+    #[doc(hidden)]
+    pub fn sim_mouse_down(&mut self) {
+        self.ensure_layout();
+        let (x, y) = self.pointer;
         let hit = self.hit_test(x, y);
-        self.pressed = hit.filter(|id| self.nodes[id.0 as usize].kind == Kind::Button);
-        if let Some(id) = hit.filter(|id| self.nodes[id.0 as usize].kind == Kind::Entry) {
-            self.focused = Some(id);
-            let text = self.display_text(id);
-            let node = &self.nodes[id.0 as usize];
-            let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
-            let font_size = node.style.font_size;
-            let (mut best, mut distance) = (0, target);
-            for (start, ch) in text.char_indices() {
-                let end = start + ch.len_utf8();
-                let width = self.text_engine.measure(&text[..end], font_size).width;
-                let next_distance = (width - target).abs();
-                if next_distance < distance {
-                    best = end;
-                    distance = next_distance;
+        self.hovered = hit;
+        self.pressed = hit;
+        self.focused = hit;
+        if let Some(id) = hit {
+            let Some(node) = self.node(id) else { return };
+            match node.kind {
+                Kind::Entry => {
+                    let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
+                    let size = node.style.font_size;
+                    let text = self.widget_text(id).unwrap_or_default();
+                    let boundaries = clusters(&text);
+                    // Binary search avoids quadratic shaping for a large entry.
+                    let (mut low, mut high) = (0, boundaries.len());
+                    while low < high {
+                        let mid = low + (high - low) / 2;
+                        let end = boundaries.get(mid).copied().unwrap_or(text.len());
+                        let width = self.measure(text.get(..end).unwrap_or_default(), size).width;
+                        if width < target {
+                            low = mid + 1;
+                        } else {
+                            high = mid;
+                        }
+                    }
+                    let right = boundaries.get(low).copied().unwrap_or(text.len());
+                    let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
+                    let rw = self.measure(text.get(..right).unwrap_or_default(), size).width;
+                    let lw = self.measure(text.get(..left).unwrap_or_default(), size).width;
+                    let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                    if let Some(node) = self.node_mut(id) {
+                        node.cursor = cursor;
+                    }
                 }
+                Kind::Scale => self.drag_scale(id, x),
+                _ => {}
             }
-            self.nodes[id.0 as usize].cursor = best;
-        } else if hit.is_none() {
-            self.focused = None;
         }
         self.dirty = true;
     }
 
-    pub(crate) fn pointer_release(&mut self, x: f32, y: f32) {
+    #[doc(hidden)]
+    pub fn sim_mouse_up(&mut self) {
+        self.ensure_layout();
+        let hit = self.hit_test(self.pointer.0, self.pointer.1);
         if let Some(id) = self.pressed.take() {
-            self.dirty = true;
-            if self.hit_test(x, y) == Some(id) {
-                // No arena borrow survives the callback. A callback may replace
-                // its own command; in that case the replacement wins.
-                if let Some(mut command) = self.nodes[id.0 as usize].command.take() {
-                    command(self);
-                    if self.nodes[id.0 as usize].command.is_none() {
-                        self.nodes[id.0 as usize].command = Some(command);
-                    }
-                }
+            if hit == Some(id) {
+                self.activate(id);
+            }
+        }
+        self.hovered = hit.filter(|id| self.node(*id).is_some());
+        self.dirty = true;
+    }
+
+    #[doc(hidden)]
+    pub fn sim_click(&mut self, x: f32, y: f32) {
+        self.sim_mouse_move(x, y);
+        self.sim_mouse_down();
+        self.sim_mouse_up();
+    }
+
+    fn run_command(&mut self, id: WidgetId) {
+        let Some(node) = self.node_mut(id) else { return };
+        if node.command_running {
+            return;
+        }
+        let Some(mut command) = node.command.take() else { return };
+        node.command_running = true;
+        command(self);
+        // Revalidate both slot and generation; a newly allocated widget may
+        // already occupy this slot. A replacement command always wins.
+        if let Some(node) = self.node_mut(id) {
+            node.command_running = false;
+            if node.command.is_none() {
+                node.command = Some(command);
             }
         }
     }
 
-    pub(crate) fn edit(&mut self, edit: Edit) {
-        let Some(id) = self.focused else { return };
-        let mut text = self.display_text(id);
-        let mut cursor = cursor_boundary(&text, self.nodes[id.0 as usize].cursor);
-        let mut changed = false;
-        match edit {
-            Edit::Left => cursor = previous_boundary(&text, cursor),
-            Edit::Right => {
-                cursor += text[cursor..].chars().next().map_or(0, char::len_utf8);
-            }
-            Edit::Home => cursor = 0,
-            Edit::End => cursor = text.len(),
-            Edit::Backspace if cursor > 0 => {
-                let previous = previous_boundary(&text, cursor);
-                text.replace_range(previous..cursor, "");
-                cursor = previous;
-                changed = true;
-            }
-            Edit::Delete if cursor < text.len() => {
-                let end = cursor + text[cursor..].chars().next().unwrap().len_utf8();
-                text.replace_range(cursor..end, "");
-                changed = true;
-            }
-            Edit::Insert(value) => {
-                let value: String = value.chars().filter(|c| !c.is_control()).collect();
-                if !value.is_empty() {
-                    text.insert_str(cursor, &value);
-                    cursor += value.len();
-                    changed = true;
+    fn activate(&mut self, id: WidgetId) {
+        let Some(node) = self.node(id) else { return };
+        let (kind, check) = (node.kind, node.check);
+        if kind == Kind::Checkbutton {
+            if let Some(var) = check {
+                if let Some(value) = var.get(self) {
+                    var.set(self, !value);
                 }
             }
-            Edit::Backspace | Edit::Delete => {}
         }
-        if changed {
-            self.write_entry(id, text);
+        if matches!(kind, Kind::Button | Kind::Checkbutton) {
+            self.run_command(id);
         }
-        self.nodes[id.0 as usize].cursor = cursor;
+    }
+
+    pub(crate) fn scale_fraction(&self, id: WidgetId) -> f32 {
+        let Some(node) = self.node(id) else { return 0.0 };
+        let (from, to) = node.range;
+        let value = node.scale.and_then(|var| var.get(self)).unwrap_or(from);
+        if from == to {
+            0.0
+        } else {
+            ((value as f64 - from as f64) / (to as f64 - from as f64)).clamp(0.0, 1.0) as f32
+        }
+    }
+
+    fn set_scale(&mut self, id: WidgetId, value: i64) {
+        let Some(node) = self.node(id) else { return };
+        let Some(var) = node.scale else { return };
+        let (from, to) = node.range;
+        let value = value.clamp(from.min(to), from.max(to));
+        if var.get(self).is_some_and(|old| old != value) {
+            var.set(self, value);
+            self.run_command(id);
+        }
+    }
+
+    fn drag_scale(&mut self, id: WidgetId, x: f32) {
+        if !x.is_finite() {
+            return;
+        }
+        let Some(node) = self.node(id) else { return };
+        let track = node.rect.inset(12.0, 0.0);
+        let fraction = if track.width > 0.0 {
+            ((x - track.x) / track.width).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let (from, to) = node.range;
+        let value = (from as f64 + f64::from(fraction) * (to as f64 - from as f64)).round() as i64;
+        self.set_scale(id, value);
+    }
+
+    fn traverse_focus(&mut self, backwards: bool) {
+        let order: Vec<_> = self.paint_order.iter().copied()
+            .filter(|id| self.is_focusable(*id)).collect();
+        if order.is_empty() {
+            self.focused = None;
+            return;
+        }
+        let current = self.focused.and_then(|id| order.iter().position(|other| *other == id));
+        let next = match (current, backwards) {
+            (Some(0), true) | (None, true) => order.len() - 1,
+            (Some(index), true) => index - 1,
+            (Some(index), false) => (index + 1) % order.len(),
+            (None, false) => 0,
+        };
+        self.focused = order.get(next).copied();
+        self.dirty = true;
+    }
+
+    #[doc(hidden)]
+    pub fn sim_key(&mut self, key: Key) {
+        self.ensure_layout();
+        if matches!(key, Key::Tab | Key::ShiftTab) {
+            self.traverse_focus(key == Key::ShiftTab);
+            return;
+        }
+        let Some(id) = self.focused else { return };
+        let Some(node) = self.node(id) else { return };
+        match node.kind {
+            Kind::Entry => {
+                if key == Key::Space {
+                    self.sim_text(" ");
+                } else {
+                    self.edit_entry(id, Some(key), "");
+                }
+            }
+            Kind::Button | Kind::Checkbutton if matches!(key, Key::Enter | Key::Space) => {
+                self.activate(id);
+            }
+            Kind::Scale if matches!(key, Key::Left | Key::Right) => {
+                let (from, to) = node.range;
+                let old = node.scale.and_then(|var| var.get(self)).unwrap_or(from);
+                let increasing = (key == Key::Right) == (to >= from);
+                self.set_scale(id, if increasing { old.saturating_add(1) } else { old.saturating_sub(1) });
+            }
+            _ => {}
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn sim_text(&mut self, text: &str) {
+        self.ensure_layout();
+        if let Some(id) = self.focused {
+            if self.node(id).is_some_and(|node| node.kind == Kind::Entry) {
+                self.edit_entry(id, None, text);
+            }
+        }
+    }
+
+    fn edit_entry(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
+        let Some(text) = self.entry_get(id) else { return };
+        let Some(node) = self.node(id) else { return };
+        let boundaries = clusters(&text);
+        let mut cursor = cursor_boundary(&text, node.cursor);
+        let previous = boundaries.iter().copied().take_while(|b| *b < cursor).last().unwrap_or(0);
+        let next = boundaries.iter().copied().find(|b| *b > cursor).unwrap_or(text.len());
+        let mut replacement = None;
+        match key {
+            Some(Key::Left) => cursor = previous,
+            Some(Key::Right) => cursor = next,
+            Some(Key::Home) => cursor = 0,
+            Some(Key::End) => cursor = text.len(),
+            Some(Key::Backspace) if cursor > 0 => {
+                replacement = Some(join_text(&text, previous, cursor, ""));
+                cursor = previous;
+            }
+            Some(Key::Delete) if cursor < text.len() => {
+                replacement = Some(join_text(&text, cursor, next, ""));
+            }
+            None => {
+                let value = clean_entry_limit(inserted, MAX_ENTRY_BYTES.saturating_sub(text.len()));
+                if !value.is_empty() {
+                    replacement = Some(join_text(&text, cursor, cursor, &value));
+                    cursor += value.len();
+                }
+            }
+            _ => {}
+        }
+        if let Some(new_text) = replacement {
+            // Joining may merge clusters on either side of the insertion.
+            cursor = cursor_boundary(&new_text, cursor);
+            if let Some(node) = self.node_mut(id) {
+                node.cursor = cursor;
+            }
+            self.write_entry(id, new_text);
+        } else if let Some(node) = self.node_mut(id) {
+            node.cursor = cursor;
+        }
+        self.dirty = true;
+    }
+
+    pub(crate) fn clear_input(&mut self) {
+        self.focused = None;
+        self.pressed = None;
+        self.hovered = None;
         self.dirty = true;
     }
 }
 
-pub(crate) enum Edit {
-    Backspace,
-    Delete,
-    Left,
-    Right,
-    Home,
-    End,
-    Insert(String),
+fn join_text(text: &str, start: usize, end: usize, value: &str) -> String {
+    let mut result = String::new();
+    result.push_str(text.get(..start).unwrap_or_default());
+    result.push_str(value);
+    result.push_str(text.get(end..).unwrap_or_default());
+    result
+}
+
+fn clean_entry_limit(text: &str, limit: usize) -> String {
+    let mut result = String::new();
+    for ch in text.chars().filter(|ch| !ch.is_control()) {
+        if result.len() + ch.len_utf8() > limit {
+            break;
+        }
+        result.push(ch);
+    }
+    result
+}
+
+fn clean_entry(text: &str) -> String {
+    clean_entry_limit(text, MAX_ENTRY_BYTES)
+}
+
+/// A deliberately small grapheme approximation, not Unicode segmentation.
+pub(crate) fn clusters(text: &str) -> Vec<usize> {
+    let mut result = vec![0];
+    let mut previous = '\0';
+    for (index, ch) in text.char_indices() {
+        let extending = matches!(
+            ch,
+            '\u{0300}'..='\u{036f}'
+                | '\u{fe0e}'..='\u{fe0f}'
+                | '\u{1f3fb}'..='\u{1f3ff}'
+                | '\u{200d}'
+        );
+        if index > 0 && !extending && previous != '\u{200d}' {
+            result.push(index);
+        }
+        previous = ch;
+    }
+    if !text.is_empty() {
+        result.push(text.len());
+    }
+    result
 }
 
 pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
-    let mut cursor = cursor.min(text.len());
-    while !text.is_char_boundary(cursor) {
-        cursor -= 1;
-    }
-    cursor
-}
-
-fn previous_boundary(text: &str, cursor: usize) -> usize {
-    text[..cursor].char_indices().next_back().map_or(0, |(index, _)| index)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Edit, Tk};
-    use crate::{Entry, Opt};
-
-    #[test]
-    fn unicode_editing_and_external_binding_changes() {
-        let mut tk = Tk::new();
-        let root = tk.root();
-        let value = tk.string_var("aé🙂");
-        let entry = Entry::new(&mut tk, root);
-        tk.config(entry, Opt::TextVariable(value));
-        tk.focused = Some(entry);
-        tk.edit(Edit::Left);
-        tk.edit(Edit::Backspace);
-        assert_eq!(value.get(&tk), "a🙂");
-        tk.edit(Edit::Delete);
-        assert_eq!(value.get(&tk), "a");
-        value.set(&mut tk, String::new());
-        tk.edit(Edit::Insert("λ".into()));
-        assert_eq!(tk.entry_get(entry), "λ");
-        tk.edit(Edit::Home);
-        tk.edit(Edit::Delete);
-        assert_eq!(tk.entry_get(entry), "");
-    }
+    clusters(text).into_iter().take_while(|boundary| *boundary <= cursor).last().unwrap_or(0)
 }

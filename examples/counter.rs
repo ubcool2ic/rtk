@@ -6,16 +6,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = tk.root();
     let count = tk.int_var(0);
     let text = tk.string_var("Count: 0");
-    let label = Label::new(&mut tk, root, "");
+    let label = Label::new(&mut tk, root, "")?;
     tk.config(label, Opt::TextVariable(text));
-    let increment = Button::new(&mut tk, root, "+1");
+    let increment = Button::new(&mut tk, root, "+1")?;
     let options = PackOpts { padx: 16.0, pady: 10.0, ..PackOpts::default() };
     tk.pack(label, options);
     tk.pack(increment, options);
     tk.set_command(increment, move |tk| {
-        let next = count.get(tk) + 1;
-        count.set(tk, next);
-        text.set(tk, format!("Count: {next}"));
+        if let Some(value) = count.get(tk) {
+            let next = value.saturating_add(1);
+            count.set(tk, next);
+            text.set(tk, format!("Count: {next}"));
+        }
     });
     tk.mainloop()
 }

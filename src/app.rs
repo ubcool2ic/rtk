@@ -4,38 +4,37 @@ use std::sync::Arc;
 
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
+use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
-use crate::tk::Edit;
-use crate::Tk;
+use crate::{Key, Tk};
 
 struct App {
     tk: Tk,
-    // Surface is dropped before context and window.
+    // Drop the surface before its context and window.
     surface: Option<Surface<Arc<Window>, Arc<Window>>>,
-    _context: Option<Context<Arc<Window>>>,
+    context: Option<Context<Arc<Window>>>,
     window: Option<Arc<Window>>,
-    pointer: (f32, f32),
     modifiers: ModifiersState,
+    occluded: bool,
     error: Option<Box<dyn Error>>,
 }
 
 impl Tk {
-    /// Consumes the toolkit and runs winit. Call this on the main thread.
+    /// Consumes the toolkit and runs winit. Call on the main thread.
     pub fn mainloop(self) -> Result<(), Box<dyn Error>> {
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut app = App {
             tk: self,
             surface: None,
-            _context: None,
+            context: None,
             window: None,
-            pointer: (0.0, 0.0),
             modifiers: ModifiersState::empty(),
+            occluded: false,
             error: None,
         };
         event_loop.run_app(&mut app)?;
@@ -52,26 +51,20 @@ impl App {
         let window = Arc::new(event_loop.create_window(
             Window::default_attributes()
                 .with_title(&self.tk.window_title)
-                .with_inner_size(PhysicalSize::new(width, height)),
+                .with_inner_size(LogicalSize::new(width, height)),
         )?);
-        let context = Context::new(window.clone())?;
-        let surface = Surface::new(&context, window.clone())?;
-        self.surface = Some(surface);
-        self._context = Some(context);
+        self.tk.sim_scale_factor(window.scale_factor());
+        let size = window.inner_size();
+        self.tk.sim_resize(size.width, size.height);
         self.window = Some(window);
-        self.tk.dirty = true;
+        self.occluded = false;
         Ok(())
-    }
-
-    fn fail(&mut self, event_loop: &ActiveEventLoop, error: Box<dyn Error>) {
-        self.error = Some(error);
-        event_loop.exit();
     }
 
     fn schedule(&self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
             event_loop.exit();
-        } else if self.tk.dirty {
+        } else if self.tk.dirty && !self.occluded {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
@@ -79,23 +72,34 @@ impl App {
     }
 
     fn draw(&mut self) -> Result<(), Box<dyn Error>> {
-        let Some(window) = &self.window else { return Ok(()) };
+        let Some(window) = self.window.clone() else { return Ok(()) };
         window.set_title(&self.tk.window_title);
         let size = window.inner_size();
+        if self.occluded || size.width == 0 || size.height == 0 {
+            self.tk.dirty = false;
+            return Ok(());
+        }
         let (Some(width), Some(height)) = (
             NonZeroU32::new(size.width),
             NonZeroU32::new(size.height),
         ) else {
-            self.tk.dirty = false;
             return Ok(());
         };
-        let pixmap = self.tk.render_to_pixmap(size.width, size.height);
+        if self.context.is_none() {
+            self.context = Some(Context::new(window.clone())?);
+        }
+        if self.surface.is_none() {
+            if let Some(context) = &self.context {
+                self.surface = Some(Surface::new(context, window)?);
+            }
+        }
+        let pixmap = self.tk.render_to_pixmap(size.width, size.height)?;
         let Some(surface) = &mut self.surface else { return Ok(()) };
         surface.resize(width, height)?;
         let mut buffer = surface.buffer_mut()?;
         for (pixel, rgba) in buffer.iter_mut().zip(pixmap.data().chunks_exact(4)) {
-            // tiny-skia: premultiplied RGBA bytes; softbuffer: integer 0x00RRGGBB.
-            let alpha = u32::from(rgba[3]);
+            let [r, g, b, a] = rgba else { continue };
+            let alpha = u32::from(*a);
             let channel = |value: u8| {
                 if alpha == 0 {
                     0
@@ -103,7 +107,7 @@ impl App {
                     ((u32::from(value) * 255 + alpha / 2) / alpha).min(255)
                 }
             };
-            *pixel = channel(rgba[0]) << 16 | channel(rgba[1]) << 8 | channel(rgba[2]);
+            *pixel = (channel(*r) << 16) | (channel(*g) << 8) | channel(*b);
         }
         buffer.present()?;
         Ok(())
@@ -112,9 +116,15 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.tk.quit_requested {
+            event_loop.exit();
+            return;
+        }
         if self.window.is_none() {
             if let Err(error) = self.open(event_loop) {
-                self.fail(event_loop, error);
+                eprintln!("rtk: cannot create window: {error}");
+                self.error = Some(error);
+                event_loop.exit();
                 return;
             }
         }
@@ -123,8 +133,9 @@ impl ApplicationHandler for App {
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         self.surface = None;
-        self._context = None;
+        self.context = None;
         self.window = None;
+        self.tk.clear_input();
     }
 
     fn window_event(
@@ -138,57 +149,66 @@ impl ApplicationHandler for App {
         }
         match event {
             WindowEvent::CloseRequested => self.tk.quit(),
-            WindowEvent::Resized(_) => self.tk.dirty = true,
+            WindowEvent::Resized(size) => self.tk.sim_resize(size.width, size.height),
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.tk.sim_scale_factor(scale_factor);
+                if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    self.tk.sim_resize(size.width, size.height);
+                }
+            }
+            WindowEvent::Occluded(occluded) => {
+                self.occluded = occluded;
+                self.tk.dirty = !occluded;
+            }
             WindowEvent::CursorMoved { position, .. } => {
-                self.pointer = (position.x as f32, position.y as f32);
-                self.tk.pointer_move(self.pointer.0, self.pointer.1);
+                let scale = f64::from(self.tk.scale_factor);
+                self.tk.sim_mouse_move((position.x / scale) as f32, (position.y / scale) as f32);
             }
             WindowEvent::CursorLeft { .. } => {
-                self.tk.hovered = None;
-                self.tk.dirty = true;
+                self.tk.sim_mouse_move(f32::NEG_INFINITY, f32::NEG_INFINITY);
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
-                // Input may arrive between a resize/configuration and its redraw.
-                if self.tk.dirty {
-                    if let Some(window) = &self.window {
-                        let size = window.inner_size();
-                        self.tk.layout(size.width, size.height);
-                    }
-                }
                 if state == ElementState::Pressed {
-                    self.tk.pointer_press(self.pointer.0, self.pointer.1);
+                    self.tk.sim_mouse_down();
                 } else {
-                    self.tk.pointer_release(self.pointer.0, self.pointer.1);
+                    self.tk.sim_mouse_up();
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                let edit = match &event.logical_key {
-                    Key::Named(NamedKey::Backspace) => Some(Edit::Backspace),
-                    Key::Named(NamedKey::Delete) => Some(Edit::Delete),
-                    Key::Named(NamedKey::ArrowLeft) => Some(Edit::Left),
-                    Key::Named(NamedKey::ArrowRight) => Some(Edit::Right),
-                    Key::Named(NamedKey::Home) => Some(Edit::Home),
-                    Key::Named(NamedKey::End) => Some(Edit::End),
-                    _ if !self.modifiers.control_key() && !self.modifiers.super_key() => {
-                        event.text.as_ref().map(|text| Edit::Insert(text.to_string()))
-                    }
+                let key = match &event.logical_key {
+                    WinitKey::Named(NamedKey::Backspace) => Some(Key::Backspace),
+                    WinitKey::Named(NamedKey::Delete) => Some(Key::Delete),
+                    WinitKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
+                    WinitKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
+                    WinitKey::Named(NamedKey::Home) => Some(Key::Home),
+                    WinitKey::Named(NamedKey::End) => Some(Key::End),
+                    WinitKey::Named(NamedKey::Tab) => Some(if self.modifiers.shift_key() {
+                        Key::ShiftTab
+                    } else {
+                        Key::Tab
+                    }),
+                    WinitKey::Named(NamedKey::Enter) => Some(Key::Enter),
+                    WinitKey::Named(NamedKey::Space) => Some(Key::Space),
+                    WinitKey::Character(text) if text.as_str() == " " => Some(Key::Space),
                     _ => None,
                 };
-                if let Some(edit) = edit {
-                    self.tk.edit(edit);
+                if !self.modifiers.control_key() && !self.modifiers.super_key() {
+                    if let Some(key) = key {
+                        self.tk.sim_key(key);
+                    } else if let Some(text) = event.text {
+                        self.tk.sim_text(&text);
+                    }
                 }
             }
-            WindowEvent::Focused(false) => {
-                self.tk.focused = None;
-                self.tk.pressed = None;
-                self.tk.hovered = None;
-                self.tk.dirty = true;
-            }
+            WindowEvent::Focused(false) => self.tk.clear_input(),
             WindowEvent::RedrawRequested => {
                 if let Err(error) = self.draw() {
-                    self.fail(event_loop, error);
-                    return;
+                    eprintln!("rtk: render/surface error (will retry on the next event): {error}");
+                    self.surface = None;
+                    // Avoid a busy retry loop while a surface is unavailable.
+                    self.tk.dirty = false;
                 }
             }
             _ => {}

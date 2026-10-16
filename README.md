@@ -1,155 +1,136 @@
 # rtk
 
-A first working, tkinter-style GUI library for Rust 1.85 and edition 2021.
+A small tkinter-style GUI crate for Rust 1.85, edition 2021. Version 0.2 focuses
+on safe widget lifetimes, reentrant callbacks, and headless testing.
 
-`rtk` combines an imperative widget API with Rust-owned application state:
-construct widgets, configure them, choose `pack` or `grid`, and run the event
-loop. The same renderer also produces PNG screenshots without a window.
+## Features
 
-## Status
+- Frame, Label, Button, single-line Entry, Checkbutton, and integer Scale.
+- Generational widget IDs, subtree destruction, and typed variable handles.
+- Live string/integer text bindings and boolean/integer control bindings.
+- Synchronous variable traces with a reentrant-notification guard.
+- Pack and grid, weighted tracks, spans, padding, anchors, and bounded shrinking.
+- Tab/Shift+Tab traversal; Space/Enter button activation; visible focus rings.
+- Entry Unicode cluster-aware editing, clipped text, and horizontal caret scroll.
+- Software rendering with cosmic-text, tiny-skia, and softbuffer.
+- Logical-pixel layout with scale-factor-aware text, rendering, and pointer input.
+- Headless PNG rendering and the same event handlers used by the winit backend.
 
-Version 0.1 is a deliberately small desktop prototype, not a Tk binding or
-a production-complete toolkit.
+This remains a small desktop toolkit, not a Tk binding or a complete text editor.
 
-Implemented:
+## Example
 
-- Frame, Label, Button, and single-line Entry.
-- Copy widget IDs and typed Copy variable handles.
-- String bindings for labels and entries; integer bindings for display.
-- Button commands with mutable access to the toolkit.
-- Recursive requested-size calculation and resize-driven layout.
-- Cavity-based pack with sides, fill, expansion, padding, and anchors.
-- Grid with spans, sticky alignment, padding, and weighted rows/columns.
-- Software rendering, system-font discovery, advanced text shaping, and
-  headless PNG output.
-- Entry click positioning, typing, Backspace, Delete, Left, Right, Home,
-  End, horizontal scrolling, and a visible focused caret.
-
-Known limitations:
-
-- No selection, clipboard, Tab navigation, keyboard button activation, IME,
-  or blinking caret yet.
-- Editing moves by Unicode scalar value, not grapheme cluster. Text shaping
-  supports complex scripts, but caret placement is an approximate prefix-width
-  calculation, not a complete bidirectional-text editor.
-- Coordinates and font sizes are physical pixels; automatic HiDPI scaling is
-  not implemented.
-- Grid distributes positive extra space. When undersized, its requested tracks
-  are clipped rather than proportionally shrunk.
-- Widget lifetime is the toolkit lifetime; there is no destroy/reparent API.
-- Rendering and text measurement favor simplicity over caching/performance.
-
-## tkinter and rtk: hello
-
-<table>
-<tr><th>Python / tkinter</th><th>Rust / rtk</th></tr>
-<tr><td valign="top"><pre>
-import tkinter as tk
-
-root = tk.Tk()
-root.title("Hello")
-
-tk.Label(
-    root, text="Hello, rtk!"
-).pack(pady=10)
-
-tk.Button(
-    root,
-    text="Quit",
-    command=root.destroy,
-).pack(pady=10)
-
-root.mainloop()
-</pre></td><td valign="top"><pre>
-use rtk::{Button, Label, PackOpts, Tk};
-
-let mut tk = Tk::new();
-tk.title("Hello");
-let root = tk.root();
-let padding = PackOpts {
-    pady: 10.0,
-    ..PackOpts::default()
-};
-
-let label = Label::new(
-    &amp;mut tk, root, "Hello, rtk!"
-);
-tk.pack(label, padding);
-
-let quit = Button::new(&amp;mut tk, root, "Quit");
-tk.pack(quit, padding);
-tk.set_command(quit, |tk| tk.quit());
-
-tk.mainloop()?;
-</pre></td></tr>
-</table>
-
-The Rust snippets are function bodies; complete programs are in `examples/`.
-
-## tkinter and rtk: counter
-
-<table>
-<tr><th>Python / tkinter</th><th>Rust / rtk</th></tr>
-<tr><td valign="top"><pre>
-import tkinter as tk
-
-root = tk.Tk()
-count = tk.IntVar(value=0)
-text = tk.StringVar(value="Count: 0")
-
-tk.Label(
-    root, textvariable=text
-).pack()
-
-def increment():
-    n = count.get() + 1
-    count.set(n)
-    text.set(f"Count: {n}")
-
-tk.Button(
-    root, text="+1", command=increment
-).pack()
-
-root.mainloop()
-</pre></td><td valign="top"><pre>
+```rust
 use rtk::{Button, Label, Opt, PackOpts, Tk};
 
-let mut tk = Tk::new();
-let root = tk.root();
-let count = tk.int_var(0);
-let text = tk.string_var("Count: 0");
-
-let label = Label::new(&amp;mut tk, root, "");
-tk.config(label, Opt::TextVariable(text));
-tk.pack(label, PackOpts::default());
-
-let button = Button::new(&amp;mut tk, root, "+1");
-tk.set_command(button, move |tk| {
-    let n = count.get(tk) + 1;
-    count.set(tk, n);
-    text.set(tk, format!("Count: {n}"));
-});
-tk.pack(button, PackOpts::default());
-
-tk.mainloop()?;
-</pre></td></tr>
-</table>
-
-For a plain numeric label, bind the integer directly with
-`Opt::TextVariableInt(count)`.
-
-## Building and running
-
-Install Rust 1.85 or newer, a desktop display server for interactive examples,
-and at least one system font. On Debian/Ubuntu, useful packages are:
-
-```sh
-sudo apt-get install libxkbcommon-dev libwayland-dev \
-  libx11-dev libxi-dev libxrandr-dev libxcursor-dev \
-  libxinerama-dev fonts-dejavu-core
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut tk = Tk::new();
+    tk.title("Counter");
+    let root = tk.root();
+    let count = tk.int_var(0);
+    let label = Label::new(&mut tk, root, "")?;
+    let button = Button::new(&mut tk, root, "+1")?;
+    tk.config(label, Opt::TextVariableInt(count));
+    tk.pack(label, PackOpts::default());
+    tk.pack(button, PackOpts::default());
+    tk.set_command(button, move |tk| {
+        if let Some(value) = count.get(tk) {
+            count.set(tk, value.saturating_add(1));
+        }
+    });
+    tk.mainloop()
+}
 ```
 
-Then:
+`examples/widgets.rs` demonstrates Checkbutton, Scale, and variable traces.
+
+## Handle and error contract
+
+- Widget constructors return `Result<WidgetId, RtkError>`.
+- Handle-based mutations return `bool`: false means invalid/stale handle or
+  incompatible configuration, with no requested mutation performed.
+- Queries return `Option`; `None` means invalid/stale or inapplicable.
+  `widget_rect` also returns `None` for unmanaged/invisible widgets.
+- `Var::get` clones into `Option<T>`. `Var::set` returns true for a valid equal
+  assignment but does not mark the UI dirty or invoke a trace.
+- Widgets have `WidgetId { index: u32, gen: u32 }`. Destroying a subtree
+  invalidates every descendant, clears affected input state, and frees slots.
+  Reused slots have a new generation. Exhausted generations are retired.
+- Destroying the root requests shutdown. `quit()` alone retains widgets.
+- Variable destruction invalidates all copies; variable slots are not reused.
+  Bound widgets fall back to static text or an inactive/default control value.
+- Widget IDs must remain within their originating `Tk`. Cross-toolkit widget
+  identity is not encoded in the two-field ID. Variables additionally check
+  toolkit ownership.
+- Constructors require a live Frame parent. Mixing pack and grid among siblings
+  is rejected, not panicked. Frames can nest different geometry managers.
+
+The API changed from 0.1: add `?` to constructors and `render_to_pixmap`, and
+handle `Option` from variable/text queries.
+
+## Stability and callbacks
+
+Library runtime paths do not use panicking arena indexing or `unwrap`/`expect`.
+Zero-size viewports have no hit targets and are not rendered by the backend.
+`render_to_pixmap` returns an error for zero/excessive dimensions, before pixmap
+allocation. Images are limited to 16 million pixels. Surface creation, resize,
+buffer, and presentation failures are logged to stderr; the event loop stays
+alive and retries after subsequent invalidation. Occluded windows skip drawing.
+
+An empty font database bypasses shaping and text drawing; requested sizes use
+an estimate. Widgets, borders, focus rings, and carets still render.
+
+Commands can configure widgets, replace commands, set variables, create or
+destroy subtrees (including themselves), or quit. The active callback is removed
+from its slot during dispatch and restored only to the same live generation
+when no replacement was installed. Reentering a running widget command is
+suppressed. Variable traces use the same take/call/restore pattern. Reentrant
+writes store their value, but notification of an already-notifying variable is
+suppressed rather than queued; cycles therefore terminate. A trace sees the
+value stored before it was called, and may change that value again.
+
+These protections do not catch panics deliberately raised by application
+callbacks, allocator exhaustion, or arbitrary bugs in platform dependencies.
+
+## Text and geometry
+
+Entries filter control characters and cap displayed/edited text at 64 KiB.
+External StringVar assignments remain unchanged until an edit writes the
+sanitized Entry text back. Cursor offsets are byte indices at cluster boundaries.
+The lightweight cluster rule groups U+0300–036F combining marks, variation
+selectors FE0E/FE0F, emoji skin tones, and ZWJ-linked sequences. It is not full
+Unicode grapheme segmentation or bidirectional caret navigation.
+
+Layout and padding use logical pixels. `Opt::Width` uses character units.
+Font sizes must be finite and in 1–512 logical pixels. Nonfinite layout
+dimensions/padding become zero; negative dimensions/padding are clamped.
+Grid indices/spans are bounded to 4096 tracks, and excess requested space is
+proportionally shrunk. Children remain inside their parents.
+
+Pack order and focus order follow tree/child creation order, not reused arena
+indices. Scale supports integer endpoints, including reversed/equal ranges;
+dragging clamps values and arrow keys step by one. Externally assigned
+out-of-range scale values are visually clamped and normalized by interaction.
+
+## Headless testing and rendering
+
+No display server or winit event loop is needed for layout or image output.
+
+- `sim_resize(w, h)` sets the physical viewport size.
+- `sim_mouse_move(x, y)` and `sim_click(x, y)` take logical coordinates.
+- `sim_mouse_down()`, `sim_mouse_up()`, `sim_key(Key)`, and `sim_text(&str)`
+  exercise the real event handlers.
+- `widget_rect(id)` computes layout as necessary and returns logical geometry.
+- `focused_widget()` exposes focus for tests.
+- `sim_scale_factor(factor)` changes the scale for headless HiDPI tests.
+- `render_to_pixmap(w, h)` returns `Result<tiny_skia::Pixmap, RtkError>`.
+- `save_png(path, w, h)` returns a `Result` without window operations.
+
+Scale defaults to 1.0; screenshot dimensions are physical pixels.
+`geometry(w, h)` specifies the initial window size in logical pixels.
+`mainloop()` consumes Tk and must run on the main thread.
+
+## Build and test
 
 ```sh
 cargo build --all-targets
@@ -159,77 +140,28 @@ cargo clippy --all-targets -- -D warnings
 cargo run --example hello
 cargo run --example counter
 cargo run --example form
+cargo run --example widgets
 cargo run --example screenshot -- hello.png
-
 RTK_PNG=test-render.png cargo test --test render
 ```
 
-Headless rendering does not create a winit event loop and does not need
-`DISPLAY` or a Wayland connection. It still discovers system fonts through
-cosmic-text's fontdb. Tests do not depend on exact glyph pixels.
+Interactive Linux builds may require development packages for X11/Wayland and
+libxkbcommon. System fonts improve text output but are not required for safe
+headless operation.
 
-The dependency requirements intentionally use the requested stable API series:
-winit 0.30, softbuffer 0.4, tiny-skia 0.11, and cosmic-text 0.12. This library
-does not commit a lockfile. The Cargo resolver configuration prefers transitive
-dependency releases compatible with the declared Rust version.
+Dependency requirements remain winit 0.30, softbuffer 0.4, tiny-skia 0.11, and
+cosmic-text 0.12; no additional runtime or test dependencies were introduced.
+The repository's resolver configuration prefers Rust-version-compatible
+transitive releases. `ci/rust.yml` can be installed as a GitHub Actions workflow.
 
-`ci/rust.yml` is a ready-to-use GitHub Actions configuration; move it to
-`.github/workflows/rust.yml` to activate it.
+## Limitations
 
-## API details
-
-- Store `let root = tk.root()` before passing `&mut tk` to constructors.
-- Constructors return `WidgetId`. Widgets become visible after `pack` or `grid`.
-- Only frames, including the root, may contain children.
-- Do not mix pack and grid among siblings. Nested frames may use different
-  geometry managers.
-- Pack order is child creation order. Reconfiguring a managed widget preserves
-  its position in that order.
-- Padding values are pixels. `Opt::Width(n)` specifies a character-based width.
-- Grid weights default to zero. Combine sticky flags with `|`, or use
-  `Sticky::EW`, `Sticky::NS`, and `Sticky::NSEW`.
-- `geometry(w, h)` overrides the initial window size. Without it, the root's
-  recursive requested size is used, with a minimum of 200×100.
-- `title()` updates the title; `quit()` requests event-loop termination.
-- `Var::get` clones its value. `Var::set` marks the UI dirty. Bindings are read
-  directly during measurement/rendering; no observer graph is needed.
-- An Entry writes edits back to its bound string variable. `entry_get` returns
-  its current value, and `entry_set` replaces it. Keep externally assigned
-  entry variables single-line.
-- Bound text takes precedence over a label's static `Opt::Text`.
-- Callback replacement from inside the running callback is supported.
-- Invalid IDs, incompatible configuration, mixed geometry managers, and invalid
-  image dimensions are programmer errors and may panic.
-- IDs and variables belong to their originating `Tk`; never mix handles from
-  different toolkit instances.
-
-`render_to_pixmap(w, h)` returns a `tiny_skia::Pixmap`.
-`save_png(path, w, h)` returns a `Result` and performs no window operations.
-`mainloop()` consumes `Tk`, returns a `Result`, and must run on the main thread.
-
-## Design
-
-`Tk` owns a `Vec<WidgetNode>` arena. Each widget handle is a Copy `WidgetId(u32)`;
-each variable handle is an index plus `PhantomData`. The toolkit owns the actual
-values, widget tree, callbacks, and renderer.
-
-There is no `Rc<RefCell<_>>` in the application API. Instead of a graph of
-individually borrowed widgets, commands receive one `&mut Tk`. They can read
-variables, update labels, create widgets, or request shutdown through that
-exclusive borrow.
-
-A command is temporarily taken out of its node before invocation, then restored
-unless the callback installed a replacement. This prevents borrowing the arena
-while calling a closure that itself mutates the arena.
-
-The window backend uses an internal `Arc<Window>` solely to satisfy owned
-window/display-handle requirements; it does not expose shared mutable widget
-state.
-
-Layout is independent of fonts and windows in `src/layout.rs`. Widget
-measurement uses cosmic-text, and rendering targets tiny-skia before copying
-premultiplied RGBA pixels into softbuffer's `0x00RRGGBB` format.
+Selection, clipboard, undo/redo, IME composition, full grapheme/bidi editing,
+accessibility integration, timers, native dialogs, and multiple windows remain
+future work. Rendering favors clarity over caching/performance. Backend
+availability and platform-specific minimize behavior still require interactive
+smoke tests on supported operating systems.
 
 ## License
 
-MIT OR Apache-2.0. The MIT license text is included in `LICENSE`.
+MIT OR Apache-2.0.

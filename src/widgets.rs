@@ -1,10 +1,14 @@
 use std::collections::BTreeMap;
 
 use crate::layout::{GridOpts, PackOpts, Rect, Size};
-use crate::{Tk, Var};
+use crate::{RtkError, Tk, Var};
 
+/// A generational arena handle. Do not transfer widget IDs between toolkits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct WidgetId(pub u32);
+pub struct WidgetId {
+    pub index: u32,
+    pub gen: u32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Color {
@@ -46,33 +50,83 @@ pub struct Frame;
 pub struct Label;
 pub struct Button;
 pub struct Entry;
+pub struct Checkbutton;
+pub struct Scale;
 
-// Tk-style constructors intentionally allocate in the arena and return IDs.
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
-    pub fn new(tk: &mut Tk, parent: WidgetId) -> WidgetId {
+    pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Frame, parent, String::new())
     }
 }
 
 #[allow(clippy::new_ret_no_self)]
 impl Label {
-    pub fn new(tk: &mut Tk, parent: WidgetId, text: impl Into<String>) -> WidgetId {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        text: impl Into<String>,
+    ) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Label, parent, text.into())
     }
 }
 
 #[allow(clippy::new_ret_no_self)]
 impl Button {
-    pub fn new(tk: &mut Tk, parent: WidgetId, text: impl Into<String>) -> WidgetId {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        text: impl Into<String>,
+    ) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Button, parent, text.into())
     }
 }
 
 #[allow(clippy::new_ret_no_self)]
 impl Entry {
-    pub fn new(tk: &mut Tk, parent: WidgetId) -> WidgetId {
+    pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Entry, parent, String::new())
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Checkbutton {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        text: impl Into<String>,
+        variable: Var<bool>,
+    ) -> Result<WidgetId, RtkError> {
+        if variable.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Checkbutton, parent, text.into())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.check = Some(variable);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Scale {
+    /// An integer horizontal scale; reversed and equal endpoints are supported.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        from: i64,
+        to: i64,
+        variable: Var<i64>,
+    ) -> Result<WidgetId, RtkError> {
+        if variable.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Scale, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.scale = Some(variable);
+            node.range = (from, to);
+        }
+        Ok(id)
     }
 }
 
@@ -82,6 +136,18 @@ pub(crate) enum Kind {
     Label,
     Button,
     Entry,
+    Checkbutton,
+    Scale,
+}
+
+impl Kind {
+    pub fn focusable(self) -> bool {
+        matches!(self, Self::Button | Self::Entry | Self::Checkbutton | Self::Scale)
+    }
+
+    pub fn has_command(self) -> bool {
+        matches!(self, Self::Button | Self::Checkbutton | Self::Scale)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -110,8 +176,12 @@ pub(crate) struct WidgetNode {
     pub children: Vec<WidgetId>,
     pub text: String,
     pub binding: Option<Binding>,
+    pub check: Option<Var<bool>>,
+    pub scale: Option<Var<i64>>,
+    pub range: (i64, i64),
     pub style: Style,
     pub command: Option<Command>,
+    pub command_running: bool,
     pub manager: Option<Manager>,
     pub columns: BTreeMap<usize, u32>,
     pub rows: BTreeMap<usize, u32>,
@@ -132,6 +202,9 @@ impl WidgetNode {
             cursor: text.len(),
             text,
             binding: None,
+            check: None,
+            scale: None,
+            range: (0, 100),
             style: Style {
                 bg: if kind == Kind::Entry { Color::WHITE } else { Color::BG },
                 fg: Color::FG,
@@ -139,6 +212,7 @@ impl WidgetNode {
                 width: None,
             },
             command: None,
+            command_running: false,
             manager: None,
             columns: BTreeMap::new(),
             rows: BTreeMap::new(),
@@ -149,4 +223,9 @@ impl WidgetNode {
             scroll_x: 0.0,
         }
     }
+}
+
+pub(crate) struct WidgetSlot {
+    pub gen: u32,
+    pub node: Option<WidgetNode>,
 }

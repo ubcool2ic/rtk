@@ -1,17 +1,23 @@
+use std::any::Any;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
-use crate::Tk;
+use crate::{Command, Tk};
 
-/// A Copy, typed index into the variable store of its originating `Tk`.
+/// A typed, generational variable handle.
 ///
-/// Getting a value clones it; setting it invalidates the UI.
+/// `get` returns `None` for a destroyed/foreign handle. Mutations return false
+/// for invalid handles. Equal assignments succeed without invalidating the UI.
+/// Traces run synchronously, at most once per active notification stack for
+/// each variable. Reentrant writes are stored but do not recursively notify.
 #[derive(Debug)]
 pub struct Var<T> {
     index: usize,
+    gen: u32,
+    owner: *const (),
     marker: PhantomData<fn() -> T>,
 }
 
-// Manual implementations deliberately do not require T: Copy or T: Clone.
 impl<T> Copy for Var<T> {}
 
 impl<T> Clone for Var<T> {
@@ -20,31 +26,115 @@ impl<T> Clone for Var<T> {
     }
 }
 
+pub(crate) struct VarSlot {
+    gen: u32,
+    value: Option<Box<dyn Any>>,
+    trace: Option<Command>,
+    notifying: bool,
+    // Keep the allocation alive even if a variable is destroyed. Its address
+    // cannot be reused while this toolkit is alive.
+    owner: Arc<()>,
+}
+
 impl<T: 'static> Var<T> {
-    pub fn get(self, tk: &Tk) -> T
+    fn slot(self, tk: &Tk) -> Option<&VarSlot> {
+        tk.vars.get(self.index).filter(|slot| {
+            slot.gen == self.gen
+                && Arc::as_ptr(&slot.owner) == self.owner
+                && slot.value.as_ref().is_some_and(|value| value.is::<T>())
+        })
+    }
+
+    fn slot_mut(self, tk: &mut Tk) -> Option<&mut VarSlot> {
+        tk.vars.get_mut(self.index).filter(|slot| {
+            slot.gen == self.gen
+                && Arc::as_ptr(&slot.owner) == self.owner
+                && slot.value.as_ref().is_some_and(|value| value.is::<T>())
+        })
+    }
+
+    pub fn get(self, tk: &Tk) -> Option<T>
     where
         T: Clone,
     {
-        tk.vars[self.index]
-            .downcast_ref::<T>()
-            .expect("variable belongs to a different Tk or has an invalid type")
-            .clone()
+        self.slot(tk)?.value.as_ref()?.downcast_ref::<T>().cloned()
     }
 
-    pub fn set(self, tk: &mut Tk, value: T) {
-        *tk.vars[self.index]
-            .downcast_mut::<T>()
-            .expect("variable belongs to a different Tk or has an invalid type") = value;
+    pub fn set(self, tk: &mut Tk, value: T) -> bool
+    where
+        T: PartialEq,
+    {
+        let Some(slot) = self.slot_mut(tk) else { return false };
+        let Some(stored) = slot.value.as_mut().and_then(|value| value.downcast_mut::<T>()) else {
+            return false;
+        };
+        if *stored == value {
+            return true;
+        }
+        *stored = value;
+        let notify = !slot.notifying;
+        let command = if notify {
+            slot.notifying = true;
+            slot.trace.take()
+        } else {
+            None
+        };
         tk.dirty = true;
+        if let Some(mut command) = command {
+            command(tk);
+            if let Some(slot) = self.slot_mut(tk) {
+                if slot.trace.is_none() {
+                    slot.trace = Some(command);
+                }
+            }
+        }
+        if notify {
+            if let Some(slot) = self.slot_mut(tk) {
+                slot.notifying = false;
+            }
+        }
+        true
+    }
+
+    /// Installs or replaces the single change trace.
+    pub fn trace(self, tk: &mut Tk, command: impl FnMut(&mut Tk) + 'static) -> bool {
+        let Some(slot) = self.slot_mut(tk) else { return false };
+        slot.trace = Some(Box::new(command));
+        true
+    }
+
+    /// Invalidates this handle and all copies. Bound widgets remain usable.
+    pub fn destroy(self, tk: &mut Tk) -> bool {
+        let Some(slot) = self.slot_mut(tk) else { return false };
+        slot.value = None;
+        slot.trace = None;
+        slot.notifying = false;
+        slot.gen = slot.gen.saturating_add(1);
+        tk.dirty = true;
+        true
     }
 }
 
 impl Tk {
     fn make_var<T: 'static>(&mut self, value: T) -> Var<T> {
-        let index = self.vars.len();
-        self.vars.push(Box::new(value));
+        // Variable slots are intentionally not reused. This also makes a
+        // destroyed handle unambiguously invalid at generation exhaustion.
+        let owner = Arc::clone(&self.var_owner);
+        let handle = Var {
+            index: self.vars.len(),
+            gen: 0,
+            owner: Arc::as_ptr(&owner),
+            marker: PhantomData,
+        };
+        self.vars.push(VarSlot {
+            gen: 0,
+            value: Some(Box::new(value)),
+            trace: None,
+            notifying: false,
+            owner,
+        });
         self.dirty = true;
-        Var { index, marker: PhantomData }
+        handle
     }
 
     pub fn string_var(&mut self, value: impl Into<String>) -> Var<String> {
@@ -54,51 +144,8 @@ impl Tk {
     pub fn int_var(&mut self, value: i64) -> Var<i64> {
         self.make_var(value)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use crate::{Entry, Label, Opt, Tk};
-
-    #[test]
-    fn string_and_int_get_set() {
-        let mut tk = Tk::new();
-        let text = tk.string_var("x");
-        let number = tk.int_var(0);
-        let copied_text = text;
-        assert_eq!(text.get(&tk), "x");
-        assert_eq!(number.get(&tk), 0);
-        copied_text.set(&mut tk, "changed".into());
-        number.set(&mut tk, 42);
-        assert_eq!(text.get(&tk), "changed");
-        assert_eq!(number.get(&tk), 42);
-    }
-
-    #[test]
-    fn setting_a_var_marks_dirty() {
-        let mut tk = Tk::new();
-        let number = tk.int_var(0);
-        tk.dirty = false;
-        assert!(!tk.is_dirty());
-        number.set(&mut tk, 1);
-        assert!(tk.is_dirty());
-    }
-
-    #[test]
-    fn bindings_are_live_and_entries_write_back() {
-        let mut tk = Tk::new();
-        let root = tk.root();
-        let text = tk.string_var("initial");
-        let integer = tk.int_var(7);
-        let entry = Entry::new(&mut tk, root);
-        let label = Label::new(&mut tk, root, "");
-        tk.config(entry, Opt::TextVariable(text));
-        tk.config(label, Opt::TextVariableInt(integer));
-        assert_eq!(tk.entry_get(entry), "initial");
-        assert_eq!(tk.display_text(label), "7");
-        tk.entry_set(entry, "edited");
-        assert_eq!(text.get(&tk), "edited");
-        text.set(&mut tk, "external".into());
-        assert_eq!(tk.entry_get(entry), "external");
+    pub fn bool_var(&mut self, value: bool) -> Var<bool> {
+        self.make_var(value)
     }
 }
