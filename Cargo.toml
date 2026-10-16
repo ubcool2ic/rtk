@@ -1,0 +1,17 @@
+[package]
+name = "rtk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "A small tkinter-style GUI library with an arena-based Rust API"
+readme = "README.md"
+
+[dependencies]
+winit = "0.30"
+softbuffer = "0.4"
+tiny-skia = "0.11"
+cosmic-text = "0.12"
+
+[profile.dev]
+debug = 0
