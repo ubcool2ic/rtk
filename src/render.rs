@@ -10,9 +10,21 @@ use crate::tk::cursor_boundary;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk};
 
+/// Shaping-cache key: text, size bits, family, weight, italic.
+type TextKey = (String, u32, Option<String>, u16, bool);
+
+/// Upper bound on cached shaped strings; the cache is cleared when exceeded.
+const TEXT_CACHE_LIMIT: usize = 2048;
+/// Upper bound on cached text measurements.
+const MEASURE_CACHE_LIMIT: usize = 65_536;
+
 pub(crate) struct TextEngine {
     fonts: FontSystem,
     cache: SwashCache,
+    /// Shaped buffers reused across frames so unchanged text is not reshaped.
+    shaped: std::collections::HashMap<TextKey, Buffer>,
+    /// Measured sizes; much smaller than buffers, so it can hold many more entries.
+    measured: std::collections::HashMap<TextKey, Size>,
 }
 
 impl TextEngine {
@@ -20,7 +32,29 @@ impl TextEngine {
         Self {
             fonts: FontSystem::new(),
             cache: SwashCache::new(),
+            shaped: std::collections::HashMap::new(),
+            measured: std::collections::HashMap::new(),
         }
+    }
+
+    /// Returns a cached shaped buffer, shaping and caching it on a miss.
+    fn shaped(
+        &mut self,
+        text: &str,
+        size: f32,
+        family_name: Option<&str>,
+        weight: u16,
+        italic: bool,
+    ) -> Option<&Buffer> {
+        let key: TextKey = (text.to_owned(), size.to_bits(), family_name.map(str::to_owned), weight, italic);
+        if !self.shaped.contains_key(&key) {
+            let buffer = self.buffer(text, size, family_name, weight, italic)?;
+            if self.shaped.len() >= TEXT_CACHE_LIMIT {
+                self.shaped.clear();
+            }
+            self.shaped.insert(key.clone(), buffer);
+        }
+        self.shaped.get(&key)
     }
 
     fn has_fonts(&self) -> bool {
@@ -71,12 +105,21 @@ impl TextEngine {
         weight: u16,
         italic: bool,
     ) -> Size {
+        let key: TextKey = (text.to_owned(), size.to_bits(), family.map(str::to_owned), weight, italic);
+        if let Some(size) = self.measured.get(&key) {
+            return *size;
+        }
         let width = if let Some(buffer) = self.buffer(text, size, family, weight, italic) {
             buffer.layout_runs().map(|run| run.line_w).fold(0.0_f32, f32::max)
         } else {
             text.split('\n').map(|line| line.chars().count()).max().unwrap_or(0) as f32 * size * 0.6
         };
-        Size::new(width, text.split('\n').count() as f32 * size * 1.3)
+        let result = Size::new(width, text.split('\n').count() as f32 * size * 1.3);
+        if self.measured.len() >= MEASURE_CACHE_LIMIT {
+            self.measured.clear();
+        }
+        self.measured.insert(key, result);
+        result
     }
 
     pub fn measure(&mut self, text: &str, size: f32) -> Size {
@@ -97,24 +140,50 @@ impl TextEngine {
         opacity: f32,
     ) {
         let (size, color) = appearance;
-        let Some(buffer) = self.buffer(text, size, family, weight, italic) else { return };
+        if clip.width <= 0.0 || clip.height <= 0.0 {
+            return;
+        }
         let origin = (origin.0.round(), origin.1.round());
         let effective_alpha = (color.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
-        let draw_color = Color::rgba(color.r, color.g, color.b, effective_alpha);
-        buffer.draw(
-            &mut self.fonts,
-            &mut self.cache,
-            cosmic_text::Color::rgba(draw_color.r, draw_color.g, draw_color.b, draw_color.a),
-            |x, y, width, height, c| {
-                fill(
-                    pixmap,
-                    Rect::new(origin.0 + x as f32, origin.1 + y as f32, width as f32, height as f32),
-                    clip,
-                    Color::rgba(c.r(), c.g(), c.b(), c.a()),
-                );
-            },
-        );
+        let draw_color = cosmic_text::Color::rgba(color.r, color.g, color.b, effective_alpha);
+        let key: TextKey = (text.to_owned(), size.to_bits(), family.map(str::to_owned), weight, italic);
+        if self.shaped(text, size, family, weight, italic).is_none() {
+            return;
+        }
+        let Some(buffer) = self.shaped.get(&key) else { return };
+        // Integer clip bounds in device pixels.
+        let (width, height) = (pixmap.width() as i32, pixmap.height() as i32);
+        let x0 = (clip.x.floor() as i32).clamp(0, width);
+        let y0 = (clip.y.floor() as i32).clamp(0, height);
+        let x1 = ((clip.x + clip.width).ceil() as i32).clamp(0, width);
+        let y1 = ((clip.y + clip.height).ceil() as i32).clamp(0, height);
+        let data = pixmap.data_mut();
+        buffer.draw(&mut self.fonts, &mut self.cache, draw_color, |x, y, w, h, c| {
+            let left = origin.0 as i32 + x;
+            let top = origin.1 as i32 + y;
+            for py in top.max(y0)..(top + h as i32).min(y1) {
+                for px in left.max(x0)..(left + w as i32).min(x1) {
+                    blend_pixel(data, (py * width + px) as usize, c);
+                }
+            }
+        });
     }
+}
+
+/// Source-over blend of a straight-alpha colour onto a premultiplied RGBA8 pixel.
+fn blend_pixel(data: &mut [u8], index: usize, color: cosmic_text::Color) {
+    let alpha = u32::from(color.a());
+    if alpha == 0 {
+        return;
+    }
+    let Some(pixel) = data.get_mut(index * 4..index * 4 + 4) else { return };
+    let inverse = 255 - alpha;
+    let source = [color.r(), color.g(), color.b()];
+    for (channel, value) in pixel.iter_mut().take(3).zip(source) {
+        let premultiplied = u32::from(value) * alpha / 255;
+        *channel = (premultiplied + u32::from(*channel) * inverse / 255).min(255) as u8;
+    }
+    pixel[3] = (alpha + u32::from(pixel[3]) * inverse / 255).min(255) as u8;
 }
 
 fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
@@ -443,15 +512,14 @@ impl Tk {
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
                     let start = node.list_scroll;
                     let count = node.list_height;
-                    let items = node.list_items.clone();
+                    // Clone only the visible rows, not the whole list.
+                    let items: Vec<String> = node.list_items.iter().skip(start).take(count).cloned().collect();
                     let sel = node.list_selection;
                     let sel_bg = self.style_engine.tokens().palette.select_bg;
                     let sel_fg = self.style_engine.tokens().palette.select_fg;
                     for i in 0..count {
                         let item_idx = start + i;
-                        if item_idx >= items.len() {
-                            break;
-                        }
+                        let Some(item_text) = items.get(i) else { break };
                         let row_rect = Rect::new(
                             logical.x + 2.0,
                             logical.y + 2.0 + (i as f32) * line_h,
@@ -468,7 +536,7 @@ impl Tk {
                             (row_rect.y + (row_rect.height - resolved.font_size * 1.3) / 2.0) * scale,
                         );
                         self.text_engine.draw_styled(
-                            &mut pixmap, &items[item_idx], (resolved.font_size * scale, item_fg),
+                            &mut pixmap, item_text, (resolved.font_size * scale, item_fg),
                             resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                             origin, clip.intersection(row_rect.scaled(scale)), resolved.opacity,
                         );

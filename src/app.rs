@@ -23,6 +23,8 @@ struct App {
     error: Option<Box<dyn Error>>,
     last_frame: Instant,
     last_sheet_poll: Instant,
+    first_frame_done: bool,
+    last_draw: Instant,
 }
 
 impl Tk {
@@ -41,6 +43,8 @@ impl Tk {
             error: None,
             last_frame: now,
             last_sheet_poll: now,
+            first_frame_done: false,
+            last_draw: now,
         };
         event_loop.run_app(&mut app)?;
         match app.error {
@@ -79,23 +83,41 @@ impl App {
             self.tk.poll_stylesheet();
         }
 
+        // Cap redraws at ~60 Hz: many input events can arrive per frame.
+        let next_frame = self.last_draw + FRAME_INTERVAL;
         if self.tk.is_animating() {
-            let elapsed = now.duration_since(self.last_frame).as_millis() as u32;
+            let elapsed = now.duration_since(self.last_frame).as_millis().min(1000) as u32;
             if elapsed > 0 {
                 self.tk.sim_advance_time(elapsed);
                 self.last_frame = now;
             }
-            if let Some(window) = &self.window {
-                window.request_redraw();
+            if now >= next_frame {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                event_loop.set_control_flow(ControlFlow::WaitUntil(now + FRAME_INTERVAL));
+            } else {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
             }
-            event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(16)));
         } else if self.tk.dirty && !self.occluded {
-            if let Some(window) = &self.window {
-                window.request_redraw();
+            // Animations measure time from when they start, not from the last one.
+            self.last_frame = now;
+            if now >= next_frame {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                event_loop.set_control_flow(ControlFlow::Wait);
+            } else {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
             }
+        } else if self.tk.watched_stylesheet.is_some() {
+            self.last_frame = now;
+            // Only wake periodically when a stylesheet is being watched for hot reload.
             event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(500)));
         } else {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(500)));
+            self.last_frame = now;
+            // Truly idle: sleep until the OS delivers an event.
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
     }
 
@@ -121,12 +143,21 @@ impl App {
                 self.surface = Some(Surface::new(context, window)?);
             }
         }
+        self.last_draw = Instant::now();
+        let t_render = Instant::now();
         let pixmap = self.tk.render_to_pixmap(size.width, size.height)?;
+        let render_time = t_render.elapsed();
+        let t_present = Instant::now();
         let Some(surface) = &mut self.surface else { return Ok(()) };
         surface.resize(width, height)?;
         let mut buffer = surface.buffer_mut()?;
         for (pixel, rgba) in buffer.iter_mut().zip(pixmap.data().chunks_exact(4)) {
             let [r, g, b, a] = rgba else { continue };
+            if *a == 255 {
+                // Opaque (the common case): premultiplied equals straight colour.
+                *pixel = (u32::from(*r) << 16) | (u32::from(*g) << 8) | u32::from(*b);
+                continue;
+            }
             let alpha = u32::from(*a);
             let channel = |value: u8| {
                 if alpha == 0 {
@@ -138,6 +169,24 @@ impl App {
             *pixel = (channel(*r) << 16) | (channel(*g) << 8) | channel(*b);
         }
         buffer.present()?;
+        if std::env::var_os("RTK_STATS").is_some() {
+            eprintln!(
+                "rtk: frame render {:.2} ms, convert+present {:.2} ms",
+                render_time.as_secs_f64() * 1000.0,
+                t_present.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        if !self.first_frame_done {
+            self.first_frame_done = true;
+            // Opt-in diagnostics used by docs/PERFORMANCE.md.
+            if std::env::var_os("RTK_FIRST_FRAME").is_some() {
+                let ms = START.get().map_or(0.0, |start| start.elapsed().as_secs_f64() * 1000.0);
+                eprintln!("rtk: first frame presented {ms:.1} ms after Tk::new");
+            }
+            if std::env::var_os("RTK_EXIT_AFTER_FIRST_FRAME").is_some() {
+                self.tk.quit();
+            }
+        }
         Ok(())
     }
 }
@@ -265,6 +314,12 @@ impl ApplicationHandler for App {
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
 }
+
+/// Minimum time between presented frames (about 60 Hz).
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+
+/// Time of the first `Tk::new`, for the opt-in first-frame diagnostic.
+pub(crate) static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
 #[cfg(test)]
 mod tests {

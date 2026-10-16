@@ -74,6 +74,7 @@ impl Default for Tk {
 
 impl Tk {
     pub fn new() -> Self {
+        let _ = crate::app::START.get_or_init(std::time::Instant::now);
         let style_engine = StyleEngine::new(Tokens::light());
         Self {
             nodes: vec![WidgetSlot {
@@ -821,7 +822,8 @@ impl Tk {
                 Kind::Entry => Size::new(specified.unwrap_or(20.0 * char_width) + 12.0 + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h),
                 Kind::Listbox => {
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
-                    let max_w = node_snap.list_items.iter().map(|item| self.measure_with(item, &resolved).width).fold(0.0_f32, f32::max);
+                    // Like tkinter (width in characters), do not measure every row of huge lists.
+                    let max_w = node_snap.list_items.iter().take(256).map(|item| self.measure_with(item, &resolved).width).fold(0.0_f32, f32::max);
                     Size::new(specified.unwrap_or(max_w + 24.0).max(80.0) + pad_w, (node_snap.list_height as f32 * line_h).max(30.0) + pad_h)
                 }
                 Kind::Scrollbar => Size::new(16.0 + pad_w, 100.0 + pad_h),
