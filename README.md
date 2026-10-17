@@ -68,6 +68,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Timers (0.5)
+
+tkinter-style timers run inside `mainloop`. While timers are pending, the loop sleeps until the next deadline (`ControlFlow::WaitUntil`) instead of busy-waiting. This uses winit, so it behaves the same on Windows, Linux and macOS.
+
+```rust
+let id = tk.every(1000, move |tk| { /* runs every second */ });
+tk.after(3000, |tk| { /* runs once after 3 s */ });
+tk.after_cancel(id);            // returns false if already gone
+tk.pending_timers();
+tk.sim_advance_timers(250);     // headless tests: advance the virtual clock
+```
+
+Callbacks get `&mut Tk` and may schedule or cancel timers, including themselves. If the app stalls, `every` skips missed ticks instead of firing them all at once. See `examples/timers.rs`.
+
 ## Advanced styling (0.4)
 
 The basic options (`Opt::Bg`, `Opt::Fg`, `Opt::FontSize`, `set_theme`) still work and win

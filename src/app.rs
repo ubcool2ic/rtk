@@ -33,8 +33,10 @@ impl Tk {
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let now = Instant::now();
+        let mut tk = self;
+        tk.timers.real_clock = true;
         let mut app = App {
-            tk: self,
+            tk,
             surface: None,
             context: None,
             window: None,
@@ -76,8 +78,16 @@ impl App {
             return;
         }
 
-        // Hot reload check every 500ms
+        // Fire due timers (after/every) against the real clock.
         let now = Instant::now();
+        let start = *START.get_or_init(Instant::now);
+        let now_ms = now.duration_since(start).as_millis() as u64;
+        if self.tk.run_timers_until(now_ms) > 0 && self.tk.quit_requested {
+            event_loop.exit();
+            return;
+        }
+
+        // Hot reload check every 500ms
         if now.duration_since(self.last_sheet_poll) >= Duration::from_millis(500) {
             self.last_sheet_poll = now;
             self.tk.poll_stylesheet();
@@ -118,6 +128,16 @@ impl App {
             self.last_frame = now;
             // Truly idle: sleep until the OS delivers an event.
             event_loop.set_control_flow(ControlFlow::Wait);
+        }
+
+        // Sleep no later than the next timer deadline (no busy-waiting).
+        if let Some(due) = self.tk.next_timer_due_ms() {
+            let deadline = start + Duration::from_millis(due);
+            let wake = match event_loop.control_flow() {
+                ControlFlow::WaitUntil(t) => t.min(deadline),
+                _ => deadline,
+            };
+            event_loop.set_control_flow(ControlFlow::WaitUntil(wake));
         }
     }
 

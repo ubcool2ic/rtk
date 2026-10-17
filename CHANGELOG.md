@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+- Timer API: `Tk::after` (one-shot), `Tk::every` (repeating), `Tk::after_cancel`, `TimerId`, `pending_timers`, `sim_advance_timers`.
+- Event loop sleeps until the next timer deadline (no polling); timers can quit the app.
+- `examples/timers.rs`, `tests/timers.rs`, timer unit tests.
+
+
 ## 0.4.0
 
 ### Added

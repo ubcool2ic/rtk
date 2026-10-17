@@ -64,6 +64,7 @@ pub struct Tk {
     pub(crate) images: BTreeMap<ImageId, Pixmap>,
     pub(crate) next_image_id: u32,
     pub(crate) watched_stylesheet: Option<(PathBuf, SystemTime)>,
+    pub(crate) timers: crate::timer::Timers,
 }
 
 impl Default for Tk {
@@ -104,6 +105,7 @@ impl Tk {
             images: BTreeMap::new(),
             next_image_id: 1,
             watched_stylesheet: None,
+            timers: crate::timer::Timers::default(),
         }
     }
 
