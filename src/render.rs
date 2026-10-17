@@ -655,6 +655,60 @@ impl Tk {
                                             sub.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
                                         }
                                     }
+                                    CanvasItemKind::RoundRect { x0, y0, x1, y1, radius, fill: f, outline } => {
+                                        let r = Rect::new(x0.min(x1) * scale, y0.min(y1) * scale, (x1 - x0).abs() * scale, (y1 - y0).abs() * scale);
+                                        if let Some(path) = build_rounded_rect_path(r, radius * scale) {
+                                            let mut paint = Paint::default();
+                                            paint.anti_alias = true;
+                                            if let Some(c) = f {
+                                                paint.set_color_rgba8(c.r, c.g, c.b, c.a);
+                                                sub.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                                            }
+                                            if let Some((c, width)) = outline {
+                                                paint.set_color_rgba8(c.r, c.g, c.b, c.a);
+                                                let stroke = Stroke { width: width * scale, ..Stroke::default() };
+                                                sub.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                                            }
+                                        }
+                                    }
+                                    CanvasItemKind::Path { points, color, width, filled } => {
+                                        let mut pb = PathBuilder::new();
+                                        for (i, (x, y)) in points.iter().enumerate() {
+                                            if i == 0 { pb.move_to(x * scale, y * scale) } else { pb.line_to(x * scale, y * scale) }
+                                        }
+                                        if filled { pb.close(); }
+                                        if let Some(path) = pb.finish() {
+                                            let mut paint = Paint::default();
+                                            paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+                                            paint.anti_alias = true;
+                                            if filled {
+                                                sub.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                                            } else {
+                                                let stroke = Stroke { width: width * scale, line_cap: tiny_skia::LineCap::Round, line_join: tiny_skia::LineJoin::Round, ..Stroke::default() };
+                                                sub.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                                            }
+                                        }
+                                    }
+                                    CanvasItemKind::Ring { x0, y0, x1, y1, color, width } => {
+                                        if let Some(r) = tiny_skia::Rect::from_ltrb(x0.min(x1) * scale, y0.min(y1) * scale, x0.max(x1) * scale, y0.max(y1) * scale) {
+                                            if let Some(path) = PathBuilder::from_oval(r) {
+                                                let mut paint = Paint::default();
+                                                paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+                                                paint.anti_alias = true;
+                                                let stroke = Stroke { width: width * scale, ..Stroke::default() };
+                                                sub.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                                            }
+                                        }
+                                    }
+                                    CanvasItemKind::TextEx { x, y, text, color, size, weight } => {
+                                        self.text_engine.draw_styled(
+                                            &mut sub, &text, (size * scale, color),
+                                            resolved.font_family.as_deref(), weight, false,
+                                            (x * scale, y * scale),
+                                            Rect::new(0.0, 0.0, w as f32, h as f32),
+                                            resolved.opacity,
+                                        );
+                                    }
                                     CanvasItemKind::Text { x, y, text, color } => {
                                         self.text_engine.draw_styled(
                                             &mut sub, &text, (resolved.font_size * scale, color),

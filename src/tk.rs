@@ -1688,9 +1688,21 @@ impl Tk {
                 *x1 += dx;
                 *y1 += dy;
             }
-            CanvasItemKind::Text { x, y, .. } => {
+            CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => {
                 *x += dx;
                 *y += dy;
+            }
+            CanvasItemKind::RoundRect { x0, y0, x1, y1, .. } | CanvasItemKind::Ring { x0, y0, x1, y1, .. } => {
+                *x0 += dx;
+                *y0 += dy;
+                *x1 += dx;
+                *y1 += dy;
+            }
+            CanvasItemKind::Path { points, .. } => {
+                for p in points.iter_mut() {
+                    p.0 += dx;
+                    p.1 += dy;
+                }
             }
         }
         self.dirty = true;
@@ -1710,8 +1722,57 @@ impl Tk {
             CanvasItemKind::Rect { x0, y0, x1, y1, .. }
             | CanvasItemKind::Oval { x0, y0, x1, y1, .. }
             | CanvasItemKind::Line { x0, y0, x1, y1, .. } => Some([*x0, *y0, *x1, *y1]),
-            CanvasItemKind::Text { x, y, .. } => Some([*x, *y, *x, *y]),
+            CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => Some([*x, *y, *x, *y]),
+            CanvasItemKind::RoundRect { x0, y0, x1, y1, .. } | CanvasItemKind::Ring { x0, y0, x1, y1, .. } => Some([*x0, *y0, *x1, *y1]),
+            CanvasItemKind::Path { points, .. } => {
+                let (mut a, mut b, mut c, mut d) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for (x, y) in points { a = a.min(*x); b = b.min(*y); c = c.max(*x); d = d.max(*y); }
+                if points.is_empty() { None } else { Some([a, b, c, d]) }
+            }
         }
+    }
+
+    /// Filled rounded rectangle.
+    #[allow(clippy::too_many_arguments)]
+    pub fn canvas_create_round_rect(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, radius: f32, fill: Color) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::RoundRect { x0, y0, x1, y1, radius, fill: Some(fill), outline: None })
+    }
+
+    /// Rounded rectangle with optional fill and an outline of `width` logical pixels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn canvas_create_round_rect_outline(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, radius: f32, fill: Option<Color>, outline: Color, width: f32) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::RoundRect { x0, y0, x1, y1, radius, fill, outline: Some((outline, width)) })
+    }
+
+    /// Stroked polyline through `points` (e.g. sparklines, icon strokes). Needs at least two points.
+    pub fn canvas_create_polyline(&mut self, id: WidgetId, points: &[(f32, f32)], color: Color, width: f32) -> Option<CanvasItem> {
+        if points.len() < 2 { return None; }
+        self.canvas_add_item(id, CanvasItemKind::Path { points: points.to_vec(), color, width, filled: false })
+    }
+
+    /// Filled closed polygon. Needs at least three points.
+    pub fn canvas_create_polygon(&mut self, id: WidgetId, points: &[(f32, f32)], color: Color) -> Option<CanvasItem> {
+        if points.len() < 3 { return None; }
+        self.canvas_add_item(id, CanvasItemKind::Path { points: points.to_vec(), color, width: 0.0, filled: true })
+    }
+
+    /// Ellipse outline inside the box, stroked `width` logical pixels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn canvas_create_ring(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color, width: f32) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::Ring { x0, y0, x1, y1, color, width })
+    }
+
+    /// Text with its own pixel size and weight; `(x, y)` is the top-left.
+    #[allow(clippy::too_many_arguments)]
+    pub fn canvas_create_text_ex(&mut self, id: WidgetId, x: f32, y: f32, text: impl Into<String>, color: Color, size: f32, weight: u16) -> Option<CanvasItem> {
+        self.canvas_add_item(id, CanvasItemKind::TextEx { x, y, text: text.into(), color, size: size.max(1.0), weight: weight.clamp(100, 900) })
+    }
+
+    /// Measures text in logical pixels (width, height) for layout/centering on a Canvas.
+    pub fn text_size(&mut self, text: &str, size: f32, weight: u16) -> (f32, f32) {
+        let family = self.style_engine.tokens().font_family.clone();
+        let s = self.text_engine.measure_styled(text, size, family.as_deref(), weight.clamp(100, 900), false);
+        (s.width, s.height)
     }
 
     pub fn canvas_items(&self, id: WidgetId) -> usize {

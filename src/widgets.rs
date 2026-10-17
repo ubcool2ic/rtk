@@ -64,6 +64,14 @@ pub(crate) enum CanvasItemKind {
     Oval { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
     Line { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
     Text { x: f32, y: f32, text: String, color: Color },
+    /// Rounded rectangle; filled when `fill` is set, stroked when `outline` is set.
+    RoundRect { x0: f32, y0: f32, x1: f32, y1: f32, radius: f32, fill: Option<Color>, outline: Option<(Color, f32)> },
+    /// Open polyline (stroked) or closed polygon (filled).
+    Path { points: Vec<(f32, f32)>, color: Color, width: f32, filled: bool },
+    /// Stroked ellipse outline.
+    Ring { x0: f32, y0: f32, x1: f32, y1: f32, color: Color, width: f32 },
+    /// Text with explicit pixel size and weight (100-900).
+    TextEx { x: f32, y: f32, text: String, color: Color, size: f32, weight: u16 },
 }
 
 #[derive(Clone, Debug)]

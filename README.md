@@ -68,6 +68,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Canvas drawing (0.6)
+
+New Canvas items for dashboards, cards, icons and sparklines. All of them work with `canvas_move`, `canvas_coords` and `canvas_delete`.
+
+```rust
+tk.canvas_create_round_rect(c, x0, y0, x1, y1, 14.0, Color::rgb(255, 255, 255));
+tk.canvas_create_round_rect_outline(c, x0, y0, x1, y1, 14.0, None, Color::rgb(230, 230, 230), 1.0);
+tk.canvas_create_polyline(c, &[(0.0, 30.0), (10.0, 12.0), (20.0, 18.0)], accent, 2.0); // sparkline
+tk.canvas_create_polygon(c, &[(0.0, 0.0), (10.0, 0.0), (5.0, 8.0)], fill);             // icon shapes
+tk.canvas_create_ring(c, x0, y0, x1, y1, color, 2.0);
+tk.canvas_create_text_ex(c, x, y, "1.12", ink, 34.0, 700);                             // big bold value
+let (w, h) = tk.text_size("1.12", 34.0, 700);                                         // measure for centering
+```
+
 ## Timers (0.5)
 
 tkinter-style timers run inside `mainloop`. While timers are pending, the loop sleeps until the next deadline (`ControlFlow::WaitUntil`) instead of busy-waiting. This uses winit, so it behaves the same on Windows, Linux and macOS.

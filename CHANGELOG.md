@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+- Canvas: `canvas_create_round_rect`, `canvas_create_round_rect_outline`, `canvas_create_polyline`, `canvas_create_polygon`, `canvas_create_ring`, `canvas_create_text_ex` (size + weight), and `Tk::text_size` for measuring text.
+- `canvas_move` and `canvas_coords` support the new items. Added `tests/canvas_shapes.rs`.
+
+
 ## 0.5.0
 - Timer API: `Tk::after` (one-shot), `Tk::every` (repeating), `Tk::after_cancel`, `TimerId`, `pending_timers`, `sim_advance_timers`.
 - Event loop sleeps until the next timer deadline (no polling); timers can quit the app.
