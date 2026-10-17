@@ -68,6 +68,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Scrolling (0.7)
+
+Scrolling works like tkinter: give a Canvas a `scrollregion`, then link a `Scrollbar` to it.
+
+```rust
+let c = Canvas::new(&mut tk, root, 800.0, 600.0)?;    // visible viewport
+let sb = Scrollbar::new(&mut tk, root)?;
+tk.canvas_scrollregion(c, 800.0, 2400.0);            // content size
+tk.link_scrollbar(sb, c);                            // also works with a Listbox
+tk.yview(c);                                         // (first, last) visible fractions
+tk.yview_moveto(c, 0.5);
+tk.yview_scroll(c, 1, ScrollUnit::Pages);            // or ScrollUnit::Units (48 px)
+tk.xview(c); tk.xview_moveto(c, 0.0); tk.xview_scroll(c, 1, ScrollUnit::Units);
+tk.canvas_view(c);                                   // current offset in px
+```
+
+- **Mouse wheel:** 48 px per notch. Shift+wheel scrolls horizontally. Wheeling over a scrollbar scrolls its target.
+- **Touchpad:** uses exact pixel amounts (winit `PixelDelta`).
+- **Scrollbar:** drag the thumb, or click the track to move a page.
+- **Keyboard:** click a scrollable canvas to focus it (Tab also reaches it), then use PgUp/PgDn/Space, Home/End and the arrow keys.
+- **Item positions:** items use content coordinates. Canvas click/drag callbacks get content coordinates too, so hit-testing still works after scrolling.
+- **Limits:** there is no horizontal Scrollbar widget yet. Scroll horizontally with Shift+wheel or `xview_*`. Only a Canvas scrolls, not a Frame of widgets; put the scrollable content on a Canvas.
+
+See `examples/scrolling.rs`.
+
 ## Canvas drawing (0.6)
 
 New Canvas items for dashboards, cards, icons and sparklines. All of them work with `canvas_move`, `canvas_coords` and `canvas_delete`.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+- Scrollable Canvas: `canvas_scrollregion`, `canvas_view`, `yview`/`xview`, `yview_moveto`/`xview_moveto`, `yview_scroll`/`xview_scroll` with `ScrollUnit::{Units, Pages}`.
+- `link_scrollbar` accepts a Canvas. The scrollbar thumb, track clicks and dragging now share one model for Listbox and Canvas.
+- Wheel: Canvas scrolls 48 px per line, Shift+wheel scrolls horizontally, touchpad `PixelDelta` is exact, and wheeling over a scrollbar forwards to its target. New `sim_wheel_xy`.
+- Keyboard: new `Key::PageUp`/`Key::PageDown`. A focused scrollable Canvas handles PgUp/PgDn/Space/Home/End/arrows.
+- Canvas callbacks get content coordinates (scroll offset applied).
+- Added `examples/scrolling.rs` and `tests/scrolling.rs`.
+
+
 ## 0.6.0
 - Canvas: `canvas_create_round_rect`, `canvas_create_round_rect_outline`, `canvas_create_polyline`, `canvas_create_polygon`, `canvas_create_ring`, `canvas_create_text_ex` (size + weight), and `Tk::text_size` for measuring text.
 - `canvas_move` and `canvas_coords` support the new items. Added `tests/canvas_shapes.rs`.

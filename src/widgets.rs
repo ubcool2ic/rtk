@@ -369,6 +369,10 @@ pub(crate) struct WidgetNode {
     pub list_scroll: usize,
     // Scrollbar
     pub scroll_target: Option<WidgetId>,
+    /// Canvas scroll offset in logical px (x, y).
+    pub view: (f32, f32),
+    /// Canvas scrollable content size (width, height), like tkinter `scrollregion`.
+    pub scrollregion: Option<(f32, f32)>,
     // Radiobutton
     pub radio_var: Option<Var<i64>>,
     pub radio_value: i64,
@@ -426,6 +430,8 @@ impl WidgetNode {
             list_selection: None,
             list_scroll: 0,
             scroll_target: None,
+            view: (0.0, 0.0),
+            scrollregion: None,
             radio_var: None,
             radio_value: 0,
             canvas_size: (100.0, 100.0),
@@ -445,4 +451,32 @@ impl WidgetNode {
 pub(crate) struct WidgetSlot {
     pub gen: u32,
     pub node: Option<WidgetNode>,
+}
+
+impl CanvasItemKind {
+    /// Moves the item by (dx, dy) logical px.
+    pub(crate) fn translate(&mut self, dx: f32, dy: f32) {
+        match self {
+            CanvasItemKind::Rect { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Oval { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Line { x0, y0, x1, y1, .. }
+            | CanvasItemKind::RoundRect { x0, y0, x1, y1, .. }
+            | CanvasItemKind::Ring { x0, y0, x1, y1, .. } => {
+                *x0 += dx;
+                *y0 += dy;
+                *x1 += dx;
+                *y1 += dy;
+            }
+            CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => {
+                *x += dx;
+                *y += dy;
+            }
+            CanvasItemKind::Path { points, .. } => {
+                for p in points.iter_mut() {
+                    p.0 += dx;
+                    p.1 += dy;
+                }
+            }
+        }
+    }
 }

@@ -12,7 +12,7 @@ mod widgets;
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
 pub use timer::TimerId;
-pub use tk::{Key, Tk};
+pub use tk::{Key, ScrollUnit, Tk};
 pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Command, DragPhase,

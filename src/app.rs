@@ -266,11 +266,15 @@ impl ApplicationHandler for App {
                 self.tk.sim_mouse_move(f32::NEG_INFINITY, f32::NEG_INFINITY);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let dy = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => (pos.y / 20.0) as f32,
-                };
-                self.tk.sim_wheel(dy);
+                match delta {
+                    // Shift+wheel scrolls horizontally, like most toolkits.
+                    MouseScrollDelta::LineDelta(x, y) if self.modifiers.shift_key() && x == 0.0 => self.tk.sim_wheel_xy(y, 0.0, false),
+                    MouseScrollDelta::LineDelta(x, y) => self.tk.sim_wheel_xy(x, y, false),
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        let scale = f64::from(self.tk.scale_factor);
+                        self.tk.sim_wheel_xy((pos.x / scale) as f32, (pos.y / scale) as f32, true);
+                    }
+                }
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 if state == ElementState::Pressed {
@@ -290,6 +294,8 @@ impl ApplicationHandler for App {
                     WinitKey::Named(NamedKey::ArrowDown) => Some(Key::Down),
                     WinitKey::Named(NamedKey::Home) => Some(Key::Home),
                     WinitKey::Named(NamedKey::End) => Some(Key::End),
+                    WinitKey::Named(NamedKey::PageUp) => Some(Key::PageUp),
+                    WinitKey::Named(NamedKey::PageDown) => Some(Key::PageDown),
                     WinitKey::Named(NamedKey::Tab) => Some(if self.modifiers.shift_key() {
                         Key::ShiftTab
                     } else {

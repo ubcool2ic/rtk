@@ -543,18 +543,14 @@ impl Tk {
                     }
                 }
                 Kind::Scrollbar => {
-                    let target_info = node.scroll_target.and_then(|tid| self.node(tid)).map(|t| (t.list_items.len(), t.list_height, t.list_scroll));
+                    let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics(tid));
                     if let Some((total, visible, scroll)) = target_info {
-                        if total > visible {
+                        {
                             let track_h = logical.height;
-                            let thumb_h = (track_h * (visible as f32 / total as f32)).clamp(16.0, track_h);
+                            let thumb_h = (track_h * (visible / total)).clamp(16.0, track_h);
                             let avail = track_h - thumb_h;
                             let max_scroll = total - visible;
-                            let thumb_y = if max_scroll > 0 {
-                                avail * (scroll as f32 / max_scroll as f32)
-                            } else {
-                                0.0
-                            };
+                            let thumb_y = if max_scroll > 0.0 { avail * (scroll / max_scroll) } else { 0.0 };
                             let thumb_rect = Rect::new(logical.x + 1.0, logical.y + thumb_y, logical.width - 2.0, thumb_h).scaled(scale);
                             let thumb_color = resolved.fg;
                             fill(&mut pixmap, thumb_rect, clip, thumb_color);
@@ -608,8 +604,12 @@ impl Tk {
                             sub.fill(tiny_skia::Color::from_rgba8(draw_bg.r, draw_bg.g, draw_bg.b, draw_bg.a));
                             let mut items = node.canvas_items.clone();
                             items.sort_by_key(|slot| slot.seq);
+                            let (vx, vy) = node.view;
                             for slot in items {
-                                let Some(item) = slot.item else { continue };
+                                let Some(mut item) = slot.item else { continue };
+                                if vx != 0.0 || vy != 0.0 {
+                                    item.translate(-vx, -vy);
+                                }
                                 match item {
                                     CanvasItemKind::Rect { x0, y0, x1, y1, color } => {
                                         let min_x = x0.min(x1) * scale;

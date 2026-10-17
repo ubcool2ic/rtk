@@ -36,7 +36,19 @@ pub enum Key {
     ShiftTab,
     Enter,
     Space,
+    PageUp,
+    PageDown,
 }
+
+/// Scroll step for `yview_scroll`/`xview_scroll`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollUnit {
+    Units,
+    Pages,
+}
+
+/// Logical px a Canvas scrolls per wheel line / scroll unit.
+const WHEEL_LINE_PX: f32 = 48.0;
 
 pub struct Tk {
     nodes: Vec<WidgetSlot>,
@@ -59,6 +71,7 @@ pub struct Tk {
     drag_active: Option<WidgetId>,
     drag_start: (f32, f32),
     scrollbar_drag: Option<(WidgetId, f32, usize)>,
+    scrollbar_drag_start: f32,
     // Advanced styling layer
     pub(crate) style_engine: StyleEngine,
     pub(crate) images: BTreeMap<ImageId, Pixmap>,
@@ -101,6 +114,7 @@ impl Tk {
             drag_active: None,
             drag_start: (0.0, 0.0),
             scrollbar_drag: None,
+            scrollbar_drag_start: 0.0,
             style_engine,
             images: BTreeMap::new(),
             next_image_id: 1,
@@ -938,7 +952,7 @@ impl Tk {
 
     fn is_focusable(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| {
-            !node.disabled && node.visible && node.kind.focusable() && node.clip.width > 0.0 && node.clip.height > 0.0
+            !node.disabled && node.visible && (node.kind.focusable() || (node.kind == Kind::Canvas && node.scrollregion.is_some())) && node.clip.width > 0.0 && node.clip.height > 0.0
         })
     }
 
@@ -1023,37 +1037,22 @@ impl Tk {
 
         if let Some(canvas_id) = self.drag_active {
             if let Some(node) = self.node(canvas_id) {
-                let cx = x - node.rect.x;
-                let cy = y - node.rect.y;
+                let cx = x - node.rect.x + node.view.0;
+                let cy = y - node.rect.y + node.view.1;
                 self.dispatch_canvas_drag(canvas_id, cx, cy, DragPhase::Move);
             }
         }
 
-        if let Some((scrollbar_id, start_my, start_scroll)) = self.scrollbar_drag {
-            if let Some(node) = self.node(scrollbar_id) {
-                let target = node.scroll_target;
-                let bar_h = node.rect.height;
-                if let Some(target_id) = target {
-                    if let Some(target_node) = self.node(target_id) {
-                        let total = target_node.list_items.len();
-                        let visible_count = target_node.list_height.max(1);
-                        if total > visible_count && bar_h > 0.0 {
-                            let track_h = bar_h;
-                            let thumb_h = (track_h * (visible_count as f32 / total as f32)).clamp(16.0, track_h);
-                            let avail = track_h - thumb_h;
-                            let max_scroll = total - visible_count;
-                            let dy = y - start_my;
-                            let d_scroll = if avail > 0.0 {
-                                ((dy / avail) * max_scroll as f32).round() as i64
-                            } else {
-                                0
-                            };
-                            let new_scroll = (start_scroll as i64 + d_scroll).clamp(0, max_scroll as i64) as usize;
-                            if let Some(tn) = self.node_mut(target_id) {
-                                tn.list_scroll = new_scroll;
-                                self.dirty = true;
-                            }
-                        }
+        if let Some((scrollbar_id, start_my, _)) = self.scrollbar_drag {
+            let bar_h = self.node(scrollbar_id).map(|n| n.rect.height).unwrap_or(0.0);
+            if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
+                if let Some((total, visible, _)) = self.scroll_metrics(target_id) {
+                    let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                    let avail = bar_h - thumb_h;
+                    if avail > 0.0 {
+                        let start = self.scrollbar_drag_start;
+                        let pos = start + (y - start_my) / avail * (total - visible);
+                        self.set_scroll_pos(target_id, pos);
                     }
                 }
             }
@@ -1158,44 +1157,30 @@ impl Tk {
                     }
                 }
                 Kind::Scrollbar => {
-                    let target = node.scroll_target;
                     let ry = y - node.rect.y;
                     let bar_h = node.rect.height;
-                    if let Some(target_id) = target {
-                        if let Some(target_node) = self.node(target_id) {
-                            let total = target_node.list_items.len();
-                            let visible_count = target_node.list_height.max(1);
-                            if total > visible_count && bar_h > 0.0 {
-                                let track_h = bar_h;
-                                let thumb_h = (track_h * (visible_count as f32 / total as f32)).clamp(16.0, track_h);
-                                let avail = track_h - thumb_h;
-                                let max_scroll = total - visible_count;
-                                let thumb_y = if max_scroll > 0 {
-                                    avail * (target_node.list_scroll as f32 / max_scroll as f32)
-                                } else {
-                                    0.0
-                                };
-                                if ry < thumb_y {
-                                    let cur = target_node.list_scroll;
-                                    let new_scroll = cur.saturating_sub(visible_count);
-                                    if let Some(tn) = self.node_mut(target_id) {
-                                        tn.list_scroll = new_scroll;
-                                    }
-                                } else if ry > thumb_y + thumb_h {
-                                    let cur = target_node.list_scroll;
-                                    let new_scroll = (cur + visible_count).min(max_scroll);
-                                    if let Some(tn) = self.node_mut(target_id) {
-                                        tn.list_scroll = new_scroll;
-                                    }
-                                } else {
-                                    self.scrollbar_drag = Some((id, y, target_node.list_scroll));
-                                }
+                    if let Some(target_id) = node.scroll_target {
+                        if let Some((total, visible, pos)) = self.scroll_metrics(target_id) {
+                            let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                            let avail = bar_h - thumb_h;
+                            let max = total - visible;
+                            let thumb_y = if max > 0.0 { avail * (pos / max) } else { 0.0 };
+                            if ry < thumb_y {
+                                self.set_scroll_pos(target_id, pos - visible);
+                            } else if ry > thumb_y + thumb_h {
+                                self.set_scroll_pos(target_id, pos + visible);
+                            } else {
+                                self.scrollbar_drag = Some((id, y, 0));
+                                self.scrollbar_drag_start = pos;
                             }
                         }
                     }
                 }
                 Kind::Canvas => {
-                    let (local_x, local_y) = (x - node.rect.x, y - node.rect.y);
+                    let (local_x, local_y) = (x - node.rect.x + node.view.0, y - node.rect.y + node.view.1);
+                    if node.scrollregion.is_some() {
+                        self.focused = Some(id);
+                    }
                     self.drag_active = Some(id);
                     self.drag_start = (local_x, local_y);
                     self.dispatch_canvas_drag(id, local_x, local_y, DragPhase::Press);
@@ -1212,8 +1197,8 @@ impl Tk {
         let hit = self.hit_test(self.pointer.0, self.pointer.1);
         if let Some(canvas_id) = self.drag_active.take() {
             if let Some(node) = self.node(canvas_id) {
-                let cx = self.pointer.0 - node.rect.x;
-                let cy = self.pointer.1 - node.rect.y;
+                let cx = self.pointer.0 - node.rect.x + node.view.0;
+                let cy = self.pointer.1 - node.rect.y + node.view.1;
                 self.dispatch_canvas_drag(canvas_id, cx, cy, DragPhase::Release);
             }
         }
@@ -1237,28 +1222,157 @@ impl Tk {
         self.sim_mouse_up();
     }
 
+    /// Mouse wheel in lines (positive = up/away). Listboxes scroll by rows, canvases by 48 px per line.
     #[doc(hidden)]
     pub fn sim_wheel(&mut self, dy_lines: f32) {
+        self.sim_wheel_xy(0.0, dy_lines, false);
+    }
+
+    /// Wheel/touchpad scroll. `pixels` = true for precise touchpad deltas (logical px), else lines.
+    /// Positive values scroll up/left (content moves down/right), as winit reports them.
+    #[doc(hidden)]
+    pub fn sim_wheel_xy(&mut self, dx: f32, dy: f32, pixels: bool) {
         self.ensure_layout();
         let (x, y) = self.pointer;
-        let hit = self.hit_test(x, y);
-        if let Some(id) = hit {
-            let Some(node) = self.node(id) else { return };
-            if node.kind == Kind::Listbox {
-                let total = node.list_items.len();
-                let visible = node.list_height.max(1);
-                if total > visible {
-                    let max_scroll = total - visible;
-                    let d = (-dy_lines).round() as i64;
-                    let cur = node.list_scroll as i64;
-                    let new_scroll = (cur + d).clamp(0, max_scroll as i64) as usize;
-                    if let Some(node) = self.node_mut(id) {
-                        node.list_scroll = new_scroll;
-                    }
+        let Some(mut id) = self.hit_test(x, y) else { return };
+        // A Scrollbar forwards wheel events to its target.
+        if let Some(t) = self.node(id).filter(|n| n.kind == Kind::Scrollbar).and_then(|n| n.scroll_target) {
+            id = t;
+        }
+        let Some(node) = self.node(id) else { return };
+        match node.kind {
+            Kind::Listbox => {
+                let rows = if pixels { dy / 20.0 } else { dy };
+                if let Some((_, _, pos)) = self.scroll_metrics(id) {
+                    self.set_scroll_pos(id, pos - rows.round());
+                }
+            }
+            Kind::Canvas if node.scrollregion.is_some() => {
+                let k = if pixels { 1.0 } else { WHEEL_LINE_PX };
+                let (vx, vy) = node.view;
+                self.canvas_set_view(id, vx - dx * k, vy - dy * k);
+            }
+            _ => {}
+        }
+    }
+
+    /// Scroll state of a Listbox (rows) or scrollable Canvas (px, vertical): (total, visible, position).
+    /// None when nothing overflows.
+    pub(crate) fn scroll_metrics(&self, id: WidgetId) -> Option<(f32, f32, f32)> {
+        let n = self.node(id)?;
+        let (total, visible, pos) = match n.kind {
+            Kind::Listbox => (n.list_items.len() as f32, n.list_height.max(1) as f32, n.list_scroll as f32),
+            Kind::Canvas => (n.scrollregion?.1, n.rect.height, n.view.1),
+            _ => return None,
+        };
+        (total > visible && visible > 0.0).then_some((total, visible, pos))
+    }
+
+    pub(crate) fn set_scroll_pos(&mut self, id: WidgetId, pos: f32) {
+        let Some(kind) = self.node(id).map(|n| n.kind) else { return };
+        match kind {
+            Kind::Listbox => {
+                if let Some((total, visible, _)) = self.scroll_metrics(id) {
+                    let v = pos.round().clamp(0.0, total - visible) as usize;
+                    if let Some(n) = self.node_mut(id) { n.list_scroll = v; }
                     self.dirty = true;
                 }
             }
+            Kind::Canvas => {
+                let vx = self.node(id).map(|n| n.view.0).unwrap_or(0.0);
+                self.canvas_set_view(id, vx, pos);
+            }
+            _ => {}
         }
+    }
+
+    fn canvas_set_view(&mut self, id: WidgetId, x: f32, y: f32) {
+        let Some(n) = self.node(id) else { return };
+        let (rw, rh) = n.scrollregion.unwrap_or((n.rect.width, n.rect.height));
+        let nx = x.clamp(0.0, (rw - n.rect.width).max(0.0));
+        let ny = y.clamp(0.0, (rh - n.rect.height).max(0.0));
+        if (nx, ny) != n.view {
+            if let Some(n) = self.node_mut(id) { n.view = (nx, ny); }
+            self.dirty = true;
+        }
+    }
+
+    /// Sets the scrollable content size of a Canvas (tkinter `scrollregion=(0, 0, w, h)`).
+    /// The current view is clamped to the new region.
+    pub fn canvas_scrollregion(&mut self, id: WidgetId, width: f32, height: f32) -> bool {
+        self.ensure_layout();
+        let Some(n) = self.node_mut(id) else { return false };
+        if n.kind != Kind::Canvas { return false; }
+        n.scrollregion = Some((width.max(0.0), height.max(0.0)));
+        let v = n.view;
+        self.canvas_set_view(id, v.0, v.1);
+        self.dirty = true;
+        true
+    }
+
+    /// Current scroll offset of a Canvas in logical px (x, y).
+    pub fn canvas_view(&self, id: WidgetId) -> Option<(f32, f32)> {
+        self.node(id).filter(|n| n.kind == Kind::Canvas).map(|n| n.view)
+    }
+
+    fn view_fractions(&mut self, id: WidgetId, vertical: bool) -> (f32, f32) {
+        self.ensure_layout();
+        let Some(n) = self.node(id) else { return (0.0, 1.0) };
+        let (total, visible, pos) = match (n.kind, vertical) {
+            (Kind::Listbox, true) => (n.list_items.len() as f32, n.list_height.max(1) as f32, n.list_scroll as f32),
+            (Kind::Canvas, true) => (n.scrollregion.map_or(n.rect.height, |r| r.1), n.rect.height, n.view.1),
+            (Kind::Canvas, false) => (n.scrollregion.map_or(n.rect.width, |r| r.0), n.rect.width, n.view.0),
+            _ => return (0.0, 1.0),
+        };
+        if total <= 0.0 || visible >= total { return (0.0, 1.0); }
+        ((pos / total).clamp(0.0, 1.0), ((pos + visible) / total).clamp(0.0, 1.0))
+    }
+
+    /// tkinter `yview()`: visible fraction (first, last) of a Listbox or Canvas.
+    pub fn yview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, true) }
+    /// tkinter `xview()` for a Canvas.
+    pub fn xview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, false) }
+
+    /// tkinter `yview_moveto(fraction)`: scrolls so `fraction` of the content is above the view.
+    pub fn yview_moveto(&mut self, id: WidgetId, fraction: f32) {
+        self.ensure_layout();
+        let Some(n) = self.node(id) else { return };
+        match n.kind {
+            Kind::Listbox => { let t = n.list_items.len() as f32; self.set_scroll_pos(id, fraction * t); }
+            Kind::Canvas => { let (vx, t) = (n.view.0, n.scrollregion.map_or(0.0, |r| r.1)); self.canvas_set_view(id, vx, fraction * t); }
+            _ => {}
+        }
+    }
+
+    /// tkinter `xview_moveto(fraction)` for a Canvas.
+    pub fn xview_moveto(&mut self, id: WidgetId, fraction: f32) {
+        self.ensure_layout();
+        let Some(n) = self.node(id).filter(|n| n.kind == Kind::Canvas) else { return };
+        let (t, vy) = (n.scrollregion.map_or(0.0, |r| r.0), n.view.1);
+        self.canvas_set_view(id, fraction * t, vy);
+    }
+
+    /// tkinter `yview_scroll(n, "units"|"pages")`. Units are rows (Listbox) or 48 px (Canvas).
+    pub fn yview_scroll(&mut self, id: WidgetId, n: i32, what: ScrollUnit) {
+        self.ensure_layout();
+        let Some(node) = self.node(id) else { return };
+        let (unit, page) = match node.kind {
+            Kind::Listbox => (1.0, node.list_height.max(1) as f32),
+            Kind::Canvas => (WHEEL_LINE_PX, (node.rect.height - WHEEL_LINE_PX).max(WHEEL_LINE_PX)),
+            _ => return,
+        };
+        let step = n as f32 * if what == ScrollUnit::Pages { page } else { unit };
+        let pos = match node.kind { Kind::Listbox => node.list_scroll as f32, _ => node.view.1 };
+        if node.kind == Kind::Listbox { self.set_scroll_pos(id, pos + step) } else { let vx = node.view.0; self.canvas_set_view(id, vx, pos + step) }
+    }
+
+    /// tkinter `xview_scroll(n, "units"|"pages")` for a Canvas.
+    pub fn xview_scroll(&mut self, id: WidgetId, n: i32, what: ScrollUnit) {
+        self.ensure_layout();
+        let Some(node) = self.node(id).filter(|n| n.kind == Kind::Canvas) else { return };
+        let step = n as f32 * if what == ScrollUnit::Pages { (node.rect.width - WHEEL_LINE_PX).max(WHEEL_LINE_PX) } else { WHEEL_LINE_PX };
+        let (vx, vy) = node.view;
+        self.canvas_set_view(id, vx + step, vy);
     }
 
     fn dispatch_canvas_drag(&mut self, id: WidgetId, cx: f32, cy: f32, phase: DragPhase) {
@@ -1387,6 +1501,21 @@ impl Tk {
         let Some(id) = self.focused else { return };
         let Some(node) = self.node(id) else { return };
         if node.disabled {
+            return;
+        }
+        if node.kind == Kind::Canvas && node.scrollregion.is_some() {
+            let total = node.scrollregion.map_or(0.0, |r| r.1);
+            match key {
+                Key::PageUp => self.yview_scroll(id, -1, ScrollUnit::Pages),
+                Key::PageDown | Key::Space => self.yview_scroll(id, 1, ScrollUnit::Pages),
+                Key::Up => self.yview_scroll(id, -1, ScrollUnit::Units),
+                Key::Down => self.yview_scroll(id, 1, ScrollUnit::Units),
+                Key::Left => self.xview_scroll(id, -1, ScrollUnit::Units),
+                Key::Right => self.xview_scroll(id, 1, ScrollUnit::Units),
+                Key::Home => self.yview_moveto(id, 0.0),
+                Key::End => { let _ = total; self.yview_moveto(id, 1.0) }
+                _ => {}
+            }
             return;
         }
         match node.kind {
@@ -1585,9 +1714,10 @@ impl Tk {
     }
 
     // Scrollbar methods
+    /// Links a vertical Scrollbar to a Listbox or a scrollable Canvas (tkinter `yscrollcommand`/`command`).
     pub fn link_scrollbar(&mut self, scrollbar: WidgetId, listbox: WidgetId) -> bool {
         let is_sb = self.node(scrollbar).is_some_and(|n| n.kind == Kind::Scrollbar);
-        let is_lb = self.node(listbox).is_some_and(|n| n.kind == Kind::Listbox);
+        let is_lb = self.node(listbox).is_some_and(|n| matches!(n.kind, Kind::Listbox | Kind::Canvas));
         if !is_sb || !is_lb {
             return false;
         }
@@ -1679,32 +1809,7 @@ impl Tk {
             return false;
         }
         let Some(kind) = slot.item.as_mut() else { return false };
-        match kind {
-            CanvasItemKind::Rect { x0, y0, x1, y1, .. }
-            | CanvasItemKind::Oval { x0, y0, x1, y1, .. }
-            | CanvasItemKind::Line { x0, y0, x1, y1, .. } => {
-                *x0 += dx;
-                *y0 += dy;
-                *x1 += dx;
-                *y1 += dy;
-            }
-            CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => {
-                *x += dx;
-                *y += dy;
-            }
-            CanvasItemKind::RoundRect { x0, y0, x1, y1, .. } | CanvasItemKind::Ring { x0, y0, x1, y1, .. } => {
-                *x0 += dx;
-                *y0 += dy;
-                *x1 += dx;
-                *y1 += dy;
-            }
-            CanvasItemKind::Path { points, .. } => {
-                for p in points.iter_mut() {
-                    p.0 += dx;
-                    p.1 += dy;
-                }
-            }
-        }
+        kind.translate(dx, dy);
         self.dirty = true;
         true
     }
