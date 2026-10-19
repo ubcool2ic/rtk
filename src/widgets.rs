@@ -72,6 +72,8 @@ pub(crate) enum CanvasItemKind {
     Ring { x0: f32, y0: f32, x1: f32, y1: f32, color: Color, width: f32 },
     /// Text with explicit pixel size and weight (100-900).
     TextEx { x: f32, y: f32, text: String, color: Color, size: f32, weight: u16 },
+    /// Scaled raw RGBA image item.
+    Image { x: f32, y: f32, w: f32, h: f32, src_w: u32, src_h: u32, rgba: Vec<u8>, smooth: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +100,7 @@ pub enum Opt {
     StyleOverride(StyleSpec),
     Disabled(bool),
     Image(ImageId),
+    Monospace(bool),
 }
 
 pub struct Frame;
@@ -112,6 +115,9 @@ pub struct Radiobutton;
 pub struct Canvas;
 pub struct Spinbox;
 pub struct ProgressBar;
+pub struct Text;
+pub struct Combobox;
+pub struct Notebook;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -280,6 +286,49 @@ impl ProgressBar {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Text {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        width_chars: usize,
+        height_rows: usize,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Text, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.text_dimensions = (width_chars.max(1), height_rows.max(1));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Combobox {
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        values: Vec<String>,
+        var: Var<i64>,
+    ) -> Result<WidgetId, RtkError> {
+        if var.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Combobox, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.combo_values = values;
+            node.combo_var = Some(var);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Notebook {
+    pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
+        tk.add(Kind::Notebook, parent, String::new())
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -294,6 +343,9 @@ pub(crate) enum Kind {
     Canvas,
     Spinbox,
     ProgressBar,
+    Text,
+    Combobox,
+    Notebook,
 }
 
 impl Kind {
@@ -307,6 +359,8 @@ impl Kind {
                 | Self::Listbox
                 | Self::Radiobutton
                 | Self::Spinbox
+                | Self::Text
+                | Self::Combobox
         )
     }
 
@@ -383,6 +437,31 @@ pub(crate) struct WidgetNode {
     pub canvas_drag_running: bool,
     // ProgressBar
     pub progress_length: f32,
+    pub progress_f64: Option<Var<f64>>,
+    pub progress_indeterminate: bool,
+    pub progress_phase: f32,
+    // Text widget
+    pub text_dimensions: (usize, usize),
+    pub text_scroll_row: usize,
+    pub text_read_only: bool,
+    pub text_autoscroll: bool,
+    pub text_max_lines: Option<usize>,
+    // Listbox callback
+    pub list_select_cb: Option<Box<dyn FnMut(&mut Tk, Option<usize>)>>,
+    pub list_select_running: bool,
+    // Combobox
+    pub combo_values: Vec<String>,
+    pub combo_var: Option<Var<i64>>,
+    pub combo_open: bool,
+    // Notebook
+    pub notebook_pages: Vec<(WidgetId, String)>,
+    pub notebook_selected: usize,
+    pub notebook_changed_cb: Option<Box<dyn FnMut(&mut Tk, usize)>>,
+    pub notebook_changed_running: bool,
+    // Tooltip
+    pub tooltip: Option<String>,
+    // Monospace
+    pub monospace: bool,
     // Advanced styling layer fields
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
@@ -439,6 +518,25 @@ impl WidgetNode {
             canvas_drag: None,
             canvas_drag_running: false,
             progress_length: 100.0,
+            progress_f64: None,
+            progress_indeterminate: false,
+            progress_phase: 0.0,
+            text_dimensions: (40, 10),
+            text_scroll_row: 0,
+            text_read_only: false,
+            text_autoscroll: true,
+            text_max_lines: None,
+            list_select_cb: None,
+            list_select_running: false,
+            combo_values: Vec::new(),
+            combo_var: None,
+            combo_open: false,
+            notebook_pages: Vec::new(),
+            notebook_selected: 0,
+            notebook_changed_cb: None,
+            notebook_changed_running: false,
+            tooltip: None,
+            monospace: false,
             named_style: None,
             style_override: None,
             disabled: false,
@@ -468,6 +566,10 @@ impl CanvasItemKind {
                 *y1 += dy;
             }
             CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => {
+                *x += dx;
+                *y += dy;
+            }
+            CanvasItemKind::Image { x, y, .. } => {
                 *x += dx;
                 *y += dy;
             }

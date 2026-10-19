@@ -148,4 +148,8 @@ impl Tk {
     pub fn bool_var(&mut self, value: bool) -> Var<bool> {
         self.make_var(value)
     }
+
+    pub fn f64_var(&mut self, value: f64) -> Var<f64> {
+        self.make_var(value)
+    }
 }

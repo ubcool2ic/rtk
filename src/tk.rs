@@ -38,6 +38,7 @@ pub enum Key {
     Space,
     PageUp,
     PageDown,
+    Escape,
 }
 
 /// Scroll step for `yview_scroll`/`xview_scroll`.
@@ -65,7 +66,7 @@ pub struct Tk {
     pub(crate) pressed: Option<WidgetId>,
     pub(crate) paint_order: Vec<WidgetId>,
     viewport: (u32, u32),
-    pointer: (f32, f32),
+    pub(crate) pointer: (f32, f32),
     pub(crate) scale_factor: f32,
     pub(crate) theme: Theme,
     drag_active: Option<WidgetId>,
@@ -78,6 +79,9 @@ pub struct Tk {
     pub(crate) next_image_id: u32,
     pub(crate) watched_stylesheet: Option<(PathBuf, SystemTime)>,
     pub(crate) timers: crate::timer::Timers,
+    pub(crate) hover_timer_ms: u32,
+    pub(crate) tooltip_visible: bool,
+    pub(crate) open_combobox: Option<WidgetId>,
 }
 
 impl Default for Tk {
@@ -120,6 +124,9 @@ impl Tk {
             next_image_id: 1,
             watched_stylesheet: None,
             timers: crate::timer::Timers::default(),
+            hover_timer_ms: 0,
+            tooltip_visible: false,
+            open_combobox: None,
         }
     }
 
@@ -382,6 +389,10 @@ impl Tk {
             ovr.merge_into(&mut res);
         }
 
+        if node.monospace {
+            res.font_family = Some("monospace".into());
+        }
+
         // 5. State maps for the requested states
         let style_key = node.named_style.as_deref().unwrap_or(class_name);
         for check_state in [
@@ -416,6 +427,20 @@ impl Tk {
 
     /// Advances simulated animation time by `ms` milliseconds for transitions.
     pub fn sim_advance_time(&mut self, ms: u32) {
+        if self.hovered.is_some() {
+            self.hover_timer_ms = self.hover_timer_ms.saturating_add(ms);
+            if self.hover_timer_ms >= 500 && !self.tooltip_visible {
+                let has_tip = self.hovered
+                    .and_then(|id| self.node(id))
+                    .and_then(|n| n.tooltip.as_ref())
+                    .is_some();
+                if has_tip {
+                    self.tooltip_visible = true;
+                    self.dirty = true;
+                }
+            }
+        }
+
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
                 if let Some(trans) = &mut node.transition {
@@ -425,12 +450,18 @@ impl Tk {
                     }
                     self.dirty = true;
                 }
+                if node.kind == Kind::ProgressBar && node.progress_indeterminate && node.visible {
+                    node.progress_phase = (node.progress_phase + (ms as f32) / 1000.0) % 1.0;
+                    self.dirty = true;
+                }
             }
         }
     }
 
     pub fn is_animating(&self) -> bool {
-        self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| n.transition.is_some())
+        self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
+            n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
+        })
     }
 
     pub fn title(&mut self, title: impl Into<String>) {
@@ -461,7 +492,7 @@ impl Tk {
         parent: WidgetId,
         text: String,
     ) -> Result<WidgetId, RtkError> {
-        if !self.node(parent).is_some_and(|node| node.kind == Kind::Frame) {
+        if !self.node(parent).is_some_and(|node| matches!(node.kind, Kind::Frame | Kind::Notebook)) {
             return Err(RtkError::InvalidParent);
         }
         let mut node = WidgetNode::new(kind, Some(parent), text);
@@ -528,6 +559,9 @@ impl Tk {
             }
             if self.drag_active == Some(current) {
                 self.drag_active = None;
+            }
+            if self.open_combobox == Some(current) {
+                self.open_combobox = None;
             }
         }
         if id == self.root() {
@@ -615,6 +649,11 @@ impl Tk {
             Opt::Image(img_id) => {
                 if let Some(node) = self.node_mut(id) {
                     node.image = Some(img_id);
+                }
+            }
+            Opt::Monospace(mono) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.monospace = mono;
                 }
             }
         }
@@ -732,6 +771,9 @@ impl Tk {
 
     fn managed_children(&self, id: WidgetId) -> Vec<WidgetId> {
         self.node(id).map(|node| {
+            if node.kind == Kind::Notebook {
+                return Vec::new();
+            }
             node.children.iter().copied()
                 .filter(|child| self.node(*child).is_some_and(|n| n.manager.is_some()))
                 .collect()
@@ -854,6 +896,36 @@ impl Tk {
                     Size::new(specified.unwrap_or(m.width + 50.0).max(70.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
                 Kind::ProgressBar => Size::new(node_snap.progress_length + pad_w, 20.0 + pad_h),
+                Kind::Text => {
+                    let (cols, rows) = self.node(id).map(|n| n.text_dimensions).unwrap_or((40, 10));
+                    let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
+                    Size::new(
+                        specified.unwrap_or(cols as f32 * char_width + 16.0) + pad_w,
+                        (rows as f32 * line_h + 12.0) + pad_h,
+                    )
+                }
+                Kind::Combobox => {
+                    let cur_str = self.combobox_get(id).map(|(_, s)| s).unwrap_or_default();
+                    let m = self.measure_with(&cur_str, &resolved);
+                    Size::new(specified.unwrap_or(m.width + 48.0).max(80.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
+                }
+                Kind::Notebook => {
+                    let mut tab_w_sum = 0.0_f32;
+                    let mut max_w = 0.0_f32;
+                    let mut max_h = 0.0_f32;
+                    let pages = self.node(id).map(|nb| nb.notebook_pages.clone()).unwrap_or_default();
+                    {
+                        for (pid, title) in &pages {
+                            let tm = self.measure_with(title, &resolved);
+                            tab_w_sum += tm.width + 24.0;
+                            if let Some(pn) = self.node(*pid) {
+                                max_w = max_w.max(pn.requested.width);
+                                max_h = max_h.max(pn.requested.height);
+                            }
+                        }
+                    }
+                    Size::new(tab_w_sum.max(max_w) + pad_w, (32.0 + max_h) + pad_h)
+                }
                 _ => {
                     let text = self.widget_text(id).unwrap_or_default();
                     let measured = self.measure_with(&text, &resolved);
@@ -904,7 +976,20 @@ impl Tk {
             node.clip = clip;
             node.visible = true;
             let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
+            let node_kind = node.kind;
             self.paint_order.push(id);
+            let Some(node) = self.node(id) else { continue };
+            let _ = node_kind;
+
+            if node.kind == Kind::Notebook {
+                let sel = node.notebook_selected;
+                if let Some(&(page_id, _)) = node.notebook_pages.get(sel) {
+                    let page_area = Rect::new(rect.x, rect.y + 32.0, rect.width, (rect.height - 32.0).max(0.0));
+                    pending.push((page_id, page_area, page_area.within(clip)));
+                }
+                continue;
+            }
+
             let children = self.managed_children(id);
 
             let pack_children: Vec<_> = children.iter().copied()
@@ -986,7 +1071,7 @@ impl Tk {
     fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
         self.paint_order.iter().rev().copied().find(|id| {
             self.node(*id).is_some_and(|node| {
-                node.visible && (node.kind.focusable() || node.kind == Kind::Canvas || node.kind == Kind::Scrollbar) && node.clip.contains(x, y)
+                node.visible && (node.kind.focusable() || node.kind == Kind::Canvas || node.kind == Kind::Scrollbar || node.kind == Kind::Notebook) && node.clip.contains(x, y)
             })
         })
     }
@@ -1017,22 +1102,27 @@ impl Tk {
     #[doc(hidden)]
     pub fn sim_mouse_move(&mut self, x: f32, y: f32) {
         self.ensure_layout();
+        let moved = (self.pointer.0 - x).abs() > 2.0 || (self.pointer.1 - y).abs() > 2.0;
         self.pointer = (x, y);
         let hovered = self.hit_test(x, y);
         if self.hovered != hovered {
+            self.hover_timer_ms = 0;
+            self.tooltip_visible = false;
             let prev = self.hovered;
             self.hovered = hovered;
             self.dirty = true;
             if let Some(prev_id) = prev {
                 let mut prev_st = self.widget_state(prev_id);
-                prev_st.0 |= State::HOVER.bits(); // was hover
+                prev_st.0 |= State::HOVER.bits();
                 self.check_state_transition(prev_id, prev_st);
             }
             if let Some(new_id) = hovered {
                 let mut old_st = self.widget_state(new_id);
-                old_st.0 &= !State::HOVER.bits(); // was not hover
+                old_st.0 &= !State::HOVER.bits();
                 self.check_state_transition(new_id, old_st);
             }
+        } else if moved && !self.tooltip_visible {
+            self.hover_timer_ms = 0;
         }
 
         if let Some(canvas_id) = self.drag_active {
@@ -1068,7 +1158,38 @@ impl Tk {
     #[doc(hidden)]
     pub fn sim_mouse_down(&mut self) {
         self.ensure_layout();
+        self.tooltip_visible = false;
+        self.hover_timer_ms = 0;
         let (x, y) = self.pointer;
+
+        // Check if click is on open combobox dropdown
+        if let Some(combo_id) = self.open_combobox {
+            if let Some(cnode) = self.node(combo_id) {
+                let item_h = (cnode.style.font_size * 1.3 + 8.0).max(20.0);
+                let drop_h = (cnode.combo_values.len() as f32 * item_h).clamp(item_h, 240.0);
+                let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
+                if drop_rect.contains(x, y) {
+                    let idx = ((y - drop_rect.y) / item_h).floor() as usize;
+                    if idx < cnode.combo_values.len() {
+                        if let Some(var) = cnode.combo_var {
+                            var.set(self, idx as i64);
+                        }
+                    }
+                    if let Some(cn) = self.node_mut(combo_id) {
+                        cn.combo_open = false;
+                    }
+                    self.open_combobox = None;
+                    self.dirty = true;
+                    return;
+                }
+            }
+            if let Some(cn) = self.node_mut(combo_id) {
+                cn.combo_open = false;
+            }
+            self.open_combobox = None;
+            self.dirty = true;
+        }
+
         let hit = self.hit_test(x, y);
         let is_disabled = hit.and_then(|id| self.node(id)).map(|n| n.disabled).unwrap_or(false);
 
@@ -1185,6 +1306,38 @@ impl Tk {
                     self.drag_start = (local_x, local_y);
                     self.dispatch_canvas_drag(id, local_x, local_y, DragPhase::Press);
                 }
+                Kind::Text => {
+                    let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
+                    let row = node.text_scroll_row + ((y - node.rect.y - 4.0) / line_h).max(0.0) as usize;
+                    let lines: Vec<&str> = node.text.split('\n').collect();
+                    let target_line = row.min(lines.len().saturating_sub(1));
+                    let byte_offset = lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>();
+                    if let Some(node) = self.node_mut(id) {
+                        node.cursor = byte_offset.min(node.text.len());
+                    }
+                }
+                Kind::Combobox => {
+                    let open = !node.combo_open;
+                    if let Some(cn) = self.node_mut(id) {
+                        cn.combo_open = open;
+                    }
+                    self.open_combobox = if open { Some(id) } else { None };
+                }
+                Kind::Notebook => {
+                    if y < node.rect.y + 32.0 {
+                        let mut cur_x = node.rect.x;
+                        let pages = node.notebook_pages.clone();
+                        for (idx, (_, title)) in pages.iter().enumerate() {
+                            let m = self.measure(title, 14.0);
+                            let tab_w = m.width + 24.0;
+                            if x >= cur_x && x < cur_x + tab_w {
+                                self.notebook_select(id, idx);
+                                break;
+                            }
+                            cur_x += tab_w;
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1252,6 +1405,22 @@ impl Tk {
                 let (vx, vy) = node.view;
                 self.canvas_set_view(id, vx - dx * k, vy - dy * k);
             }
+            Kind::Text => {
+                let lines = if pixels { dy / 16.0 } else { dy };
+                if let Some((_, _, pos)) = self.scroll_metrics(id) {
+                    self.set_scroll_pos(id, pos - lines.round());
+                }
+            }
+            Kind::Combobox if !node.combo_open => {
+                let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
+                let max_idx = node.combo_values.len().saturating_sub(1) as i64;
+                let step = if dy > 0.0 { -1 } else { 1 };
+                let new_val = (old + step).clamp(0, max_idx);
+                if let Some(var) = node.combo_var {
+                    var.set(self, new_val);
+                }
+                self.dirty = true;
+            }
             _ => {}
         }
     }
@@ -1263,6 +1432,7 @@ impl Tk {
         let (total, visible, pos) = match n.kind {
             Kind::Listbox => (n.list_items.len() as f32, n.list_height.max(1) as f32, n.list_scroll as f32),
             Kind::Canvas => (n.scrollregion?.1, n.rect.height, n.view.1),
+            Kind::Text => (n.text.split('\n').count() as f32, n.text_dimensions.1.max(1) as f32, n.text_scroll_row as f32),
             _ => return None,
         };
         (total > visible && visible > 0.0).then_some((total, visible, pos))
@@ -1281,6 +1451,13 @@ impl Tk {
             Kind::Canvas => {
                 let vx = self.node(id).map(|n| n.view.0).unwrap_or(0.0);
                 self.canvas_set_view(id, vx, pos);
+            }
+            Kind::Text => {
+                if let Some((total, visible, _)) = self.scroll_metrics(id) {
+                    let v = pos.round().clamp(0.0, total - visible) as usize;
+                    if let Some(n) = self.node_mut(id) { n.text_scroll_row = v; }
+                    self.dirty = true;
+                }
             }
             _ => {}
         }
@@ -1494,6 +1671,15 @@ impl Tk {
     #[doc(hidden)]
     pub fn sim_key(&mut self, key: Key) {
         self.ensure_layout();
+        if key == Key::Escape {
+            if let Some(combo_id) = self.open_combobox.take() {
+                if let Some(node) = self.node_mut(combo_id) {
+                    node.combo_open = false;
+                }
+                self.dirty = true;
+                return;
+            }
+        }
         if matches!(key, Key::Tab | Key::ShiftTab) {
             self.traverse_focus(key == Key::ShiftTab);
             return;
@@ -1525,6 +1711,22 @@ impl Tk {
                 } else {
                     self.edit_entry(id, Some(key), "");
                 }
+            }
+            Kind::Text => {
+                if key == Key::Space {
+                    self.sim_text(" ");
+                } else {
+                    self.edit_text(id, Some(key), "");
+                }
+            }
+            Kind::Combobox if matches!(key, Key::Up | Key::Down) => {
+                let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
+                let max_idx = node.combo_values.len().saturating_sub(1) as i64;
+                let new_val = if key == Key::Up { old.saturating_sub(1) } else { (old + 1).min(max_idx) };
+                if let Some(var) = node.combo_var {
+                    var.set(self, new_val);
+                }
+                self.dirty = true;
             }
             Kind::Button | Kind::Checkbutton | Kind::Radiobutton if matches!(key, Key::Enter | Key::Space) => {
                 self.activate(id);
@@ -1575,6 +1777,8 @@ impl Tk {
         if let Some(id) = self.focused {
             if self.node(id).is_some_and(|node| node.kind == Kind::Entry && !node.disabled) {
                 self.edit_entry(id, None, text);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::Text && !node.disabled && !node.text_read_only) {
+                self.edit_text(id, None, text);
             }
         }
     }
@@ -1616,6 +1820,104 @@ impl Tk {
             self.write_entry(id, new_text);
         } else if let Some(node) = self.node_mut(id) {
             node.cursor = cursor;
+        }
+        self.dirty = true;
+    }
+
+    fn edit_text(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
+        let Some(node) = self.node(id) else { return };
+        if node.kind != Kind::Text { return; }
+        let read_only = node.text_read_only;
+        let mut text = node.text.clone();
+        let mut cursor = node.cursor.min(text.len());
+        let vis_rows = node.text_dimensions.1;
+
+        match key {
+            Some(Key::Left) => {
+                if cursor > 0 {
+                    let mut prev = 0;
+                    for (i, _) in text.char_indices() {
+                        if i >= cursor { break; }
+                        prev = i;
+                    }
+                    cursor = prev;
+                }
+            }
+            Some(Key::Right) => {
+                if cursor < text.len() {
+                    cursor = text[cursor..].char_indices().nth(1).map(|(i, _)| cursor + i).unwrap_or(text.len());
+                }
+            }
+            Some(Key::Home) => {
+                let start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+                cursor = start;
+            }
+            Some(Key::End) => {
+                let end = text[cursor..].find('\n').map_or(text.len(), |i| cursor + i);
+                cursor = end;
+            }
+            Some(Key::Up) => {
+                let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+                let col = text[line_start..cursor].chars().count();
+                if line_start > 0 {
+                    let prev_start = text[..line_start - 1].rfind('\n').map_or(0, |i| i + 1);
+                    let prev_line = &text[prev_start..line_start - 1];
+                    let mut new_c = prev_start;
+                    for (i, _) in prev_line.chars().enumerate() {
+                        if i >= col { break; }
+                        new_c += prev_line[new_c - prev_start..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                    }
+                    cursor = new_c;
+                }
+            }
+            Some(Key::Down) => {
+                let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+                let col = text[line_start..cursor].chars().count();
+                let next_nl = text[cursor..].find('\n').map(|i| cursor + i);
+                if let Some(nl) = next_nl {
+                    let next_start = nl + 1;
+                    let next_end = text[next_start..].find('\n').map_or(text.len(), |i| next_start + i);
+                    let next_line = &text[next_start..next_end];
+                    let mut new_c = next_start;
+                    for (i, _) in next_line.chars().enumerate() {
+                        if i >= col { break; }
+                        new_c += next_line[new_c - next_start..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                    }
+                    cursor = new_c;
+                }
+            }
+            Some(Key::Enter) if !read_only => {
+                text.insert(cursor, '\n');
+                cursor += 1;
+            }
+            Some(Key::Backspace) if !read_only && cursor > 0 => {
+                let mut prev = 0;
+                for (i, _) in text.char_indices() {
+                    if i >= cursor { break; }
+                    prev = i;
+                }
+                text.remove(prev);
+                cursor = prev;
+            }
+            Some(Key::Delete) if !read_only && cursor < text.len() => {
+                text.remove(cursor);
+            }
+            None if !read_only && !inserted.is_empty() => {
+                text.insert_str(cursor, inserted);
+                cursor += inserted.len();
+            }
+            _ => {}
+        }
+
+        let cur_line = text[..cursor].matches('\n').count();
+        if let Some(node) = self.node_mut(id) {
+            node.text = text;
+            node.cursor = cursor;
+            if cur_line < node.text_scroll_row {
+                node.text_scroll_row = cur_line;
+            } else if cur_line >= node.text_scroll_row + vis_rows {
+                node.text_scroll_row = cur_line + 1 - vis_rows;
+            }
         }
         self.dirty = true;
     }
@@ -1694,6 +1996,7 @@ impl Tk {
         if node.kind != Kind::Listbox {
             return false;
         }
+        let old_sel = node.list_selection;
         if let Some(idx) = index {
             if idx >= node.list_items.len() {
                 return false;
@@ -1708,16 +2011,43 @@ impl Tk {
         } else {
             node.list_selection = None;
         }
+        let new_sel = node.list_selection;
         self.dirty = true;
+        if new_sel != old_sel {
+            self.dispatch_list_select(id, new_sel);
+        }
         self.run_command(id);
         true
     }
 
+    pub fn listbox_bind_select(&mut self, id: WidgetId, cb: impl FnMut(&mut Tk, Option<usize>) + 'static) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Listbox {
+            return false;
+        }
+        node.list_select_cb = Some(Box::new(cb));
+        true
+    }
+
+    fn dispatch_list_select(&mut self, id: WidgetId, sel: Option<usize>) {
+        let Some(node) = self.node_mut(id) else { return };
+        if node.list_select_running { return; }
+        let Some(mut cb) = node.list_select_cb.take() else { return };
+        node.list_select_running = true;
+        cb(self, sel);
+        if let Some(node) = self.node_mut(id) {
+            node.list_select_running = false;
+            if node.list_select_cb.is_none() {
+                node.list_select_cb = Some(cb);
+            }
+        }
+    }
+
     // Scrollbar methods
-    /// Links a vertical Scrollbar to a Listbox or a scrollable Canvas (tkinter `yscrollcommand`/`command`).
+    /// Links a vertical Scrollbar to a Listbox, scrollable Canvas, or Text widget.
     pub fn link_scrollbar(&mut self, scrollbar: WidgetId, listbox: WidgetId) -> bool {
         let is_sb = self.node(scrollbar).is_some_and(|n| n.kind == Kind::Scrollbar);
-        let is_lb = self.node(listbox).is_some_and(|n| matches!(n.kind, Kind::Listbox | Kind::Canvas));
+        let is_lb = self.node(listbox).is_some_and(|n| matches!(n.kind, Kind::Listbox | Kind::Canvas | Kind::Text));
         if !is_sb || !is_lb {
             return false;
         }
@@ -1829,6 +2159,7 @@ impl Tk {
             | CanvasItemKind::Line { x0, y0, x1, y1, .. } => Some([*x0, *y0, *x1, *y1]),
             CanvasItemKind::Text { x, y, .. } | CanvasItemKind::TextEx { x, y, .. } => Some([*x, *y, *x, *y]),
             CanvasItemKind::RoundRect { x0, y0, x1, y1, .. } | CanvasItemKind::Ring { x0, y0, x1, y1, .. } => Some([*x0, *y0, *x1, *y1]),
+            CanvasItemKind::Image { x, y, w, h, .. } => Some([*x, *y, *x + *w, *y + *h]),
             CanvasItemKind::Path { points, .. } => {
                 let (mut a, mut b, mut c, mut d) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
                 for (x, y) in points { a = a.min(*x); b = b.min(*y); c = c.max(*x); d = d.max(*y); }
@@ -1895,6 +2226,268 @@ impl Tk {
         node.canvas_drag = Some(Box::new(cb));
         true
     }
+
+    /// Creates a raw RGBA image item scaled to `w` × `h` logical pixels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn canvas_create_image_rgba(&mut self, id: WidgetId, x: f32, y: f32, w: f32, h: f32, src_w: u32, src_h: u32, rgba: &[u8], smooth: bool) -> Option<CanvasItem> {
+        if src_w == 0 || src_h == 0 || rgba.len() != (src_w as usize) * (src_h as usize) * 4 {
+            return None;
+        }
+        self.canvas_add_item(id, CanvasItemKind::Image { x, y, w, h, src_w, src_h, rgba: rgba.to_vec(), smooth })
+    }
+
+    /// Updates the RGBA pixel data for a canvas image item.
+    pub fn canvas_update_image(&mut self, id: WidgetId, item: CanvasItem, src_w: u32, src_h: u32, rgba: &[u8]) -> bool {
+        if src_w == 0 || src_h == 0 || rgba.len() != (src_w as usize) * (src_h as usize) * 4 {
+            return false;
+        }
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Canvas { return false; }
+        let Some(slot) = node.canvas_items.get_mut(item.index as usize) else { return false };
+        if slot.gen != item.gen { return false; }
+        let Some(kind) = slot.item.as_mut() else { return false };
+        if let CanvasItemKind::Image { src_w: sw, src_h: sh, rgba: buf, .. } = kind {
+            *sw = src_w;
+            *sh = src_h;
+            *buf = rgba.to_vec();
+            self.dirty = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Text widget API
+    // -----------------------------------------------------------------------
+
+    pub fn text_get(&self, id: WidgetId) -> Option<String> {
+        self.node(id).filter(|n| n.kind == Kind::Text).map(|n| n.text.clone())
+    }
+
+    pub fn text_set(&mut self, id: WidgetId, text: impl Into<String>) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Text { return false; }
+        let mut s = text.into();
+        if let Some(max) = node.text_max_lines {
+            trim_lines(&mut s, max);
+        }
+        node.text = s;
+        node.cursor = node.text.len();
+        self.dirty = true;
+        true
+    }
+
+    pub fn text_insert_end(&mut self, id: WidgetId, text: &str) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Text { return false; }
+        node.text.push_str(text);
+        if let Some(max) = node.text_max_lines {
+            trim_lines(&mut node.text, max);
+        }
+        if node.text_autoscroll {
+            let total = node.text.split('\n').count();
+            let vis = node.text_dimensions.1;
+            node.text_scroll_row = total.saturating_sub(vis);
+        }
+        node.cursor = node.text.len();
+        self.dirty = true;
+        true
+    }
+
+    pub fn text_clear(&mut self, id: WidgetId) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Text { return false; }
+        node.text.clear();
+        node.cursor = 0;
+        node.text_scroll_row = 0;
+        self.dirty = true;
+        true
+    }
+
+    pub fn text_set_readonly(&mut self, id: WidgetId, read_only: bool) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Text { return false; }
+        node.text_read_only = read_only;
+        true
+    }
+
+    pub fn text_line_count(&self, id: WidgetId) -> Option<usize> {
+        self.node(id).filter(|n| n.kind == Kind::Text).map(|n| n.text.split('\n').count())
+    }
+
+    pub fn text_set_max_lines(&mut self, id: WidgetId, max_lines: usize) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Text { return false; }
+        node.text_max_lines = Some(max_lines);
+        if max_lines > 0 {
+            trim_lines(&mut node.text, max_lines);
+            node.cursor = node.cursor.min(node.text.len());
+        }
+        self.dirty = true;
+        true
+    }
+
+    // -----------------------------------------------------------------------
+    // Combobox API
+    // -----------------------------------------------------------------------
+
+    pub fn combobox_set_values(&mut self, id: WidgetId, values: Vec<String>) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Combobox { return false; }
+        node.combo_values = values;
+        self.dirty = true;
+        true
+    }
+
+    pub fn combobox_get(&self, id: WidgetId) -> Option<(i64, String)> {
+        let node = self.node(id)?;
+        if node.kind != Kind::Combobox { return None; }
+        let idx = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
+        let s = node.combo_values.get(idx as usize).cloned().unwrap_or_default();
+        Some((idx, s))
+    }
+
+    // -----------------------------------------------------------------------
+    // Notebook and Geometry show/hide API
+    // -----------------------------------------------------------------------
+
+    pub fn pack_forget(&mut self, id: WidgetId) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.manager.is_some() {
+            node.manager = None;
+            node.visible = false;
+            self.dirty = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn grid_forget(&mut self, id: WidgetId) -> bool {
+        self.pack_forget(id)
+    }
+
+    pub fn place_forget(&mut self, id: WidgetId) -> bool {
+        self.pack_forget(id)
+    }
+
+    pub fn is_mapped(&mut self, id: WidgetId) -> bool {
+        self.ensure_layout();
+        self.node(id).is_some_and(|n| n.visible)
+    }
+
+    pub fn notebook_add(&mut self, nb: WidgetId, page: WidgetId, title: impl Into<String>) -> bool {
+        let is_nb = self.node(nb).is_some_and(|n| n.kind == Kind::Notebook);
+        let is_page = self.node(page).is_some_and(|n| n.kind == Kind::Frame && n.parent == Some(nb));
+        if !is_nb || !is_page { return false; }
+        let title = title.into();
+        if let Some(nb_node) = self.node_mut(nb) {
+            nb_node.notebook_pages.push((page, title));
+            if nb_node.notebook_pages.len() == 1 {
+                nb_node.notebook_selected = 0;
+            }
+        }
+        self.dirty = true;
+        true
+    }
+
+    pub fn notebook_select(&mut self, nb: WidgetId, index: usize) -> bool {
+        let Some(nb_node) = self.node(nb) else { return false };
+        if nb_node.kind != Kind::Notebook || index >= nb_node.notebook_pages.len() {
+            return false;
+        }
+        let old = nb_node.notebook_selected;
+        if let Some(n) = self.node_mut(nb) {
+            n.notebook_selected = index;
+        }
+        self.dirty = true;
+        if old != index {
+            self.dispatch_notebook_changed(nb, index);
+        }
+        true
+    }
+
+    pub fn notebook_selected(&self, nb: WidgetId) -> Option<usize> {
+        self.node(nb).filter(|n| n.kind == Kind::Notebook).map(|n| n.notebook_selected)
+    }
+
+    pub fn notebook_bind_changed(&mut self, nb: WidgetId, cb: impl FnMut(&mut Tk, usize) + 'static) -> bool {
+        let Some(node) = self.node_mut(nb) else { return false };
+        if node.kind != Kind::Notebook { return false; }
+        node.notebook_changed_cb = Some(Box::new(cb));
+        true
+    }
+
+    fn dispatch_notebook_changed(&mut self, nb: WidgetId, index: usize) {
+        let Some(node) = self.node_mut(nb) else { return };
+        if node.notebook_changed_running { return; }
+        let Some(mut cb) = node.notebook_changed_cb.take() else { return };
+        node.notebook_changed_running = true;
+        cb(self, index);
+        if let Some(node) = self.node_mut(nb) {
+            node.notebook_changed_running = false;
+            if node.notebook_changed_cb.is_none() {
+                node.notebook_changed_cb = Some(cb);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Progressbar var & indeterminate mode
+    // -----------------------------------------------------------------------
+
+    pub fn progress_bind(&mut self, id: WidgetId, var: crate::Var<f64>) -> bool {
+        if var.get(self).is_none() { return false; }
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::ProgressBar { return false; }
+        node.progress_f64 = Some(var);
+        self.dirty = true;
+        true
+    }
+
+    pub fn progress_set_indeterminate(&mut self, id: WidgetId, indeterminate: bool) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::ProgressBar { return false; }
+        node.progress_indeterminate = indeterminate;
+        self.dirty = true;
+        true
+    }
+
+    // -----------------------------------------------------------------------
+    // Tooltip API
+    // -----------------------------------------------------------------------
+
+    pub fn tooltip(&mut self, id: WidgetId, text: impl Into<String>) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        node.tooltip = Some(text.into());
+        true
+    }
+
+    pub fn tooltip_remove(&mut self, id: WidgetId) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        node.tooltip = None;
+        if self.hovered == Some(id) {
+            self.tooltip_visible = false;
+        }
+        true
+    }
+
+    pub fn active_tooltip(&self) -> Option<String> {
+        if self.tooltip_visible {
+            self.hovered.and_then(|id| self.node(id)).and_then(|n| n.tooltip.clone())
+        } else {
+            None
+        }
+    }
+}
+
+fn trim_lines(text: &mut String, max: usize) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    if lines.len() > max {
+        let drop_count = lines.len() - max;
+        *text = lines[drop_count..].join("\n");
+    }
 }
 
 pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
@@ -1911,6 +2504,9 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Canvas => "TCanvas",
         Kind::Spinbox => "TSpinbox",
         Kind::ProgressBar => "TProgressbar",
+        Kind::Text => "TText",
+        Kind::Combobox => "TCombobox",
+        Kind::Notebook => "TNotebook",
     }
 }
 

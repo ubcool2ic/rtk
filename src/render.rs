@@ -2,13 +2,13 @@ use std::error::Error;
 use std::path::Path;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight, Wrap};
-use tiny_skia::{Color as SkColor, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, SpreadMode, Stroke, Transform};
+use tiny_skia::{Color as SkColor, FilterQuality, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Point, SpreadMode, Stroke, Transform};
 
 use crate::layout::{Rect, Size};
 use crate::style::{build_rounded_rect_path, ResolvedStyle, State};
 use crate::tk::cursor_boundary;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
-use crate::{Color, RtkError, Tk};
+use crate::{Color, RtkError, Tk, Var};
 
 /// Shaping-cache key: text, size bits, family, weight, italic.
 type TextKey = (String, u32, Option<String>, u16, bool);
@@ -78,7 +78,11 @@ impl TextEngine {
 
         let mut attrs = Attrs::new();
         if let Some(name) = family_name {
-            attrs = attrs.family(Family::Name(name));
+            if name.eq_ignore_ascii_case("monospace") {
+                attrs = attrs.family(Family::Monospace);
+            } else {
+                attrs = attrs.family(Family::Name(name));
+            }
         } else {
             attrs = attrs.family(Family::SansSerif);
         }
@@ -427,13 +431,118 @@ impl Tk {
                     fill(&mut pixmap, thumb_rect.scaled(scale), clip, thumb_color);
                 }
                 Kind::ProgressBar => {
-                    let val = node.scale.and_then(|v| v.get(self)).unwrap_or(0).clamp(0, 100);
-                    let frac = (val as f32) / 100.0;
                     let inner = logical.inset(2.0, 2.0);
-                    let filled_w = inner.width * frac;
-                    if filled_w > 0.0 {
-                        let fill_rect = Rect::new(inner.x, inner.y, filled_w, inner.height).scaled(scale);
-                        fill(&mut pixmap, fill_rect, clip, resolved.fg);
+                    if node.progress_indeterminate {
+                        let block_w = (inner.width * 0.3).max(10.0);
+                        let travel = inner.width + block_w;
+                        let x = inner.x - block_w + travel * node.progress_phase;
+                        let r = Rect::new(x, inner.y, block_w, inner.height).intersection(inner);
+                        if r.width > 0.0 {
+                            fill(&mut pixmap, r.scaled(scale), clip, self.style_engine.tokens().palette.accent);
+                        }
+                    } else {
+                        let frac = if let Some(v64) = node.progress_f64 {
+                            v64.get(self).unwrap_or(0.0).clamp(0.0, 1.0) as f32
+                        } else {
+                            (node.scale.and_then(|v| v.get(self)).unwrap_or(0).clamp(0, 100) as f32) / 100.0
+                        };
+                        let filled_w = inner.width * frac;
+                        if filled_w > 0.0 {
+                            let fill_rect = Rect::new(inner.x, inner.y, filled_w, inner.height).scaled(scale);
+                            fill(&mut pixmap, fill_rect, clip, resolved.fg);
+                        }
+                    }
+                }
+                Kind::Text => {
+                    let inner = logical.inset(4.0, 4.0);
+                    let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
+                    let start_row = node.text_scroll_row;
+                    let vis_rows = node.text_dimensions.1;
+                    // Own the text so `node`'s borrow ends before drawing (text_engine needs &mut self).
+                    let full_text = node.text.clone();
+                    let text_cursor = node.cursor;
+                    let lines: Vec<&str> = full_text.split('\n').collect();
+                    let text_clip = clip.intersection(inner.scaled(scale));
+
+                    for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
+                        let row_y = inner.y + (i - start_row) as f32 * line_h;
+                        let origin = (inner.x * scale, (row_y + 2.0) * scale);
+                        self.text_engine.draw_styled(
+                            &mut pixmap, line, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, text_clip, resolved.opacity,
+                        );
+                    }
+
+                    if self.focused == Some(id) && !disabled {
+                        let cur = text_cursor.min(full_text.len());
+                        let cur_line = full_text[..cur].matches('\n').count();
+                        if cur_line >= start_row && cur_line < start_row + vis_rows {
+                            let line_start = full_text[..cur].rfind('\n').map_or(0, |p| p + 1);
+                            let col_str = &full_text[line_start..cur];
+                            let caret_x = self.measure_with(col_str, &resolved).width;
+                            let row_y = inner.y + (cur_line - start_row) as f32 * line_h;
+                            fill(
+                                &mut pixmap,
+                                Rect::new(inner.x + caret_x, row_y + 2.0, 1.5, line_h - 2.0).scaled(scale),
+                                text_clip, draw_fg,
+                            );
+                        }
+                    }
+                }
+                Kind::Combobox => {
+                    let inner = Rect::new(logical.x, logical.y, (logical.width - 24.0).max(0.0), logical.height);
+                    let cur_str = self.combobox_get(id).map(|(_, s)| s).unwrap_or_default();
+                    let origin = (
+                        (inner.x + 6.0) * scale,
+                        (inner.y + (inner.height - resolved.font_size * 1.3) / 2.0) * scale,
+                    );
+                    let text_clip = clip.intersection(inner.scaled(scale));
+                    self.text_engine.draw_styled(
+                        &mut pixmap, &cur_str, (resolved.font_size * scale, draw_fg),
+                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                        origin, text_clip, resolved.opacity,
+                    );
+
+                    let arrow_rect = Rect::new(logical.x + logical.width - 22.0, logical.y, 22.0, logical.height).scaled(scale);
+                    let arrow_text = "▼";
+                    let am = self.measure(arrow_text, 10.0);
+                    self.text_engine.draw_styled(
+                        &mut pixmap, arrow_text, (10.0 * scale, draw_fg),
+                        None, 400, false,
+                        (arrow_rect.x + (arrow_rect.width - am.width * scale) / 2.0, arrow_rect.y + (arrow_rect.height - am.height * scale) / 2.0),
+                        clip, resolved.opacity,
+                    );
+                }
+                Kind::Notebook => {
+                    let strip_h = 32.0;
+                    let mut cur_x = logical.x;
+                    let sel = node.notebook_selected;
+                    let accent = self.style_engine.tokens().palette.accent;
+                    fill(&mut pixmap, Rect::new(logical.x, logical.y + strip_h - 1.0, logical.width, 1.0).scaled(scale), clip, resolved.border_color);
+
+                    let pages = node.notebook_pages.clone();
+                    for (idx, (_, title)) in pages.iter().enumerate() {
+                        let tm = self.measure_with(title, &resolved);
+                        let tab_w = tm.width + 24.0;
+                        let tab_rect = Rect::new(cur_x, logical.y, tab_w, strip_h);
+                        let is_selected = idx == sel;
+
+                        if is_selected {
+                            fill(&mut pixmap, tab_rect.scaled(scale), clip, if dark_mode { Color::rgb(55, 55, 55) } else { Color::rgb(240, 240, 240) });
+                            fill(&mut pixmap, Rect::new(cur_x, logical.y + strip_h - 2.5, tab_w, 2.5).scaled(scale), clip, accent);
+                        }
+
+                        let origin = (
+                            (cur_x + 12.0) * scale,
+                            (logical.y + (strip_h - tm.height) / 2.0) * scale,
+                        );
+                        self.text_engine.draw_styled(
+                            &mut pixmap, title, (resolved.font_size * scale, if is_selected { accent } else { draw_fg }),
+                            resolved.font_family.as_deref(), if is_selected { 600 } else { resolved.font_weight }, false,
+                            origin, clip.intersection(tab_rect.scaled(scale)), resolved.opacity,
+                        );
+                        cur_x += tab_w;
                     }
                 }
                 Kind::Entry => {
@@ -718,6 +827,26 @@ impl Tk {
                                             resolved.opacity,
                                         );
                                     }
+                                    CanvasItemKind::Image { x, y, w: iw, h: ih, src_w, src_h, rgba, smooth } => {
+                                        let mut premul = Vec::with_capacity(rgba.len());
+                                        for chunk in rgba.chunks_exact(4) {
+                                            let a = u32::from(chunk[3]);
+                                            let pr = (u32::from(chunk[0]) * a / 255) as u8;
+                                            let pg = (u32::from(chunk[1]) * a / 255) as u8;
+                                            let pb = (u32::from(chunk[2]) * a / 255) as u8;
+                                            premul.extend_from_slice(&[pr, pg, pb, chunk[3]]);
+                                        }
+                                        if let Some(src) = PixmapRef::from_bytes(&premul, src_w, src_h) {
+                                            let sx = (iw * scale) / src_w as f32;
+                                            let sy = (ih * scale) / src_h as f32;
+                                            let ts = Transform::from_row(sx, 0.0, 0.0, sy, x * scale, y * scale);
+                                            let paint = PixmapPaint {
+                                                quality: if smooth { FilterQuality::Bilinear } else { FilterQuality::Nearest },
+                                                ..PixmapPaint::default()
+                                            };
+                                            sub.draw_pixmap(0, 0, src, &paint, ts, None);
+                                        }
+                                    }
                                 }
                             }
                             let int_clip = clip.intersection(rect);
@@ -807,6 +936,83 @@ impl Tk {
                 }
             }
         }
+
+        // ===================================================================
+        // Final overlay pass: open Combobox dropdown and active Tooltip
+        // ===================================================================
+
+        if let Some(combo_id) = self.open_combobox {
+            if let Some(cnode) = self.node(combo_id).map(|n| (n.rect, n.combo_values.clone(), n.combo_var)) {
+                // Owned snapshot: (rect, values, var) so drawing can borrow self mutably.
+                struct Snap { rect: Rect, combo_values: Vec<String>, combo_var: Option<Var<i64>> }
+                let cnode = Snap { rect: cnode.0, combo_values: cnode.1, combo_var: cnode.2 };
+                let resolved = self.resolved_style(combo_id).unwrap_or_default();
+                let item_h = (resolved.font_size * 1.3 + 8.0).max(20.0);
+                let drop_h = (cnode.combo_values.len() as f32 * item_h).clamp(item_h, 240.0);
+                let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
+                let drop_clip = Rect::new(0.0, 0.0, width as f32, height as f32);
+
+                let bg_col = if dark_mode { Color::rgb(40, 40, 40) } else { Color::WHITE };
+                fill(&mut pixmap, drop_rect.scaled(scale), drop_clip, bg_col);
+                outline(&mut pixmap, drop_rect.scaled(scale), drop_clip, scale, (resolved.border_color, resolved.border_color));
+
+                let sel_idx = cnode.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
+                let (px, py) = self.pointer;
+
+                for (idx, val) in cnode.combo_values.iter().enumerate() {
+                    let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + idx as f32 * item_h, drop_rect.width - 2.0, item_h);
+                    let is_hovered = row_rect.contains(px, py);
+                    let is_sel = idx as i64 == sel_idx;
+
+                    if is_hovered || is_sel {
+                        let hl = if is_hovered {
+                            if dark_mode { Color::rgb(60, 60, 60) } else { Color::rgb(230, 230, 230) }
+                        } else {
+                            self.style_engine.tokens().palette.select_bg
+                        };
+                        fill(&mut pixmap, row_rect.scaled(scale), drop_clip, hl);
+                    }
+
+                    let fg_col = if is_sel && !is_hovered {
+                        self.style_engine.tokens().palette.select_fg
+                    } else {
+                        resolved.fg
+                    };
+
+                    let origin = (
+                        (row_rect.x + 8.0) * scale,
+                        (row_rect.y + (item_h - resolved.font_size * 1.3) / 2.0) * scale,
+                    );
+                    self.text_engine.draw_styled(
+                        &mut pixmap, val, (resolved.font_size * scale, fg_col),
+                        resolved.font_family.as_deref(), resolved.font_weight, false,
+                        origin, drop_clip.intersection(row_rect.scaled(scale)), 1.0,
+                    );
+                }
+            }
+        }
+
+        if self.tooltip_visible {
+            if let Some(text) = self.active_tooltip() {
+                let m = self.measure(&text, 12.0);
+                let tip_w = m.width + 12.0;
+                let tip_h = m.height + 8.0;
+                let tip_x = (self.pointer.0 + 12.0).clamp(2.0, (width as f32 / scale) - tip_w - 2.0);
+                let tip_y = (self.pointer.1 + 16.0).clamp(2.0, (height as f32 / scale) - tip_h - 2.0);
+                let tip_rect = Rect::new(tip_x, tip_y, tip_w, tip_h);
+                let tip_clip = Rect::new(0.0, 0.0, width as f32, height as f32);
+
+                fill(&mut pixmap, tip_rect.scaled(scale), tip_clip, Color::rgb(45, 45, 45));
+                outline(&mut pixmap, tip_rect.scaled(scale), tip_clip, scale, (Color::rgb(100, 100, 100), Color::rgb(100, 100, 100)));
+                self.text_engine.draw_styled(
+                    &mut pixmap, &text, (12.0 * scale, Color::rgb(240, 240, 240)),
+                    None, 400, false,
+                    ((tip_x + 6.0) * scale, (tip_y + 4.0) * scale),
+                    tip_clip, 1.0,
+                );
+            }
+        }
+
         self.dirty = false;
         Ok(pixmap)
     }

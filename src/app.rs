@@ -303,6 +303,7 @@ impl ApplicationHandler for App {
                     }),
                     WinitKey::Named(NamedKey::Enter) => Some(Key::Enter),
                     WinitKey::Named(NamedKey::Space) => Some(Key::Space),
+                    WinitKey::Named(NamedKey::Escape) => Some(Key::Escape),
                     WinitKey::Character(text) if text.as_str() == " " => Some(Key::Space),
                     _ => None,
                 };
