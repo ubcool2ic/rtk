@@ -1,3 +1,8 @@
+//! Widget constructors, configuration options and the internal widget-node arena.
+//!
+//! Widgets are created with `Frame::new(&mut tk, parent)`-style constructors that
+//! return a [`WidgetId`]; all behaviour lives on [`Tk`].
+
 use std::collections::BTreeMap;
 
 use crate::layout::{GridOpts, PackOpts, PlaceOpts, Rect, Size};
@@ -7,43 +12,65 @@ use crate::{RtkError, Tk, Var};
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WidgetId {
+    /// Slot index in the widget arena.
     pub index: u32,
+    /// Generation of the slot when the handle was issued; stale handles are rejected.
     pub gen: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// An 8-bit-per-channel, straight-alpha colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Color {
+    /// Red channel.
     pub r: u8,
+    /// Green channel.
     pub g: u8,
+    /// Blue channel.
     pub b: u8,
+    /// Alpha channel (255 = opaque).
     pub a: u8,
 }
 
 impl Color {
+    /// Default widget background (classic Tk light grey).
     pub const BG: Self = Self::rgb(217, 217, 217);
+    /// Default text colour.
     pub const FG: Self = Self::rgb(25, 25, 25);
+    /// Opaque white.
     pub const WHITE: Self = Self::rgb(255, 255, 255);
+    /// Opaque black.
     pub const BLACK: Self = Self::rgb(0, 0, 0);
+    /// Background of hovered/active buttons.
     pub const ACTIVE: Self = Self::rgb(236, 236, 236);
 
+    /// Opaque colour from RGB components.
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self::rgba(r, g, b, 255)
     }
 
+    /// Colour from straight-alpha RGBA components.
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
 }
 
+/// Built-in visual themes selectable at runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Theme {
+    /// Classic light grey Tk look (default).
     #[default]
     Light,
+    /// Classic look with dark backgrounds.
     Dark,
+    /// Fluent-inspired flat light theme.
     Fluent,
+    /// Material-inspired theme with accent colours.
     Material,
+    /// Maximum-contrast theme for accessibility.
     HighContrast,
+    /// Modern dark theme with rounded corners and shadows.
     ModernDark,
+    /// Modern light theme with rounded corners and shadows.
     ModernLight,
 }
 
@@ -61,16 +88,23 @@ pub enum Compound {
     TextOnly,
 }
 
+/// Phase of a canvas drag gesture reported to a [`CanvasDragCallback`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DragPhase {
+    /// Left button pressed inside the canvas.
     Press,
+    /// Pointer moved while the button is held.
     Move,
+    /// Button released (or the pointer left the window).
     Release,
 }
 
+/// Generational handle to an item drawn on a `Canvas`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CanvasItem {
+    /// Slot index in the canvas item list.
     pub index: u32,
+    /// Generation of the slot when the handle was issued.
     pub gen: u32,
 }
 
@@ -99,45 +133,77 @@ pub(crate) struct CanvasItemSlot {
     pub item: Option<CanvasItemKind>,
 }
 
+/// Boxed widget callback (tkinter `command`). Receives the toolkit so it can mutate the UI.
 pub type Command = Box<dyn FnMut(&mut Tk)>;
+/// Boxed canvas drag callback: `(tk, x, y, phase)` in canvas-local logical pixels.
 pub type CanvasDragCallback = Box<dyn FnMut(&mut Tk, f32, f32, DragPhase)>;
 
+/// Configuration options accepted by `Tk::config` (tkinter `widget.config(...)`).
 pub enum Opt {
+    /// Caption text (tkinter `text`).
     Text(String),
+    /// Background colour (tkinter `bg`); marks the colour as user-overridden.
     Bg(Color),
+    /// Foreground/text colour (tkinter `fg`).
     Fg(Color),
+    /// Requested width in characters (tkinter `width`).
     Width(u32),
+    /// Font size in logical pixels.
     FontSize(f32),
+    /// Bind displayed text to a string variable (tkinter `textvariable`).
     TextVariable(Var<String>),
+    /// Bind displayed text to an integer variable.
     TextVariableInt(Var<i64>),
+    /// Callback run on activation (tkinter `command`).
     Command(Command),
-    // Advanced styling layer options
+    /// Named style from the active stylesheet (ttk `style`).
     Style(String),
+    /// Per-widget style overrides applied on top of the named style.
     StyleOverride(StyleSpec),
+    /// Disables input and renders the disabled state (tkinter `state=DISABLED`).
     Disabled(bool),
+    /// Image to display (tkinter `image`).
     Image(ImageId),
+    /// Image/text arrangement (tkinter `compound`).
     Compound(Compound),
+    /// Use the monospace font family.
     Monospace(bool),
 }
 
+/// Constructor namespace for container frames (tkinter `Frame`).
 pub struct Frame;
+/// Constructor namespace for static text/image labels (tkinter `Label`).
 pub struct Label;
+/// Constructor namespace for push buttons (tkinter `Button`).
 pub struct Button;
+/// Constructor namespace for single-line text inputs (tkinter `Entry`).
 pub struct Entry;
+/// Constructor namespace for boolean check boxes (tkinter `Checkbutton`).
 pub struct Checkbutton;
+/// Constructor namespace for sliders (tkinter `Scale`).
 pub struct Scale;
+/// Constructor namespace for single-selection lists (tkinter `Listbox`).
 pub struct Listbox;
+/// Constructor namespace for scrollbars (tkinter `Scrollbar`).
 pub struct Scrollbar;
+/// Constructor namespace for mutually exclusive radio buttons (tkinter `Radiobutton`).
 pub struct Radiobutton;
+/// Constructor namespace for free-form drawing surfaces (tkinter `Canvas`).
 pub struct Canvas;
+/// Constructor namespace for integer spin boxes (tkinter `Spinbox`).
 pub struct Spinbox;
+/// Constructor namespace for progress bars (ttk `Progressbar`).
 pub struct ProgressBar;
+/// Constructor namespace for multi-line text areas (tkinter `Text`).
 pub struct Text;
+/// Constructor namespace for drop-down selectors (ttk `Combobox`).
 pub struct Combobox;
+/// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
+    /// Creates an empty container frame under `parent`.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Frame, parent, String::new())
     }
@@ -145,6 +211,7 @@ impl Frame {
 
 #[allow(clippy::new_ret_no_self)]
 impl Label {
+    /// Creates a label showing `text`.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -156,6 +223,7 @@ impl Label {
 
 #[allow(clippy::new_ret_no_self)]
 impl Button {
+    /// Creates a button captioned `text`; attach a callback with `Tk::set_command`.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -167,6 +235,7 @@ impl Button {
 
 #[allow(clippy::new_ret_no_self)]
 impl Entry {
+    /// Creates an empty single-line text input.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Entry, parent, String::new())
     }
@@ -174,6 +243,8 @@ impl Entry {
 
 #[allow(clippy::new_ret_no_self)]
 impl Checkbutton {
+    /// Creates a check box bound to `variable`. Fails with
+    /// [`RtkError::InvalidVariable`] if the variable is not live in `tk`.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -193,6 +264,7 @@ impl Checkbutton {
 
 #[allow(clippy::new_ret_no_self)]
 impl Scale {
+    /// Creates a slider over `from..=to` bound to `variable`.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -214,6 +286,7 @@ impl Scale {
 
 #[allow(clippy::new_ret_no_self)]
 impl Listbox {
+    /// Creates a listbox showing `height_rows` rows (at least 1).
     pub fn new(tk: &mut Tk, parent: WidgetId, height_rows: usize) -> Result<WidgetId, RtkError> {
         let id = tk.add(Kind::Listbox, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
@@ -225,6 +298,7 @@ impl Listbox {
 
 #[allow(clippy::new_ret_no_self)]
 impl Scrollbar {
+    /// Creates a scrollbar; link it to a widget with `Tk::scrollbar_attach`-style APIs.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Scrollbar, parent, String::new())
     }
@@ -232,6 +306,7 @@ impl Scrollbar {
 
 #[allow(clippy::new_ret_no_self)]
 impl Radiobutton {
+    /// Creates a radio button that sets `var` to `value` when selected.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -253,6 +328,7 @@ impl Radiobutton {
 
 #[allow(clippy::new_ret_no_self)]
 impl Canvas {
+    /// Creates a drawing canvas with the requested logical size (negative/NaN → 0).
     pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
         let id = tk.add(Kind::Canvas, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
@@ -264,6 +340,7 @@ impl Canvas {
 
 #[allow(clippy::new_ret_no_self)]
 impl Spinbox {
+    /// Creates an integer spin box over `from..=to` bound to `var`.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -285,6 +362,7 @@ impl Spinbox {
 
 #[allow(clippy::new_ret_no_self)]
 impl ProgressBar {
+    /// Creates a progress bar of `length` px (min 10) showing `var` in 0..=100.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -305,6 +383,7 @@ impl ProgressBar {
 
 #[allow(clippy::new_ret_no_self)]
 impl Text {
+    /// Creates a multi-line text area sized in characters × rows (each at least 1).
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -321,6 +400,7 @@ impl Text {
 
 #[allow(clippy::new_ret_no_self)]
 impl Combobox {
+    /// Creates a drop-down over `values`; `var` holds the selected index.
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -341,6 +421,7 @@ impl Combobox {
 
 #[allow(clippy::new_ret_no_self)]
 impl Notebook {
+    /// Creates an empty tabbed container; add pages with the notebook APIs on `Tk`.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Notebook, parent, String::new())
     }

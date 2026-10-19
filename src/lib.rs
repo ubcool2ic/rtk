@@ -29,9 +29,13 @@ pub use widgets::{
 /// Errors from widget construction and headless image allocation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RtkError {
+    /// The given parent is not a live `Frame` (or root) of this toolkit.
     InvalidParent,
+    /// The variable handle is destroyed or belongs to another toolkit.
     InvalidVariable,
+    /// The widget arena cannot hold another widget.
     ArenaFull,
+    /// Image width/height is zero or exceeds the supported maximum.
     InvalidImageSize,
 }
 

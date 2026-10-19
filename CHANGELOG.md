@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- Code review with claude-fable-5.1 (see docs/REVIEW_FABLE_5_1.md). Fixes: Notebook pages now get layout; UTF-8-safe Text cursor; O(1) canvas item insertion; destroy() clears modal/notebook/scrollbar state; Combobox toggles closed when clicked; yview works on Text; text_set_max_lines(0) means unlimited; consistent dark palette; bounded process_posted; poisoned-mutex recovery; Labels/Frames with tooltips are hoverable; non-finite sizes sanitized; correct colormap tables; Var no longer uses unsafe and gained Eq/Hash; more docs.
+
 ## 0.8.0
 - **Text** widget: multi-line editing, wheel scrolling, read-only mode, `text_get/set/insert_end/clear`, `text_set_max_lines` for logs.
 - **Listbox** `listbox_bind_select` callback (mouse, keyboard and programmatic changes).

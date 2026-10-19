@@ -1,4 +1,10 @@
+//! Typed, generational variable handles (tkinter `StringVar`, `IntVar`, ...).
+//!
+//! Values live inside the owning [`Tk`]; a [`Var`] is a cheap `Copy` handle
+//! that becomes invalid once the variable is destroyed.
+
 use std::any::Any;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -10,27 +16,40 @@ use crate::{Command, Tk};
 /// for invalid handles. Equal assignments succeed without invalidating the UI.
 /// Traces run synchronously, at most once per active notification stack for
 /// each variable. Reentrant writes are stored but do not recursively notify.
+///
+/// Handles are `Send + Sync` (they carry no data, only indices), so they can be
+/// moved into `TkProxy::post` closures; all access still goes through `&Tk`.
 #[derive(Debug)]
 pub struct Var<T> {
     index: usize,
     gen: u32,
-    owner: *const (),
+    /// Identity token of the owning toolkit: the address of its `var_owner`
+    /// allocation, stored as an integer and never dereferenced.
+    owner: usize,
     marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Copy for Var<T> {}
 
-// SAFETY: `owner` is only an identity token compared by address against the
-// owning Tk's `Arc<()>`; it is never dereferenced. A `Var` handle can only read
-// or write data through `&Tk`/`&mut Tk` on the UI thread, so moving the handle
-// into a `TkProxy::post` closure from another thread is sound.
-unsafe impl<T> Send for Var<T> {}
-// SAFETY: see `Send` above — the handle carries no shared mutable state.
-unsafe impl<T> Sync for Var<T> {}
-
 impl<T> Clone for Var<T> {
     fn clone(&self) -> Self {
         *self
+    }
+}
+
+impl<T> PartialEq for Var<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.gen == other.gen && self.owner == other.owner
+    }
+}
+
+impl<T> Eq for Var<T> {}
+
+impl<T> Hash for Var<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.index.hash(state);
+        self.gen.hash(state);
+        self.owner.hash(state);
     }
 }
 
@@ -48,7 +67,7 @@ impl<T: 'static> Var<T> {
     fn slot(self, tk: &Tk) -> Option<&VarSlot> {
         tk.vars.get(self.index).filter(|slot| {
             slot.gen == self.gen
-                && Arc::as_ptr(&slot.owner) == self.owner
+                && Arc::as_ptr(&slot.owner) as usize == self.owner
                 && slot.value.as_ref().is_some_and(|value| value.is::<T>())
         })
     }
@@ -56,7 +75,7 @@ impl<T: 'static> Var<T> {
     fn slot_mut(self, tk: &mut Tk) -> Option<&mut VarSlot> {
         tk.vars.get_mut(self.index).filter(|slot| {
             slot.gen == self.gen
-                && Arc::as_ptr(&slot.owner) == self.owner
+                && Arc::as_ptr(&slot.owner) as usize == self.owner
                 && slot.value.as_ref().is_some_and(|value| value.is::<T>())
         })
     }
@@ -131,7 +150,7 @@ impl Tk {
         let handle = Var {
             index: self.vars.len(),
             gen: 0,
-            owner: Arc::as_ptr(&owner),
+            owner: Arc::as_ptr(&owner) as usize,
             marker: PhantomData,
         };
         self.vars.push(VarSlot {
