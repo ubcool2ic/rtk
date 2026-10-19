@@ -1,3 +1,8 @@
+//! Core toolkit state: the widget arena, layout driver, headless event
+//! simulation (`sim_*`), styling cascade, and per-widget APIs (entry, listbox,
+//! canvas, text, combobox, notebook, scrolling). The real window backend lives
+//! in `app.rs`; everything here is backend-independent and unit-testable.
+
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -40,13 +45,10 @@ pub struct TkProxy {
 impl TkProxy {
     /// Queues a closure to execute on the main thread and wakes the event loop.
     pub fn post(&self, f: impl FnOnce(&mut Tk) + Send + 'static) {
-        if let Ok(mut q) = self.shared.queue.lock() {
-            q.push_back(Box::new(f));
-        }
-        if let Ok(w) = self.shared.waker.lock() {
-            if let Some(proxy) = w.as_ref() {
-                let _ = proxy.send_event(RtkUserEvent);
-            }
+        self.shared.queue.lock().unwrap_or_else(|e| e.into_inner()).push_back(Box::new(f));
+        let waker = self.shared.waker.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(proxy) = waker.as_ref() {
+            let _ = proxy.send_event(RtkUserEvent);
         }
     }
 }
@@ -56,33 +58,55 @@ const MAX_ENTRY_BYTES: usize = 64 * 1024;
 /// Keys understood by the real backend and the headless event harness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
+    /// Deletes the character/cluster before the cursor.
     Backspace,
+    /// Deletes the character/cluster after the cursor.
     Delete,
+    /// Moves the cursor/selection left (or decrements a Scale).
     Left,
+    /// Moves the cursor/selection right (or increments a Scale).
     Right,
+    /// Moves up one line/row/item.
     Up,
+    /// Moves down one line/row/item.
     Down,
+    /// Jumps to the start of the line/list/view.
     Home,
+    /// Jumps to the end of the line/list/view.
     End,
+    /// Moves keyboard focus to the next focusable widget.
     Tab,
+    /// Moves keyboard focus to the previous focusable widget.
     ShiftTab,
+    /// Activates buttons, inserts a newline in `Text`, accepts a modal dialog.
     Enter,
+    /// Activates buttons or inserts a space.
     Space,
+    /// Scrolls a scrollable Canvas up one page.
     PageUp,
+    /// Scrolls a scrollable Canvas down one page.
     PageDown,
+    /// Closes an open Combobox or cancels a modal dialog.
     Escape,
 }
 
 /// Scroll step for `yview_scroll`/`xview_scroll`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScrollUnit {
+    /// One row (Listbox/Text) or [`WHEEL_LINE_PX`] logical px (Canvas).
     Units,
+    /// One visible page of rows/pixels.
     Pages,
 }
 
 /// Logical px a Canvas scrolls per wheel line / scroll unit.
 const WHEEL_LINE_PX: f32 = 48.0;
 
+/// The toolkit instance: owns every widget, variable, style and input state.
+///
+/// Create one with [`Tk::new`], build a widget tree with the constructors in
+/// [`crate::widgets`], then either run the real window loop or drive it
+/// headlessly with the `sim_*` methods.
 pub struct Tk {
     nodes: Vec<WidgetSlot>,
     free: Vec<u32>,
@@ -130,6 +154,7 @@ impl Default for Tk {
 }
 
 impl Tk {
+    /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
     pub fn new() -> Self {
         let _ = crate::app::START.get_or_init(std::time::Instant::now);
         let style_engine = StyleEngine::new(Tokens::light());
@@ -189,15 +214,17 @@ impl Tk {
     }
 
     /// Drains posted and idle tasks reentrantly, returning the number processed.
+    ///
+    /// Tasks queued while draining are run in the same call, up to a bounded
+    /// number of passes so a self-re-posting task cannot hang the main thread;
+    /// anything left over runs on the next call.
     pub fn process_posted(&mut self) -> usize {
+        const MAX_PASSES: usize = 256;
         let mut count = 0;
-        loop {
+        for _ in 0..MAX_PASSES {
             let mut tasks: VecDeque<PostedTask> = {
-                if let Ok(mut q) = self.proxy_shared.queue.lock() {
-                    std::mem::take(&mut *q)
-                } else {
-                    VecDeque::new()
-                }
+                let mut q = self.proxy_shared.queue.lock().unwrap_or_else(|e| e.into_inner());
+                std::mem::take(&mut *q)
             };
             let mut idles: VecDeque<IdleTask> = std::mem::take(&mut self.idle_queue);
             if tasks.is_empty() && idles.is_empty() {
@@ -236,6 +263,7 @@ impl Tk {
         false
     }
 
+    /// Returns the root (toplevel) widget, which always exists.
     pub fn root(&self) -> WidgetId {
         WidgetId { index: 0, gen: 0 }
     }
@@ -252,23 +280,29 @@ impl Tk {
             .node.as_mut()
     }
 
+    /// Returns true if `id` refers to a live widget (tkinter `winfo_exists`).
     pub fn contains(&self, id: WidgetId) -> bool {
         self.node(id).is_some()
     }
 
+    /// Returns the active theme.
     pub fn theme(&self) -> Theme {
         self.theme
     }
 
+    /// Returns the design tokens (palette, fonts, radii) of the active theme.
     pub fn tokens(&self) -> &Tokens {
         self.style_engine.tokens()
     }
 
+    /// Replaces the design tokens without changing `theme()`.
     pub fn set_tokens(&mut self, tokens: Tokens) {
         self.style_engine.set_tokens(tokens);
         self.dirty = true;
     }
 
+    /// Switches the theme, resetting tokens and the legacy per-widget colours
+    /// that were not explicitly overridden with `Opt::Bg`/`Opt::Fg`.
     pub fn set_theme(&mut self, theme: Theme) {
         if self.theme == theme {
             return;
@@ -290,16 +324,17 @@ impl Tk {
         let is_hc = theme == Theme::HighContrast;
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
+                let (dark_bg, dark_fg) = dark_default_colors(node.kind);
                 if !node.style.bg_overridden {
-                    node.style.bg = match node.kind {
-                        Kind::Entry | Kind::Listbox => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(23, 26, 33) } else { Color::WHITE }
-                        }
-                        Kind::Canvas => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(20, 22, 28) } else { Color::rgb(240, 240, 240) }
-                        }
-                        _ => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(23, 26, 33) } else { Color::BG }
+                    node.style.bg = if is_hc {
+                        Color::BLACK
+                    } else if is_dark {
+                        dark_bg
+                    } else {
+                        match node.kind {
+                            Kind::Entry | Kind::Listbox => Color::WHITE,
+                            Kind::Canvas => Color::rgb(240, 240, 240),
+                            _ => Color::BG,
                         }
                     };
                 }
@@ -307,7 +342,7 @@ impl Tk {
                     node.style.fg = if is_hc {
                         Color::WHITE
                     } else if is_dark {
-                        Color::rgb(230, 232, 238)
+                        dark_fg
                     } else {
                         Color::FG
                     };
@@ -330,16 +365,19 @@ impl Tk {
     // Style API
     // -----------------------------------------------------------------------
 
+    /// ttk `style.configure(name, **opts)`: sets the base spec of a named style.
     pub fn style_configure(&mut self, style_name: impl Into<String>, spec: StyleSpec) {
         self.style_engine.configure(style_name, spec);
         self.dirty = true;
     }
 
+    /// ttk `style.map(name, state=[...])`: sets the spec applied while `state` is active.
     pub fn style_map(&mut self, style_name: impl Into<String>, state: State, spec: StyleSpec) {
         self.style_engine.map(style_name, state, spec);
         self.dirty = true;
     }
 
+    /// Parses a CSS-like stylesheet into the style engine, returning the rule count.
     pub fn load_stylesheet(&mut self, css: &str) -> Result<usize, StyleError> {
         let parser = StylesheetParser::new(css);
         let count = parser.parse(&mut self.style_engine)?;
@@ -347,6 +385,7 @@ impl Tk {
         Ok(count)
     }
 
+    /// Reads and parses a stylesheet file; I/O errors are reported as `StyleError` at line 0.
     pub fn load_stylesheet_file(&mut self, path: impl AsRef<Path>) -> Result<usize, StyleError> {
         let path = path.as_ref();
         let content = fs::read_to_string(path).map_err(|e| StyleError {
@@ -356,6 +395,8 @@ impl Tk {
         self.load_stylesheet(&content)
     }
 
+    /// Loads a stylesheet and remembers its mtime so [`Tk::poll_stylesheet`] can hot-reload it.
+    /// Returns false if the file cannot be stat'ed.
     pub fn watch_stylesheet(&mut self, path: impl AsRef<Path>) -> bool {
         let path = path.as_ref().to_path_buf();
         if let Ok(meta) = fs::metadata(&path) {
@@ -368,6 +409,7 @@ impl Tk {
         false
     }
 
+    /// Reloads the watched stylesheet if its mtime advanced. Returns true when reloaded.
     pub fn poll_stylesheet(&mut self) -> bool {
         let Some((path, last_mtime)) = self.watched_stylesheet.clone() else { return false };
         if let Ok(meta) = fs::metadata(&path) {
@@ -382,6 +424,8 @@ impl Tk {
         false
     }
 
+    /// Loads a PNG, either from a file path (UTF-8 string that names a readable file)
+    /// or from in-memory PNG bytes. Returns `None` if decoding fails.
     pub fn load_image(&mut self, path_or_png_bytes: impl AsRef<[u8]>) -> Option<ImageId> {
         let bytes = path_or_png_bytes.as_ref();
         let pixmap = if let Ok(s) = std::str::from_utf8(bytes) {
@@ -419,6 +463,7 @@ impl Tk {
         Some(id)
     }
 
+    /// Current ttk-style state flags (hover/pressed/focused/checked/...) of a widget.
     pub fn widget_state(&self, id: WidgetId) -> State {
         let Some(node) = self.node(id) else { return State::empty() };
         let mut s = State::empty();
@@ -451,8 +496,6 @@ impl Tk {
         s
     }
 
-    /// Resolves the concrete style for widget `id` by cascading:
-    /// theme default -> "TClass" -> "Named.TClass" -> Frame inheritance -> widget override -> state map -> legacy Opt.
     /// Background colour currently shown, including an in-flight transition.
     #[doc(hidden)]
     pub fn displayed_bg(&self, id: WidgetId) -> Option<Color> {
@@ -463,6 +506,8 @@ impl Tk {
         }
     }
 
+    /// Resolves the concrete style for widget `id` by cascading:
+    /// theme default -> "TClass" -> "Named.TClass" -> Frame inheritance -> widget override -> state map -> legacy Opt.
     pub fn resolved_style(&self, id: WidgetId) -> Option<ResolvedStyle> {
         self.resolved_style_in(id, self.widget_state(id))
     }
@@ -599,30 +644,36 @@ impl Tk {
         }
     }
 
+    /// True while any style transition or indeterminate progress bar needs frames.
     pub fn is_animating(&self) -> bool {
         self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
             n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
         })
     }
 
+    /// Sets the window title (tkinter `root.title`).
     pub fn title(&mut self, title: impl Into<String>) {
         self.window_title = title.into();
         self.dirty = true;
     }
 
+    /// Requests an initial window size in physical px (tkinter `root.geometry("WxH")`).
     pub fn geometry(&mut self, width: u32, height: u32) {
         self.window_size = Some((width, height));
         self.sim_resize(width, height);
     }
 
+    /// Asks the event loop to exit after the current iteration (tkinter `root.quit`).
     pub fn quit(&mut self) {
         self.quit_requested = true;
     }
 
+    /// True once [`Tk::quit`] was called or the root was destroyed.
     pub fn is_quit_requested(&self) -> bool {
         self.quit_requested
     }
 
+    /// True if layout/paint is pending.
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -638,17 +689,14 @@ impl Tk {
         }
         let mut node = WidgetNode::new(kind, Some(parent), text);
         let is_hc = self.theme == Theme::HighContrast;
-        let is_dark = self.theme == Theme::Dark;
+        let is_dark = matches!(self.theme, Theme::Dark | Theme::ModernDark);
         if is_hc {
             node.style.bg = Color::BLACK;
             node.style.fg = Color::WHITE;
         } else if is_dark {
-            node.style.bg = match kind {
-                Kind::Entry | Kind::Listbox => Color::rgb(35, 35, 35),
-                Kind::Canvas => Color::rgb(25, 25, 25),
-                _ => Color::rgb(45, 45, 45),
-            };
-            node.style.fg = Color::rgb(230, 230, 230);
+            let (bg, fg) = dark_default_colors(kind);
+            node.style.bg = bg;
+            node.style.fg = fg;
         }
         let id = if let Some(index) = self.free.pop() {
             let Some(slot) = self.nodes.get_mut(index as usize) else {
@@ -669,11 +717,29 @@ impl Tk {
         Ok(id)
     }
 
+    /// Destroys a widget and its whole subtree, releasing their IDs. Destroying
+    /// the root requests quit. Returns false if `id` is not live.
     pub fn destroy(&mut self, id: WidgetId) -> bool {
         let Some(node) = self.node(id) else { return false };
         let parent = node.parent;
         if let Some(parent) = parent.and_then(|parent| self.node_mut(parent)) {
             parent.children.retain(|child| *child != id);
+            if parent.kind == Kind::Notebook {
+                if let Some(pos) = parent.notebook_pages.iter().position(|(pid, _)| *pid == id) {
+                    parent.notebook_pages.remove(pos);
+                    if pos < parent.notebook_selected {
+                        parent.notebook_selected -= 1;
+                    }
+                    let last = parent.notebook_pages.len().saturating_sub(1);
+                    parent.notebook_selected = parent.notebook_selected.min(last);
+                }
+            }
+        }
+        if self.modal.is_some_and(|m| self.is_descendant_of(m, id)) {
+            self.modal = None;
+        }
+        if self.scrollbar_drag.is_some_and(|(sb, _, _)| self.is_descendant_of(sb, id)) {
+            self.scrollbar_drag = None;
         }
         let mut pending = vec![id];
         while let Some(current) = pending.pop() {
@@ -712,10 +778,13 @@ impl Tk {
         true
     }
 
+    /// Changes one option of a widget (tkinter `widget.config(...)`). Returns
+    /// false if the widget is gone or the option is invalid for its kind.
     pub fn config(&mut self, id: WidgetId, option: Opt) -> bool {
         let Some(kind) = self.node(id).map(|node| node.kind) else { return false };
         match option {
             Opt::Text(text) if kind == Kind::Entry => return self.entry_set(id, text),
+            Opt::Text(text) if kind == Kind::Text => return self.text_set(id, text),
             Opt::Text(text) => {
                 if let Some(node) = self.node_mut(id) {
                     node.text = text;
@@ -807,10 +876,12 @@ impl Tk {
         true
     }
 
+    /// Shorthand for `config(id, Opt::Command(...))`.
     pub fn set_command(&mut self, id: WidgetId, command: impl FnMut(&mut Tk) + 'static) -> bool {
         self.config(id, Opt::Command(Box::new(command)))
     }
 
+    /// Current text of an Entry (tkinter `entry.get()`); `None` for other kinds.
     pub fn entry_get(&self, id: WidgetId) -> Option<String> {
         if self.node(id)?.kind != Kind::Entry {
             return None;
@@ -818,6 +889,8 @@ impl Tk {
         self.widget_text(id)
     }
 
+    /// Replaces an Entry's text (control characters stripped, capped at 64 KiB)
+    /// and moves the cursor to the end.
     pub fn entry_set(&mut self, id: WidgetId, text: impl Into<String>) -> bool {
         if !self.node(id).is_some_and(|node| node.kind == Kind::Entry) {
             return false;
@@ -843,7 +916,9 @@ impl Tk {
         }
         if let Some(mut cb) = self.modal_entry_changed.take() {
             cb(self, id, &text);
-            self.modal_entry_changed = Some(cb);
+            if self.modal_entry_changed.is_none() {
+                self.modal_entry_changed = Some(cb);
+            }
         }
     }
 
@@ -857,6 +932,7 @@ impl Tk {
         true
     }
 
+    /// Displayed text of any widget, honouring a bound `textvariable`.
     pub fn widget_text(&self, id: WidgetId) -> Option<String> {
         let node = self.node(id)?;
         let text = match node.binding {
@@ -895,22 +971,27 @@ impl Tk {
         true
     }
 
+    /// Manages `id` with the pack geometry manager. Fails if a sibling uses grid.
     pub fn pack(&mut self, id: WidgetId, options: PackOpts) -> bool {
         self.set_manager(id, Manager::Pack(options))
     }
 
+    /// Manages `id` with the grid geometry manager. Fails if a sibling uses pack.
     pub fn grid(&mut self, id: WidgetId, options: GridOpts) -> bool {
         self.set_manager(id, Manager::Grid(options))
     }
 
+    /// Manages `id` with the place geometry manager (absolute/relative coordinates).
     pub fn place(&mut self, id: WidgetId, options: PlaceOpts) -> bool {
         self.set_manager(id, Manager::Place(options))
     }
 
+    /// Sets the stretch weight of grid column `column` in Frame `parent`.
     pub fn grid_columnconfigure(&mut self, parent: WidgetId, column: usize, weight: u32) -> bool {
         self.configure_track(parent, column, weight, true)
     }
 
+    /// Sets the stretch weight of grid row `row` in Frame `parent`.
     pub fn grid_rowconfigure(&mut self, parent: WidgetId, row: usize, weight: u32) -> bool {
         self.configure_track(parent, row, weight, false)
     }
@@ -986,17 +1067,21 @@ impl Tk {
         let mut order = Vec::new();
         let mut pending = vec![self.root()];
         while let Some(id) = pending.pop() {
-            if self.node(id).is_some() {
+            if let Some(node) = self.node(id) {
                 order.push(id);
-                pending.extend(self.managed_children(id));
+                if node.kind == Kind::Notebook {
+                    // Pages are not geometry-managed; they must still be measured
+                    // (before the notebook itself, i.e. later in `order`).
+                    pending.extend(node.notebook_pages.iter().map(|(pid, _)| *pid));
+                } else {
+                    pending.extend(self.managed_children(id));
+                }
             }
         }
         for id in order.into_iter().rev() {
             let Some(node) = self.node(id) else { continue };
             let resolved = self.resolved_style(id).unwrap_or_default();
             let node_snap = NodeSnapshot {
-                list_items: node.list_items.clone(),
-                text: node.text.clone(),
                 scale: node.scale,
                 range: node.range,
                 canvas_size: node.canvas_size,
@@ -1041,12 +1126,18 @@ impl Tk {
                 Kind::Listbox => {
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
                     // Like tkinter (width in characters), do not measure every row of huge lists.
-                    let max_w = node_snap.list_items.iter().take(256).map(|item| self.measure_with(item, &resolved).width).fold(0.0_f32, f32::max);
+                    // Temporarily take the items out instead of cloning the whole list every layout.
+                    let items = self.node_mut(id).map(|n| std::mem::take(&mut n.list_items)).unwrap_or_default();
+                    let max_w = items.iter().take(256).map(|item| self.measure_with(item, &resolved).width).fold(0.0_f32, f32::max);
+                    if let Some(n) = self.node_mut(id) {
+                        n.list_items = items;
+                    }
                     Size::new(specified.unwrap_or(max_w + 24.0).max(80.0) + pad_w, (node_snap.list_height as f32 * line_h).max(30.0) + pad_h)
                 }
                 Kind::Scrollbar => Size::new(16.0 + pad_w, 100.0 + pad_h),
                 Kind::Radiobutton => {
-                    let measured = self.measure_with(&node_snap.text, &resolved);
+                    let text = self.node(id).map(|n| n.text.clone()).unwrap_or_default();
+                    let measured = self.measure_with(&text, &resolved);
                     Size::new(specified.unwrap_or(measured.width) + 32.0 + pad_w + image_extra_w, measured.height.max(16.0) + 8.0 + pad_h)
                 }
                 Kind::Canvas => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
@@ -1136,10 +1227,8 @@ impl Tk {
             node.clip = clip;
             node.visible = true;
             let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
-            let node_kind = node.kind;
             self.paint_order.push(id);
             let Some(node) = self.node(id) else { continue };
-            let _ = node_kind;
 
             if node.kind == Kind::Notebook {
                 let sel = node.notebook_selected;
@@ -1151,13 +1240,15 @@ impl Tk {
             }
 
             let children = self.managed_children(id);
-
-            let pack_children: Vec<_> = children.iter().copied()
-                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Pack(_))))).collect();
-            let grid_children: Vec<_> = children.iter().copied()
-                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Grid(_))))).collect();
-            let place_children: Vec<_> = children.iter().copied()
-                .filter(|c| self.node(*c).is_some_and(|n| matches!(n.manager, Some(Manager::Place(_))))).collect();
+            let (mut pack_children, mut grid_children, mut place_children) = (Vec::new(), Vec::new(), Vec::new());
+            for child in children {
+                match self.node(child).and_then(|n| n.manager) {
+                    Some(Manager::Pack(_)) => pack_children.push(child),
+                    Some(Manager::Grid(_)) => grid_children.push(child),
+                    Some(Manager::Place(_)) => place_children.push(child),
+                    None => {}
+                }
+            }
 
             if !pack_children.is_empty() {
                 let rects = layout::pack(content, &self.pack_items(&pack_children));
@@ -1201,15 +1292,18 @@ impl Tk {
         })
     }
 
+    /// Laid-out rectangle in logical px of a mapped widget (runs layout if dirty).
     pub fn widget_rect(&mut self, id: WidgetId) -> Option<Rect> {
         self.ensure_layout();
         self.node(id).filter(|node| node.visible).map(|node| node.rect)
     }
 
+    /// Widget holding keyboard focus (tkinter `focus_get`).
     pub fn focused_widget(&self) -> Option<WidgetId> {
         self.focused.filter(|id| self.node(*id).is_some())
     }
 
+    /// Headless harness: sets the viewport in physical px and re-runs layout.
     #[doc(hidden)]
     pub fn sim_resize(&mut self, width: u32, height: u32) {
         self.viewport = (width, height);
@@ -1217,6 +1311,7 @@ impl Tk {
         self.layout();
     }
 
+    /// Headless harness: sets the DPI scale factor (0.1..=16). Returns false if rejected.
     #[doc(hidden)]
     pub fn sim_scale_factor(&mut self, factor: f64) -> bool {
         if !factor.is_finite() || !(0.1..=16.0).contains(&factor) {
@@ -1236,7 +1331,10 @@ impl Tk {
                 }
             }
             self.node(*id).is_some_and(|node| {
-                node.visible && (node.kind.focusable() || node.kind == Kind::Canvas || node.kind == Kind::Scrollbar || node.kind == Kind::Notebook) && node.clip.contains(x, y)
+                let interactive = node.kind.focusable()
+                    || matches!(node.kind, Kind::Canvas | Kind::Scrollbar | Kind::Notebook)
+                    || node.tooltip.is_some();
+                node.visible && interactive && node.clip.contains(x, y)
             })
         })
     }
@@ -1264,6 +1362,8 @@ impl Tk {
         }
     }
 
+    /// Headless harness: moves the pointer to logical `(x, y)`, updating hover,
+    /// drags and tooltips.
     #[doc(hidden)]
     pub fn sim_mouse_move(&mut self, x: f32, y: f32) {
         self.ensure_layout();
@@ -1277,14 +1377,11 @@ impl Tk {
             self.hovered = hovered;
             self.dirty = true;
             if let Some(prev_id) = prev {
-                let mut prev_st = self.widget_state(prev_id);
-                prev_st.0 |= State::HOVER.bits();
-                self.check_state_transition(prev_id, prev_st);
+                // It was hovered until a moment ago.
+                self.check_state_transition(prev_id, self.widget_state(prev_id) | State::HOVER);
             }
             if let Some(new_id) = hovered {
-                let mut old_st = self.widget_state(new_id);
-                old_st.0 &= !State::HOVER.bits();
-                self.check_state_transition(new_id, old_st);
+                self.check_state_transition(new_id, self.widget_state(new_id).without(State::HOVER));
             }
         } else if moved && !self.tooltip_visible {
             self.hover_timer_ms = 0;
@@ -1320,12 +1417,15 @@ impl Tk {
         }
     }
 
+    /// Headless harness: presses the primary mouse button at the current pointer.
     #[doc(hidden)]
     pub fn sim_mouse_down(&mut self) {
         self.ensure_layout();
         self.tooltip_visible = false;
         self.hover_timer_ms = 0;
         let (x, y) = self.pointer;
+        // Combobox closed by this very click; must not be re-opened below.
+        let mut just_closed: Option<WidgetId> = None;
 
         // Check if click is on open combobox dropdown
         if let Some(combo_id) = self.open_combobox {
@@ -1352,6 +1452,7 @@ impl Tk {
                 cn.combo_open = false;
             }
             self.open_combobox = None;
+            just_closed = Some(combo_id);
             self.dirty = true;
         }
 
@@ -1482,7 +1583,7 @@ impl Tk {
                     }
                 }
                 Kind::Combobox => {
-                    let open = !node.combo_open;
+                    let open = !node.combo_open && just_closed != Some(id);
                     if let Some(cn) = self.node_mut(id) {
                         cn.combo_open = open;
                     }
@@ -1492,8 +1593,10 @@ impl Tk {
                     if y < node.rect.y + 32.0 {
                         let mut cur_x = node.rect.x;
                         let pages = node.notebook_pages.clone();
+                        // Same metrics as `update_requested`, so hit areas match drawn tabs.
+                        let tab_style = self.resolved_style(id).unwrap_or_default();
                         for (idx, (_, title)) in pages.iter().enumerate() {
-                            let m = self.measure(title, 14.0);
+                            let m = self.measure_with(title, &tab_style);
                             let tab_w = m.width + 24.0;
                             if x >= cur_x && x < cur_x + tab_w {
                                 self.notebook_select(id, idx);
@@ -1509,6 +1612,8 @@ impl Tk {
         self.dirty = true;
     }
 
+    /// Headless harness: releases the primary mouse button, activating the
+    /// pressed widget if the pointer is still over it.
     #[doc(hidden)]
     pub fn sim_mouse_up(&mut self) {
         self.ensure_layout();
@@ -1533,6 +1638,7 @@ impl Tk {
         self.dirty = true;
     }
 
+    /// Headless harness: move + press + release at logical `(x, y)`.
     #[doc(hidden)]
     pub fn sim_click(&mut self, x: f32, y: f32) {
         self.sim_mouse_move(x, y);
@@ -1645,7 +1751,8 @@ impl Tk {
         self.ensure_layout();
         let Some(n) = self.node_mut(id) else { return false };
         if n.kind != Kind::Canvas { return false; }
-        n.scrollregion = Some((width.max(0.0), height.max(0.0)));
+        let sane = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
+        n.scrollregion = Some((sane(width), sane(height)));
         let v = n.view;
         self.canvas_set_view(id, v.0, v.1);
         self.dirty = true;
@@ -1662,6 +1769,7 @@ impl Tk {
         let Some(n) = self.node(id) else { return (0.0, 1.0) };
         let (total, visible, pos) = match (n.kind, vertical) {
             (Kind::Listbox, true) => (n.list_items.len() as f32, n.list_height.max(1) as f32, n.list_scroll as f32),
+            (Kind::Text, true) => (n.text.split('\n').count() as f32, n.text_dimensions.1.max(1) as f32, n.text_scroll_row as f32),
             (Kind::Canvas, true) => (n.scrollregion.map_or(n.rect.height, |r| r.1), n.rect.height, n.view.1),
             (Kind::Canvas, false) => (n.scrollregion.map_or(n.rect.width, |r| r.0), n.rect.width, n.view.0),
             _ => return (0.0, 1.0),
@@ -1670,7 +1778,7 @@ impl Tk {
         ((pos / total).clamp(0.0, 1.0), ((pos + visible) / total).clamp(0.0, 1.0))
     }
 
-    /// tkinter `yview()`: visible fraction (first, last) of a Listbox or Canvas.
+    /// tkinter `yview()`: visible fraction (first, last) of a Listbox, Text or Canvas.
     pub fn yview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, true) }
     /// tkinter `xview()` for a Canvas.
     pub fn xview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, false) }
@@ -1681,6 +1789,7 @@ impl Tk {
         let Some(n) = self.node(id) else { return };
         match n.kind {
             Kind::Listbox => { let t = n.list_items.len() as f32; self.set_scroll_pos(id, fraction * t); }
+            Kind::Text => { let t = n.text.split('\n').count() as f32; self.set_scroll_pos(id, fraction * t); }
             Kind::Canvas => { let (vx, t) = (n.view.0, n.scrollregion.map_or(0.0, |r| r.1)); self.canvas_set_view(id, vx, fraction * t); }
             _ => {}
         }
@@ -1694,18 +1803,23 @@ impl Tk {
         self.canvas_set_view(id, fraction * t, vy);
     }
 
-    /// tkinter `yview_scroll(n, "units"|"pages")`. Units are rows (Listbox) or 48 px (Canvas).
+    /// tkinter `yview_scroll(n, "units"|"pages")`. Units are rows (Listbox, Text) or 48 px (Canvas).
     pub fn yview_scroll(&mut self, id: WidgetId, n: i32, what: ScrollUnit) {
         self.ensure_layout();
         let Some(node) = self.node(id) else { return };
-        let (unit, page) = match node.kind {
-            Kind::Listbox => (1.0, node.list_height.max(1) as f32),
-            Kind::Canvas => (WHEEL_LINE_PX, (node.rect.height - WHEEL_LINE_PX).max(WHEEL_LINE_PX)),
+        let (unit, page, pos) = match node.kind {
+            Kind::Listbox => (1.0, node.list_height.max(1) as f32, node.list_scroll as f32),
+            Kind::Text => (1.0, node.text_dimensions.1.max(1) as f32, node.text_scroll_row as f32),
+            Kind::Canvas => (WHEEL_LINE_PX, (node.rect.height - WHEEL_LINE_PX).max(WHEEL_LINE_PX), node.view.1),
             _ => return,
         };
         let step = n as f32 * if what == ScrollUnit::Pages { page } else { unit };
-        let pos = match node.kind { Kind::Listbox => node.list_scroll as f32, _ => node.view.1 };
-        if node.kind == Kind::Listbox { self.set_scroll_pos(id, pos + step) } else { let vx = node.view.0; self.canvas_set_view(id, vx, pos + step) }
+        if node.kind == Kind::Canvas {
+            let vx = node.view.0;
+            self.canvas_set_view(id, vx, pos + step);
+        } else {
+            self.set_scroll_pos(id, pos + step);
+        }
     }
 
     /// tkinter `xview_scroll(n, "units"|"pages")` for a Canvas.
@@ -1840,6 +1954,8 @@ impl Tk {
         self.dirty = true;
     }
 
+    /// Headless harness: delivers a non-text key to the focused widget (or to the
+    /// modal/combobox/focus-traversal handlers that intercept it).
     #[doc(hidden)]
     pub fn sim_key(&mut self, key: Key) {
         self.ensure_layout();
@@ -1894,7 +2010,6 @@ impl Tk {
             return;
         }
         if node.kind == Kind::Canvas && node.scrollregion.is_some() {
-            let total = node.scrollregion.map_or(0.0, |r| r.1);
             match key {
                 Key::PageUp => self.yview_scroll(id, -1, ScrollUnit::Pages),
                 Key::PageDown | Key::Space => self.yview_scroll(id, 1, ScrollUnit::Pages),
@@ -1903,7 +2018,7 @@ impl Tk {
                 Key::Left => self.xview_scroll(id, -1, ScrollUnit::Units),
                 Key::Right => self.xview_scroll(id, 1, ScrollUnit::Units),
                 Key::Home => self.yview_moveto(id, 0.0),
-                Key::End => { let _ = total; self.yview_moveto(id, 1.0) }
+                Key::End => self.yview_moveto(id, 1.0),
                 _ => {}
             }
             return;
@@ -1926,7 +2041,7 @@ impl Tk {
             Kind::Combobox if matches!(key, Key::Up | Key::Down) => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;
-                let new_val = if key == Key::Up { old.saturating_sub(1) } else { (old + 1).min(max_idx) };
+                let new_val = if key == Key::Up { old.saturating_sub(1) } else { old.saturating_add(1) }.clamp(0, max_idx);
                 if let Some(var) = node.combo_var {
                     var.set(self, new_val);
                 }
@@ -1975,6 +2090,7 @@ impl Tk {
         }
     }
 
+    /// Headless harness: types `text` into the focused Entry or Text widget.
     #[doc(hidden)]
     pub fn sim_text(&mut self, text: &str) {
         self.ensure_layout();
@@ -2033,7 +2149,8 @@ impl Tk {
         if node.kind != Kind::Text { return; }
         let read_only = node.text_read_only;
         let mut text = node.text.clone();
-        let mut cursor = node.cursor.min(text.len());
+        // The stored cursor may be stale after programmatic text changes; never slice mid-char.
+        let mut cursor = floor_char_boundary(&text, node.cursor);
         let vis_rows = node.text_dimensions.1;
 
         match key {
@@ -2136,6 +2253,7 @@ impl Tk {
     }
 
     // Listbox methods
+    /// Inserts an item at `index` (appends when out of range), shifting the selection.
     pub fn listbox_insert(&mut self, id: WidgetId, index: usize, text: impl Into<String>) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Listbox {
@@ -2156,6 +2274,7 @@ impl Tk {
         true
     }
 
+    /// Deletes items `first..=last` (clamped), adjusting selection and scroll.
     pub fn listbox_delete(&mut self, id: WidgetId, first: usize, last: usize) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Listbox || first >= node.list_items.len() {
@@ -2182,6 +2301,7 @@ impl Tk {
         }
     }
 
+    /// All items of a Listbox (empty for other kinds).
     pub fn listbox_get(&self, id: WidgetId) -> Vec<String> {
         self.node(id)
             .filter(|n| n.kind == Kind::Listbox)
@@ -2189,12 +2309,15 @@ impl Tk {
             .unwrap_or_default()
     }
 
+    /// Index of the selected row, if any (tkinter `curselection()`).
     pub fn listbox_curselection(&self, id: WidgetId) -> Option<usize> {
         self.node(id)
             .filter(|n| n.kind == Kind::Listbox)
             .and_then(|n| n.list_selection)
     }
 
+    /// Selects row `index` (or clears with `None`), scrolls it into view, fires
+    /// the select callback on change and the command on every call.
     pub fn listbox_select(&mut self, id: WidgetId, index: Option<usize>) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Listbox {
@@ -2764,8 +2887,6 @@ pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
 }
 
 struct NodeSnapshot {
-    list_items: Vec<String>,
-    text: String,
     scale: Option<crate::Var<i64>>,
     range: (i64, i64),
     canvas_size: (f32, f32),
@@ -2775,4 +2896,28 @@ struct NodeSnapshot {
     kind: Kind,
     style: crate::widgets::Style,
     image: Option<ImageId>,
+}
+
+/// Legacy (pre-style-engine) dark-theme background/foreground for a widget
+/// kind. Shared by `set_theme` and widget creation so both agree (review F9).
+fn dark_default_colors(kind: Kind) -> (Color, Color) {
+    let bg = match kind {
+        Kind::Entry | Kind::Listbox | Kind::Text | Kind::Combobox => Color::rgb(23, 26, 33),
+        Kind::Canvas => Color::rgb(20, 22, 28),
+        _ => Color::rgb(23, 26, 33),
+    };
+    (bg, Color::rgb(230, 232, 238))
+}
+
+/// Largest char boundary `<= index` in `s` (stable replacement for the
+/// unstable `str::floor_char_boundary`). Prevents mid-UTF-8 slicing (review F2).
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
