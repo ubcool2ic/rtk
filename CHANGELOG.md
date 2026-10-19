@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0
+- **Text** widget: multi-line editing, wheel scrolling, read-only mode, `text_get/set/insert_end/clear`, `text_set_max_lines` for logs.
+- **Listbox** `listbox_bind_select` callback (mouse, keyboard and programmatic changes).
+- **Combobox** (index-bound `Var<i64>`, overlay dropdown, keys/wheel), `combobox_set_values`, `combobox_get`.
+- **Notebook** tabs (`notebook_add/select/selected/bind_changed`) and `pack_forget` / `grid_forget` / `place_forget` / `is_mapped`.
+- **ProgressBar** bound to `Var<f64>` (`f64_var`, `progress_bind`) and indeterminate mode.
+- `Opt::Monospace(bool)`; **tooltips** (`tooltip`, `tooltip_remove`, `active_tooltip`).
+- **Canvas RGBA images** (`canvas_create_image_rgba`, `canvas_update_image`, nearest/bilinear) and `colormap` module (Viridis, Inferno, Magma, Plasma, Jet, Turbo, Grayscale; `heatmap_to_rgba`, `legend_rgba`).
+- **Thread-safe `TkProxy`** (`tk.proxy().post(..)` wakes the event loop), `process_posted`, `after_idle`. `Var<T>` is now `Send + Sync` (identity handle only).
+- **Dialogs** (`dialog` module, in-app modal overlay): message box, yes/no, ask string, typed confirmation, open/save file, directory.
+- **Modern theming**: `Theme::ModernDark` / `Theme::ModernLight`, `set_accent`, selected state (`set_selected`), named styles `Card`, `Sidebar`, `Sidebar.TButton`, `Accent.TButton`, `Ghost.TButton`, `Heading`, `Subheading`, `Muted`, `Mono`, `Chip.*`.
+- **Icons** (`icons` module, 28 vector icons) + `register_image_rgba`; `Opt::Compound` for image + text.
+- Examples: `modern.rs`. Tests: `tests/v08_widgets.rs`, `tests/v08_extras.rs`.
+- Note: `Theme` gained variants; exhaustive `match`es need a wildcard arm.
+
 ## 0.7.0
 - Scrollable Canvas: `canvas_scrollregion`, `canvas_view`, `yview`/`xview`, `yview_moveto`/`xview_moveto`, `yview_scroll`/`xview_scroll` with `ScrollUnit::{Units, Pages}`.
 - `link_scrollbar` accepts a Canvas. The scrollbar thumb, track clicks and dragging now share one model for Listbox and Canvas.

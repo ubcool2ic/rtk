@@ -43,6 +43,22 @@ pub enum Theme {
     Fluent,
     Material,
     HighContrast,
+    ModernDark,
+    ModernLight,
+}
+
+/// Placement of an image relative to text inside Buttons and Labels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Compound {
+    /// Image drawn to the left of text with an 8 px gap (default).
+    #[default]
+    Left,
+    /// Image drawn above text with an 8 px gap.
+    Top,
+    /// Only the image is rendered.
+    ImageOnly,
+    /// Only the text is rendered.
+    TextOnly,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +116,7 @@ pub enum Opt {
     StyleOverride(StyleSpec),
     Disabled(bool),
     Image(ImageId),
+    Compound(Compound),
     Monospace(bool),
 }
 
@@ -466,7 +483,9 @@ pub(crate) struct WidgetNode {
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
     pub disabled: bool,
+    pub selected: bool,
     pub image: Option<ImageId>,
+    pub compound: Compound,
     pub transition: Option<TransitionState>,
 }
 
@@ -540,7 +559,9 @@ impl WidgetNode {
             named_style: None,
             style_override: None,
             disabled: false,
+            selected: false,
             image: None,
+            compound: Compound::Left,
             transition: None,
         }
     }

@@ -529,7 +529,7 @@ impl Tk {
                         let is_selected = idx == sel;
 
                         if is_selected {
-                            fill(&mut pixmap, tab_rect.scaled(scale), clip, if dark_mode { Color::rgb(55, 55, 55) } else { Color::rgb(240, 240, 240) });
+                            fill(&mut pixmap, tab_rect.scaled(scale), clip, crate::style::blend(resolved.bg, accent, 0.15));
                             fill(&mut pixmap, Rect::new(cur_x, logical.y + strip_h - 2.5, tab_w, 2.5).scaled(scale), clip, accent);
                         }
 
@@ -539,7 +539,7 @@ impl Tk {
                         );
                         self.text_engine.draw_styled(
                             &mut pixmap, title, (resolved.font_size * scale, if is_selected { accent } else { draw_fg }),
-                            resolved.font_family.as_deref(), if is_selected { 600 } else { resolved.font_weight }, false,
+                            resolved.font_family.as_deref(), if is_selected { 700 } else { resolved.font_weight }, false,
                             origin, clip.intersection(tab_rect.scaled(scale)), resolved.opacity,
                         );
                         cur_x += tab_w;
@@ -868,6 +868,9 @@ impl Tk {
                     }
                 }
                 _ => {
+                    // Copy before measuring: measure_with needs &mut self.
+                    let compound = node.compound;
+                    let is_sidebar_btn = node.named_style.as_deref() == Some("Sidebar.TButton");
                     let text = self.widget_text(id).unwrap_or_default();
                     let measured = self.measure_with(&text, &resolved);
                     let state = self.widget_state(id);
@@ -898,41 +901,110 @@ impl Tk {
                         ).within(logical);
                     }
 
-                    // Optional Image left of text
-                    let mut image_offset = 0.0;
-                    if let Some(img_id) = image_id {
-                        if let Some(img_pixmap) = self.images.get(&img_id) {
-                            let img_w = img_pixmap.width() as f32;
-                            let img_h = img_pixmap.height() as f32;
-                            let img_x = (text_rect.x + resolved.padding.left + shift) * scale;
-                            let img_y = (text_rect.y + (text_rect.height - img_h) / 2.0 + shift) * scale;
-                            pixmap.draw_pixmap(
-                                img_x.round() as i32,
-                                img_y.round() as i32,
-                                img_pixmap.as_ref(),
-                                &tiny_skia::PixmapPaint::default(),
-                                Transform::identity(),
-                                None,
+                    let img_size = image_id.and_then(|img| self.images.get(&img)).map(|p| (p.width() as f32, p.height() as f32));
+
+                    match (img_size, text.is_empty(), compound) {
+                        (Some((iw, ih)), false, crate::widgets::Compound::Left) => {
+                            let gap = 8.0;
+                            let total_w = iw + gap + measured.width;
+                            let start_x = if is_sidebar_btn {
+                                text_rect.x + resolved.padding.left + shift
+                            } else {
+                                text_rect.x + (text_rect.width - total_w) / 2.0 + shift
+                            };
+                            if let Some(img_pixmap) = image_id.and_then(|i| self.images.get(&i)) {
+                                let ix = start_x * scale;
+                                let iy = (text_rect.y + (text_rect.height - ih) / 2.0 + shift) * scale;
+                                pixmap.draw_pixmap(
+                                    ix.round() as i32,
+                                    iy.round() as i32,
+                                    img_pixmap.as_ref(),
+                                    &tiny_skia::PixmapPaint::default(),
+                                    Transform::identity(),
+                                    None,
+                                );
+                            }
+                            let tx = start_x + iw + gap;
+                            let ty = text_rect.y + (text_rect.height - measured.height) / 2.0 + shift;
+                            self.text_engine.draw_styled(
+                                &mut pixmap,
+                                &text,
+                                (resolved.font_size * scale, draw_fg),
+                                resolved.font_family.as_deref(),
+                                resolved.font_weight,
+                                resolved.italic,
+                                (tx * scale, ty * scale),
+                                clip.intersection(text_rect.scaled(scale)),
+                                resolved.opacity,
                             );
-                            image_offset = img_w + 6.0;
+                        }
+                        (Some((iw, ih)), false, crate::widgets::Compound::Top) => {
+                            let gap = 6.0;
+                            let total_h = ih + gap + measured.height;
+                            let start_y = text_rect.y + (text_rect.height - total_h) / 2.0 + shift;
+                            if let Some(img_pixmap) = image_id.and_then(|i| self.images.get(&i)) {
+                                let ix = (text_rect.x + (text_rect.width - iw) / 2.0 + shift) * scale;
+                                let iy = start_y * scale;
+                                pixmap.draw_pixmap(
+                                    ix.round() as i32,
+                                    iy.round() as i32,
+                                    img_pixmap.as_ref(),
+                                    &tiny_skia::PixmapPaint::default(),
+                                    Transform::identity(),
+                                    None,
+                                );
+                            }
+                            let tx = text_rect.x + (text_rect.width - measured.width) / 2.0 + shift;
+                            let ty = start_y + ih + gap;
+                            self.text_engine.draw_styled(
+                                &mut pixmap,
+                                &text,
+                                (resolved.font_size * scale, draw_fg),
+                                resolved.font_family.as_deref(),
+                                resolved.font_weight,
+                                resolved.italic,
+                                (tx * scale, ty * scale),
+                                clip.intersection(text_rect.scaled(scale)),
+                                resolved.opacity,
+                            );
+                        }
+                        (Some((iw, ih)), _, crate::widgets::Compound::ImageOnly) | (Some((iw, ih)), true, _) => {
+                            if let Some(img_pixmap) = image_id.and_then(|i| self.images.get(&i)) {
+                                let ix = (text_rect.x + (text_rect.width - iw) / 2.0 + shift) * scale;
+                                let iy = (text_rect.y + (text_rect.height - ih) / 2.0 + shift) * scale;
+                                pixmap.draw_pixmap(
+                                    ix.round() as i32,
+                                    iy.round() as i32,
+                                    img_pixmap.as_ref(),
+                                    &tiny_skia::PixmapPaint::default(),
+                                    Transform::identity(),
+                                    None,
+                                );
+                            }
+                        }
+                        _ => {
+                            let origin_x = if is_sidebar_btn {
+                                text_rect.x + resolved.padding.left + shift
+                            } else {
+                                text_rect.x + (text_rect.width - measured.width) / 2.0 + shift
+                            };
+                            let origin = (
+                                origin_x * scale,
+                                (text_rect.y + (text_rect.height - measured.height) / 2.0 + shift) * scale,
+                            );
+                            self.text_engine.draw_styled(
+                                &mut pixmap,
+                                &text,
+                                (resolved.font_size * scale, draw_fg),
+                                resolved.font_family.as_deref(),
+                                resolved.font_weight,
+                                resolved.italic,
+                                origin,
+                                clip.intersection(text_rect.inset(4.0, 2.0).scaled(scale)),
+                                resolved.opacity,
+                            );
                         }
                     }
-
-                    let origin = (
-                        (text_rect.x + (text_rect.width - measured.width) / 2.0 + image_offset / 2.0 + shift) * scale,
-                        (text_rect.y + (text_rect.height - measured.height) / 2.0 + shift) * scale,
-                    );
-                    self.text_engine.draw_styled(
-                        &mut pixmap,
-                        &text,
-                        (resolved.font_size * scale, draw_fg),
-                        resolved.font_family.as_deref(),
-                        resolved.font_weight,
-                        resolved.italic,
-                        origin,
-                        clip.intersection(text_rect.inset(4.0, 2.0).scaled(scale)),
-                        resolved.opacity,
-                    );
                 }
             }
         }

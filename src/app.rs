@@ -11,6 +11,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
+use crate::tk::RtkUserEvent;
 use crate::{Key, Tk};
 
 struct App {
@@ -30,9 +31,13 @@ struct App {
 impl Tk {
     /// Consumes the toolkit and runs winit. Call on the main thread.
     pub fn mainloop(self) -> Result<(), Box<dyn Error>> {
-        let event_loop = EventLoop::new()?;
+        let event_loop = EventLoop::<RtkUserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let now = Instant::now();
+        let proxy = event_loop.create_proxy();
+        if let Ok(mut w) = self.proxy_shared.waker.lock() {
+            *w = Some(proxy);
+        }
         let mut tk = self;
         tk.timers.real_clock = true;
         let mut app = App {
@@ -74,6 +79,12 @@ impl App {
 
     fn schedule(&mut self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
+            event_loop.exit();
+            return;
+        }
+
+        // Drain any thread-safe tasks posted via TkProxy or after_idle.
+        if self.tk.process_posted() > 0 && self.tk.quit_requested {
             event_loop.exit();
             return;
         }
@@ -211,7 +222,12 @@ impl App {
     }
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<RtkUserEvent> for App {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: RtkUserEvent) {
+        self.tk.process_posted();
+        self.schedule(event_loop);
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
             event_loop.exit();
@@ -334,6 +350,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.tk.process_posted();
         self.schedule(event_loop);
     }
 }

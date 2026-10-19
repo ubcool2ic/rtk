@@ -59,7 +59,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         Theme::Light => 0,
         Theme::Dark => 1,
         Theme::Fluent => 2,
-        Theme::Material => 3,
+        Theme::HighContrast => 4,
+        // Modern themes (v0.8) are not in this demo picker.
+        _ => 0,
         Theme::HighContrast => 4,
     });
 

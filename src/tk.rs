@@ -1,8 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+use winit::event_loop::EventLoopProxy;
 
 use tiny_skia::Pixmap;
 
@@ -18,6 +19,37 @@ use crate::widgets::{
     Kind, Manager, Theme, WidgetNode, WidgetSlot,
 };
 use crate::{Opt, RtkError, WidgetId};
+
+pub(crate) type PostedTask = Box<dyn FnOnce(&mut Tk) + Send + 'static>;
+pub(crate) type IdleTask = Box<dyn FnOnce(&mut Tk) + 'static>;
+
+#[derive(Debug)]
+pub(crate) struct RtkUserEvent;
+
+pub(crate) struct ProxyShared {
+    pub(crate) queue: Mutex<VecDeque<PostedTask>>,
+    pub(crate) waker: Mutex<Option<EventLoopProxy<RtkUserEvent>>>,
+}
+
+/// A thread-safe handle for posting work to the GUI main thread.
+#[derive(Clone)]
+pub struct TkProxy {
+    shared: Arc<ProxyShared>,
+}
+
+impl TkProxy {
+    /// Queues a closure to execute on the main thread and wakes the event loop.
+    pub fn post(&self, f: impl FnOnce(&mut Tk) + Send + 'static) {
+        if let Ok(mut q) = self.shared.queue.lock() {
+            q.push_back(Box::new(f));
+        }
+        if let Ok(w) = self.shared.waker.lock() {
+            if let Some(proxy) = w.as_ref() {
+                let _ = proxy.send_event(RtkUserEvent);
+            }
+        }
+    }
+}
 
 const MAX_ENTRY_BYTES: usize = 64 * 1024;
 
@@ -82,6 +114,13 @@ pub struct Tk {
     pub(crate) hover_timer_ms: u32,
     pub(crate) tooltip_visible: bool,
     pub(crate) open_combobox: Option<WidgetId>,
+    pub(crate) proxy_shared: Arc<ProxyShared>,
+    pub(crate) idle_queue: VecDeque<IdleTask>,
+    /// Root of the current modal overlay subtree, if any.
+    pub modal: Option<WidgetId>,
+    pub(crate) modal_cancel: Option<Box<dyn FnMut(&mut Tk)>>,
+    pub(crate) modal_accept: Option<Box<dyn FnMut(&mut Tk)>>,
+    pub(crate) modal_entry_changed: Option<Box<dyn FnMut(&mut Tk, WidgetId, &str)>>,
 }
 
 impl Default for Tk {
@@ -127,7 +166,74 @@ impl Tk {
             hover_timer_ms: 0,
             tooltip_visible: false,
             open_combobox: None,
+            proxy_shared: Arc::new(ProxyShared {
+                queue: Mutex::new(VecDeque::new()),
+                waker: Mutex::new(None),
+            }),
+            idle_queue: VecDeque::new(),
+            modal: None,
+            modal_cancel: None,
+            modal_accept: None,
+            modal_entry_changed: None,
         }
+    }
+
+    /// Obtains a thread-safe proxy to post callbacks from background threads.
+    pub fn proxy(&self) -> TkProxy {
+        TkProxy { shared: self.proxy_shared.clone() }
+    }
+
+    /// Queues a closure to run once on the main thread when idle or on next drain.
+    pub fn after_idle(&mut self, f: impl FnOnce(&mut Tk) + 'static) {
+        self.idle_queue.push_back(Box::new(f));
+    }
+
+    /// Drains posted and idle tasks reentrantly, returning the number processed.
+    pub fn process_posted(&mut self) -> usize {
+        let mut count = 0;
+        loop {
+            let mut tasks: VecDeque<PostedTask> = {
+                if let Ok(mut q) = self.proxy_shared.queue.lock() {
+                    std::mem::take(&mut *q)
+                } else {
+                    VecDeque::new()
+                }
+            };
+            let mut idles: VecDeque<IdleTask> = std::mem::take(&mut self.idle_queue);
+            if tasks.is_empty() && idles.is_empty() {
+                break;
+            }
+            while let Some(task) = tasks.pop_front() {
+                task(self);
+                count += 1;
+            }
+            while let Some(idle) = idles.pop_front() {
+                idle(self);
+                count += 1;
+            }
+        }
+        if count > 0 {
+            self.dirty = true;
+        }
+        count
+    }
+
+    /// Returns true if `id` is `ancestor` or a descendant of `ancestor`.
+    pub(crate) fn is_descendant_of(&self, mut id: WidgetId, ancestor: WidgetId) -> bool {
+        if id == ancestor {
+            return true;
+        }
+        while let Some(node) = self.node(id) {
+            if let Some(pid) = node.parent {
+                if pid == ancestor {
+                    return true;
+                }
+                id = pid;
+            } else {
+                break;
+            }
+        }
+        false
     }
 
     pub fn root(&self) -> WidgetId {
@@ -175,23 +281,25 @@ impl Tk {
             Theme::Fluent => Tokens::fluent(),
             Theme::Material => Tokens::material(),
             Theme::HighContrast => Tokens::high_contrast(),
+            Theme::ModernDark => Tokens::modern_dark(),
+            Theme::ModernLight => Tokens::modern_light(),
         };
         self.style_engine.set_tokens(tokens);
 
-        let is_dark = theme == Theme::Dark;
+        let is_dark = matches!(theme, Theme::Dark | Theme::ModernDark);
         let is_hc = theme == Theme::HighContrast;
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
                 if !node.style.bg_overridden {
                     node.style.bg = match node.kind {
                         Kind::Entry | Kind::Listbox => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(35, 35, 35) } else { Color::WHITE }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(23, 26, 33) } else { Color::WHITE }
                         }
                         Kind::Canvas => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(25, 25, 25) } else { Color::rgb(240, 240, 240) }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(20, 22, 28) } else { Color::rgb(240, 240, 240) }
                         }
                         _ => {
-                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(45, 45, 45) } else { Color::BG }
+                            if is_hc { Color::BLACK } else if is_dark { Color::rgb(23, 26, 33) } else { Color::BG }
                         }
                     };
                 }
@@ -199,13 +307,23 @@ impl Tk {
                     node.style.fg = if is_hc {
                         Color::WHITE
                     } else if is_dark {
-                        Color::rgb(230, 230, 230)
+                        Color::rgb(230, 232, 238)
                     } else {
                         Color::FG
                     };
                 }
             }
         }
+    }
+
+    /// Sets the brand accent color and updates derived tokens and styles.
+    pub fn set_accent(&mut self, accent: Color) {
+        let mut tokens = self.style_engine.tokens().clone();
+        tokens.palette.accent = accent;
+        tokens.palette.focus = accent;
+        tokens.palette.select_bg = Color::rgba(accent.r, accent.g, accent.b, 64);
+        self.style_engine.set_tokens(tokens);
+        self.dirty = true;
     }
 
     // -----------------------------------------------------------------------
@@ -281,6 +399,26 @@ impl Tk {
         Some(id)
     }
 
+    /// Registers a raw RGBA buffer as an image, premultiplying color channels by alpha.
+    pub fn register_image_rgba(&mut self, w: u32, h: u32, rgba: &[u8]) -> Option<ImageId> {
+        if w == 0 || h == 0 || rgba.len() != (w as usize) * (h as usize) * 4 {
+            return None;
+        }
+        let mut pixmap = Pixmap::new(w, h)?;
+        let data = pixmap.data_mut();
+        for (dst, src) in data.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
+            let a = u32::from(src[3]);
+            dst[0] = (u32::from(src[0]) * a / 255) as u8;
+            dst[1] = (u32::from(src[1]) * a / 255) as u8;
+            dst[2] = (u32::from(src[2]) * a / 255) as u8;
+            dst[3] = src[3];
+        }
+        let id = ImageId(self.next_image_id);
+        self.next_image_id = self.next_image_id.saturating_add(1);
+        self.images.insert(id, pixmap);
+        Some(id)
+    }
+
     pub fn widget_state(&self, id: WidgetId) -> State {
         let Some(node) = self.node(id) else { return State::empty() };
         let mut s = State::empty();
@@ -295,6 +433,9 @@ impl Tk {
         }
         if self.focused == Some(id) {
             s |= State::FOCUSED;
+        }
+        if node.selected {
+            s |= State::SELECTED;
         }
         if node.kind == Kind::Checkbutton {
             if node.check.and_then(|v| v.get(self)).unwrap_or(false) {
@@ -651,6 +792,11 @@ impl Tk {
                     node.image = Some(img_id);
                 }
             }
+            Opt::Compound(compound) => {
+                if let Some(node) = self.node_mut(id) {
+                    node.compound = compound;
+                }
+            }
             Opt::Monospace(mono) => {
                 if let Some(node) = self.node_mut(id) {
                     node.monospace = mono;
@@ -693,8 +839,22 @@ impl Tk {
             }
         }
         if let Some(Binding::Text(var)) = binding {
-            var.set(self, text);
+            var.set(self, text.clone());
         }
+        if let Some(mut cb) = self.modal_entry_changed.take() {
+            cb(self, id, &text);
+            self.modal_entry_changed = Some(cb);
+        }
+    }
+
+    /// Sets or clears the `SELECTED` state bit on a widget (e.g. for sidebar items).
+    pub fn set_selected(&mut self, id: WidgetId, selected: bool) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.selected != selected {
+            node.selected = selected;
+            self.dirty = true;
+        }
+        true
     }
 
     pub fn widget_text(&self, id: WidgetId) -> Option<String> {
@@ -858,7 +1018,7 @@ impl Tk {
             let mar_h = resolved.margin.top + resolved.margin.bottom;
 
             let image_extra_w = if let Some(img_id) = node_snap.image {
-                self.images.get(&img_id).map(|p| p.width() as f32 + 6.0).unwrap_or(0.0)
+                self.images.get(&img_id).map(|p| p.width() as f32 + 8.0).unwrap_or(0.0)
             } else {
                 0.0
             };
@@ -1070,6 +1230,11 @@ impl Tk {
 
     fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
         self.paint_order.iter().rev().copied().find(|id| {
+            if let Some(modal_id) = self.modal {
+                if !self.is_descendant_of(*id, modal_id) {
+                    return false;
+                }
+            }
             self.node(*id).is_some_and(|node| {
                 node.visible && (node.kind.focusable() || node.kind == Kind::Canvas || node.kind == Kind::Scrollbar || node.kind == Kind::Notebook) && node.clip.contains(x, y)
             })
@@ -1652,7 +1817,14 @@ impl Tk {
 
     fn traverse_focus(&mut self, backwards: bool) {
         let order: Vec<_> = self.paint_order.iter().copied()
-            .filter(|id| self.is_focusable(*id)).collect();
+            .filter(|id| {
+                if let Some(modal_id) = self.modal {
+                    if !self.is_descendant_of(*id, modal_id) {
+                        return false;
+                    }
+                }
+                self.is_focusable(*id)
+            }).collect();
         if order.is_empty() {
             self.focused = None;
             return;
@@ -1679,10 +1851,42 @@ impl Tk {
                 self.dirty = true;
                 return;
             }
+            if self.modal.is_some() {
+                if let Some(mut cancel) = self.modal_cancel.take() {
+                    cancel(self);
+                    if self.modal.is_some() && self.modal_cancel.is_none() {
+                        self.modal_cancel = Some(cancel);
+                    }
+                    return;
+                }
+            }
+        }
+        if key == Key::Enter && self.modal.is_some() {
+            let on_button = self.focused.is_some_and(|f| {
+                self.node(f).is_some_and(|n| n.kind == Kind::Button)
+            });
+            if !on_button {
+                if let Some(mut accept) = self.modal_accept.take() {
+                    accept(self);
+                    // If the dialog rejected the input (still open, no new handler
+                    // installed), restore the handler so a later Enter can accept.
+                    if self.modal.is_some() && self.modal_accept.is_none() {
+                        self.modal_accept = Some(accept);
+                    }
+                    return;
+                }
+            }
         }
         if matches!(key, Key::Tab | Key::ShiftTab) {
             self.traverse_focus(key == Key::ShiftTab);
             return;
+        }
+        if let Some(modal_id) = self.modal {
+            if let Some(f) = self.focused {
+                if !self.is_descendant_of(f, modal_id) {
+                    self.traverse_focus(false);
+                }
+            }
         }
         let Some(id) = self.focused else { return };
         let Some(node) = self.node(id) else { return };

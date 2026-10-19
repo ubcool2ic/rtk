@@ -5,6 +5,12 @@ advanced styling layer (design tokens, ttk-style named styles, state maps with a
 transitions, rounded corners, shadows, gradients, fonts, CSS-like stylesheets with hot reload,
 five built-in themes) on top of the unchanged basic API.
 
+## New in 0.8
+Text, Combobox, Notebook (+ `pack_forget`), Listbox select callbacks, ProgressBar bound to `Var<f64>`,
+tooltips, monospace, Canvas RGBA images + colormaps, thread-safe `TkProxy`, in-app dialogs (file open/save,
+typed confirmation), modern dark/light themes with accent color and card/sidebar/chip styles, and built-in icons.
+See `examples/modern.rs` (`cargo run --example modern -- --screenshot modern.png`).
+
 ## Features
 
 - Frame, Label, Button, single-line Entry, Checkbutton, and integer Scale.

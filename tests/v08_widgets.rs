@@ -2,8 +2,8 @@
 
 use rtk::colormap::{self, Colormap};
 use rtk::{
-    Button, Canvas, Color, Combobox, DragPhase, Entry, Frame, Key, Label, Listbox,
-    Notebook, Opt, PackOpts, ProgressBar, ScrollUnit, Text, Tk,
+    Button, Canvas, Combobox, Frame, Key, Label, Listbox,
+    Notebook, Opt, PackOpts, ProgressBar, Text, Tk,
 };
 
 #[test]

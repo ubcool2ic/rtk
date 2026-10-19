@@ -107,6 +107,7 @@ pub struct LinearGradient {
 pub struct Palette {
     pub bg: Color,
     pub surface: Color,
+    pub surface2: Color,
     pub fg: Color,
     pub muted: Color,
     pub accent: Color,
@@ -150,6 +151,7 @@ impl Tokens {
             palette: Palette {
                 bg: Color::rgb(243, 243, 243),
                 surface: Color::rgb(255, 255, 255),
+                surface2: Color::rgb(238, 238, 238),
                 fg: Color::rgb(30, 30, 30),
                 muted: Color::rgb(115, 115, 115),
                 accent: Color::rgb(0, 103, 192),
@@ -174,6 +176,7 @@ impl Tokens {
             palette: Palette {
                 bg: Color::rgb(32, 32, 32),
                 surface: Color::rgb(45, 45, 45),
+                surface2: Color::rgb(55, 55, 55),
                 fg: Color::rgb(240, 240, 240),
                 muted: Color::rgb(160, 160, 160),
                 accent: Color::rgb(96, 205, 255),
@@ -196,6 +199,7 @@ impl Tokens {
     pub fn fluent() -> Self {
         let mut t = Self::light();
         t.palette.accent = Color::rgb(0, 103, 192);
+        t.palette.surface2 = Color::rgb(240, 240, 240);
         t.radius = Radius { sm: 2.0, md: 4.0, lg: 6.0 };
         t.font_family = Some("Segoe UI".into());
         t
@@ -206,6 +210,7 @@ impl Tokens {
             palette: Palette {
                 bg: Color::rgb(254, 247, 255),
                 surface: Color::rgb(238, 232, 244),
+                surface2: Color::rgb(226, 218, 236),
                 fg: Color::rgb(29, 27, 32),
                 muted: Color::rgb(121, 116, 126),
                 accent: Color::rgb(103, 80, 164),
@@ -230,6 +235,7 @@ impl Tokens {
             palette: Palette {
                 bg: Color::rgb(0, 0, 0),
                 surface: Color::rgb(0, 0, 0),
+                surface2: Color::rgb(20, 20, 20),
                 fg: Color::rgb(255, 255, 255),
                 muted: Color::rgb(200, 200, 200),
                 accent: Color::rgb(26, 235, 255),
@@ -245,6 +251,60 @@ impl Tokens {
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 0.0, md: 0.0, lg: 0.0 },
             type_scale: TypeScale { small: 12.0, body: 14.0, title: 18.0, heading: 24.0 },
+            font_family: None,
+        }
+    }
+
+    /// Modern dark theme tokens (#0F1115 bg, #171A21 surface, #4F8CFF accent).
+    pub fn modern_dark() -> Self {
+        let accent = Color::rgb(79, 140, 255);
+        Self {
+            palette: Palette {
+                bg: Color::rgb(15, 17, 21),
+                surface: Color::rgb(23, 26, 33),
+                surface2: Color::rgb(31, 36, 48),
+                fg: Color::rgb(230, 232, 238),
+                muted: Color::rgb(154, 163, 178),
+                accent,
+                accent_fg: Color::WHITE,
+                border: Color::rgb(42, 48, 64),
+                focus: accent,
+                danger: Color::rgb(248, 113, 113),
+                field_bg: Color::rgb(23, 26, 33),
+                select_bg: Color::rgba(accent.r, accent.g, accent.b, 64),
+                select_fg: Color::rgb(230, 232, 238),
+                shadow: Color::rgba(0, 0, 0, 110),
+            },
+            spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
+            radius: Radius { sm: 6.0, md: 10.0, lg: 14.0 },
+            type_scale: TypeScale { small: 12.0, body: 14.0, title: 18.0, heading: 22.0 },
+            font_family: None,
+        }
+    }
+
+    /// Modern light theme tokens (#F5F7FB bg, #FFFFFF surface, #4F8CFF accent).
+    pub fn modern_light() -> Self {
+        let accent = Color::rgb(79, 140, 255);
+        Self {
+            palette: Palette {
+                bg: Color::rgb(245, 247, 251),
+                surface: Color::rgb(255, 255, 255),
+                surface2: Color::rgb(235, 239, 248),
+                fg: Color::rgb(27, 31, 42),
+                muted: Color::rgb(122, 132, 150),
+                accent,
+                accent_fg: Color::WHITE,
+                border: Color::rgb(226, 230, 239),
+                focus: accent,
+                danger: Color::rgb(220, 53, 69),
+                field_bg: Color::rgb(255, 255, 255),
+                select_bg: Color::rgba(accent.r, accent.g, accent.b, 64),
+                select_fg: Color::rgb(27, 31, 42),
+                shadow: Color::rgba(0, 0, 0, 25),
+            },
+            spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
+            radius: Radius { sm: 6.0, md: 10.0, lg: 14.0 },
+            type_scale: TypeScale { small: 12.0, body: 14.0, title: 18.0, heading: 22.0 },
             font_family: None,
         }
     }
@@ -446,6 +506,8 @@ impl StyleEngine {
         });
 
         // Accent.TButton
+        let accent_hover = blend(p.accent, Color::WHITE, 0.08);
+        let accent_pressed = blend(p.accent, Color::BLACK, 0.08);
         self.styles.insert("Accent.TButton".into(), StyleSpec {
             bg: Some(p.accent),
             fg: Some(p.accent_fg),
@@ -459,18 +521,209 @@ impl StyleEngine {
             opacity: Some(1.0),
             font_family: Some(ff.clone()),
             font_size: Some(ts.body),
-            font_weight: Some(600),
+            font_weight: Some(700),
             italic: Some(false),
             transition_ms: Some(120),
         });
         self.state_maps.insert(("Accent.TButton".into(), State::HOVER.bits()), StyleSpec {
-            bg: Some(blend(p.accent, Color::WHITE, 0.15)),
+            bg: Some(accent_hover),
             ..Default::default()
         });
         self.state_maps.insert(("Accent.TButton".into(), State::PRESSED.bits()), StyleSpec {
-            bg: Some(blend(p.accent, Color::BLACK, 0.15)),
+            bg: Some(accent_pressed),
             ..Default::default()
         });
+
+        // Built-in named styles: Card, Sidebar, Sidebar.TButton, Ghost.TButton, Heading, Subheading, Muted, Mono, Chips
+        self.styles.insert("Card".into(), StyleSpec {
+            bg: Some(p.surface),
+            fg: Some(p.fg),
+            border_color: Some(p.border),
+            border_width: Some(1.0),
+            radius: Some(12.0),
+            padding: Some(Edges::all(16.0)),
+            margin: Some(Edges::default()),
+            shadow: Some(if p.shadow.a > 0 { Some(Shadow { dx: 0.0, dy: 2.0, blur: 6.0, color: p.shadow }) } else { None }),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(ts.body),
+            font_weight: Some(400),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        self.styles.insert("Sidebar".into(), StyleSpec {
+            bg: Some(p.surface),
+            fg: Some(p.fg),
+            border_color: Some(p.border),
+            border_width: Some(1.0),
+            radius: Some(0.0),
+            padding: Some(Edges::all(8.0)),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(ts.body),
+            font_weight: Some(400),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        self.styles.insert("Sidebar.TButton".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(8.0),
+            padding: Some(Edges::symmetrical(8.0, 12.0)),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(ts.body),
+            font_weight: Some(500),
+            italic: Some(false),
+            transition_ms: Some(100),
+        });
+        self.state_maps.insert(("Sidebar.TButton".into(), State::HOVER.bits()), StyleSpec {
+            bg: Some(p.surface2),
+            ..Default::default()
+        });
+        let selected_bg = Color::rgba(p.accent.r, p.accent.g, p.accent.b, 51);
+        self.state_maps.insert(("Sidebar.TButton".into(), State::SELECTED.bits()), StyleSpec {
+            bg: Some(selected_bg),
+            fg: Some(p.accent),
+            ..Default::default()
+        });
+
+        self.styles.insert("Ghost.TButton".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(r.md),
+            padding: Some(Edges::symmetrical(6.0, 14.0)),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(ts.body),
+            font_weight: Some(500),
+            italic: Some(false),
+            transition_ms: Some(100),
+        });
+        self.state_maps.insert(("Ghost.TButton".into(), State::HOVER.bits()), StyleSpec {
+            bg: Some(p.surface2),
+            ..Default::default()
+        });
+        self.state_maps.insert(("Ghost.TButton".into(), State::PRESSED.bits()), StyleSpec {
+            bg: Some(blend(p.surface2, p.fg, 0.1)),
+            ..Default::default()
+        });
+
+        self.styles.insert("Heading".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(0.0),
+            padding: Some(Edges::default()),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(22.0),
+            font_weight: Some(700),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        self.styles.insert("Subheading".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(0.0),
+            padding: Some(Edges::default()),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(16.0),
+            font_weight: Some(700),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        self.styles.insert("Muted".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.muted),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(0.0),
+            padding: Some(Edges::default()),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(13.0),
+            font_weight: Some(400),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        self.styles.insert("Mono".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(Color::rgba(0, 0, 0, 0)),
+            border_width: Some(0.0),
+            radius: Some(0.0),
+            padding: Some(Edges::default()),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(Some("monospace".into())),
+            font_size: Some(13.0),
+            font_weight: Some(400),
+            italic: Some(false),
+            transition_ms: Some(0),
+        });
+
+        // Pill chips
+        let chip_specs = [
+            ("Chip.Success", Color::rgba(46, 204, 113, 38), Color::rgb(39, 174, 96)),
+            ("Chip.Warning", Color::rgba(241, 196, 15, 38), Color::rgb(214, 137, 16)),
+            ("Chip.Danger", Color::rgba(231, 76, 60, 38), Color::rgb(214, 48, 49)),
+            ("Chip.Info", Color::rgba(52, 152, 219, 38), Color::rgb(41, 128, 185)),
+            ("Chip.Neutral", Color::rgba(128, 128, 128, 38), p.muted),
+        ];
+        for (name, bg, fg) in chip_specs {
+            self.styles.insert(name.into(), StyleSpec {
+                bg: Some(bg),
+                fg: Some(fg),
+                border_color: Some(Color::rgba(0, 0, 0, 0)),
+                border_width: Some(0.0),
+                radius: Some(999.0),
+                padding: Some(Edges::symmetrical(3.0, 10.0)),
+                margin: Some(Edges::default()),
+                shadow: Some(None),
+                gradient: Some(None),
+                opacity: Some(1.0),
+                font_family: Some(ff.clone()),
+                font_size: Some(12.0),
+                font_weight: Some(500),
+                italic: Some(false),
+                transition_ms: Some(0),
+            });
+        }
 
         // TLabel
         self.styles.insert("TLabel".into(), StyleSpec {
@@ -668,10 +921,23 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(120),
         });
+        // v0.8 widget classes: Text and Combobox look like input fields; the
+        // Notebook strip inherits the surrounding background (like TFrame).
+        if let Some(entry) = self.styles.get("TEntry").cloned() {
+            self.styles.insert("TText".into(), entry.clone());
+            self.styles.insert("TCombobox".into(), entry);
+        }
+        if let Some(focus) = self.state_maps.get(&("TEntry".into(), State::FOCUSED.bits())).cloned() {
+            self.state_maps.insert(("TText".into(), State::FOCUSED.bits()), focus.clone());
+            self.state_maps.insert(("TCombobox".into(), State::FOCUSED.bits()), focus);
+        }
+        if let Some(frame) = self.styles.get("TFrame").cloned() {
+            self.styles.insert("TNotebook".into(), frame);
+        }
         // Disabled look for every class (theme- and stylesheet-overridable).
         for class in [
             "TButton", "TLabel", "TEntry", "TCheckbutton", "TRadiobutton", "TScale",
-            "TListbox", "TSpinbox", "TProgressbar",
+            "TListbox", "TSpinbox", "TProgressbar", "TText", "TCombobox", "TNotebook",
         ] {
             self.state_maps
                 .entry((class.into(), State::DISABLED.bits()))

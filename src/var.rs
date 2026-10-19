@@ -20,6 +20,14 @@ pub struct Var<T> {
 
 impl<T> Copy for Var<T> {}
 
+// SAFETY: `owner` is only an identity token compared by address against the
+// owning Tk's `Arc<()>`; it is never dereferenced. A `Var` handle can only read
+// or write data through `&Tk`/`&mut Tk` on the UI thread, so moving the handle
+// into a `TkProxy::post` closure from another thread is sound.
+unsafe impl<T> Send for Var<T> {}
+// SAFETY: see `Send` above — the handle carries no shared mutable state.
+unsafe impl<T> Sync for Var<T> {}
+
 impl<T> Clone for Var<T> {
     fn clone(&self) -> Self {
         *self
