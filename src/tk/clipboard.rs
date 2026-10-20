@@ -55,7 +55,9 @@ impl Tk {
             if let Some(clip) = self.os_clipboard_handle() {
                 if let Ok(text) = clip.get_text() {
                     self.clipboard_text = text.clone();
-                    return Some(text);
+                    if !text.is_empty() {
+                        return Some(text);
+                    }
                 }
             }
         }

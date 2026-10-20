@@ -156,6 +156,45 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/timer.rs:1-318 | 6996 (0 cached) | 1964 (1692 reasoning) | 0.0336 | 2.2288 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tray.rs:1-317 | 7323 (0 cached) | 3331 (1783 reasoning) | 0.0480 | 2.2767 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/edit.rs:1-310 | 7268 (0 cached) | 3921 (2203 reasoning) | 0.0537 | 2.3305 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/a11y.rs:1-297 | 6835 (0 cached) | 2511 (1790 reasoning) | 0.0388 | 2.3692 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tree.rs:1-296 | 6721 (0 cached) | 2489 (1943 reasoning) | 0.0383 | 2.4076 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/double_spinbox.rs:1-287 | 7609 (0 cached) | 4194 (2641 reasoning) | 0.0572 | 2.4647 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/shortcut.rs:1-277 | 6054 (0 cached) | 1810 (1288 reasoning) | 0.0302 | 2.4949 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/text.rs:1-275 | 6442 (0 cached) | 4262 (2418 reasoning) | 0.0555 | 2.5504 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/canvas.rs:1-255 | 7834 (0 cached) | 3109 (1988 reasoning) | 0.0468 | 2.5972 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/damage.rs:1-251 | 6456 (0 cached) | 3121 (1918 reasoning) | 0.0441 | 2.6413 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/scroll_area.rs:1-240 | 6563 (0 cached) | 2177 (1637 reasoning) | 0.0349 | 2.6762 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/testing.rs:1-232 | 5900 (0 cached) | 998 (593 reasoning) | 0.0218 | 2.6980 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/slider.rs:1-228 | 6421 (0 cached) | 4395 (2785 reasoning) | 0.0568 | 2.7548 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/colormap.rs:1-218 | 5660 (0 cached) | 1337 (811 reasoning) | 0.0247 | 2.7795 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/a11y_accesskit.rs:1-207 | 5793 (0 cached) | 1935 (879 reasoning) | 0.0309 | 2.8104 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/progress.rs:1-203 | 5730 (0 cached) | 2206 (1597 reasoning) | 0.0335 | 2.8439 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/dnd.rs:1-202 | 5471 (0 cached) | 5404 (2582 reasoning) | 0.0650 | 2.9089 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/window.rs:1-200 | 5242 (0 cached) | 1739 (1034 reasoning) | 0.0279 | 2.9368 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/var.rs:1-199 | 5078 (0 cached) | 2623 (1972 reasoning) | 0.0364 | 2.9732 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/fonts.rs:1-187 | 5939 (0 cached) | 958 (676 reasoning) | 0.0215 | 2.9946 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/image.rs:1-181 | 5200 (0 cached) | 1452 (800 reasoning) | 0.0249 | 3.0196 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/entry.rs:1-162 | 4454 (0 cached) | 1677 (1121 reasoning) | 0.0257 | 3.0452 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | checkbox-tokens r0 | 22020 (768 cached) | 1981 (0 reasoning) | 0.0025 | 0.2190 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | checkbox-border r0 | 21005 (2816 cached) | 156 (0 reasoning) | 0.0014 | 0.2204 |
+| 2026-10-20 09:07 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot3, PR #8] tri-state Checkbutton, 3 calls (itemized in PR #8) | — | — | 0.0125 | (BizyBot3 PR #8 DeepSeek 0.0125; Sol 0.00) |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/chart.rs:1-155 | 4610 (0 cached) | 1042 (633 reasoning) | 0.0196 | 3.0649 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/ime.rs:1-151 | 4615 (0 cached) | 2818 (1646 reasoning) | 0.0374 | 3.1023 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/image.rs:1-147 | 4496 (0 cached) | 1733 (1069 reasoning) | 0.0263 | 3.1286 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/shortcuts.rs:1-146 | 4460 (0 cached) | 2044 (1254 reasoning) | 0.0294 | 3.1580 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/ring.rs:1-129 | 4473 (0 cached) | 1949 (937 reasoning) | 0.0284 | 3.1864 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/listbox.rs:1-128 | 3992 (0 cached) | 1394 (982 reasoning) | 0.0219 | 3.2083 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/theme.rs:1-126 | 4194 (0 cached) | 1230 (964 reasoning) | 0.0207 | 3.2290 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/switch.rs:1-106 | 3869 (0 cached) | 1118 (805 reasoning) | 0.0189 | 3.2479 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/a11y.rs:1-97 | 3352 (0 cached) | 277 (0 reasoning) | 0.0095 | 3.2574 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/notebook.rs:1-92 | 3597 (0 cached) | 1404 (963 reasoning) | 0.0212 | 3.2786 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/inputs_state.rs:1-116 | 4220 (0 cached) | 670 (386 reasoning) | 0.0151 | 3.2938 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/lib.rs:1-88 | 3659 (0 cached) | 771 (341 reasoning) | 0.0150 | 3.3088 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/clipboard.rs:1-69 | 3076 (0 cached) | 1002 (688 reasoning) | 0.0162 | 3.3250 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dnd.rs:1-43 | 2839 (0 cached) | 200 (0 reasoning) | 0.0077 | 3.3327 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tooltip.rs:1-37 | 2559 (0 cached) | 1440 (671 reasoning) | 0.0195 | 3.3522 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-widgets r0 | 21291 (640 cached) | 118 (0 reasoning) | 0.0017 | 0.2221 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-dnd r0 | 7699 (3072 cached) | 520 (0 reasoning) | 0.0007 | 0.2228 |
 
 ### 0.11 follow-ups: file dialogs + editable combobox (BizyBot4, branch m0.11-dialogs-combobox)
 

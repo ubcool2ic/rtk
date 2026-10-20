@@ -215,6 +215,15 @@ impl TextEngine {
     }
 }
 
+/// Alpha multiplier applied to indicator colours of disabled widgets.
+const DISABLED_ALPHA: f32 = 0.38;
+
+/// Returns `c` with its alpha channel multiplied by `f` (clamped to `[0, 1]`).
+fn with_alpha(c: Color, f: f32) -> Color {
+    let a = (c.a as f32 * f.clamp(0.0, 1.0)).round().clamp(0.0, 255.0) as u8;
+    Color::rgba(c.r, c.g, c.b, a)
+}
+
 /// Returns `(bg, fg)` for a text selection, dimming the highlight when the
 /// widget is not focused.
 fn selection_colors(palette: &crate::style::Palette, focused: bool) -> (Color, Color) {
@@ -995,7 +1004,9 @@ impl Tk {
                     let circle_cx = (logical.x + 12.0) * scale;
                     let circle_cy = (logical.y + logical.height / 2.0) * scale;
                     let circle_r = 6.0 * scale;
-                    let inner_bg = if high_contrast { Color::BLACK } else if dark_mode { Color::rgb(45, 45, 45) } else { Color::WHITE };
+                    let palette = self.style_engine.tokens().palette;
+                    let dim = if disabled { DISABLED_ALPHA } else { 1.0 };
+                    let inner_bg = with_alpha(palette.field_bg, dim);
                     fill_circle(pixmap, circle_cx, circle_cy, circle_r, clip, inner_bg);
                     let mut pb = PathBuilder::new();
                     let d = circle_r * 0.552_284_8;
@@ -1007,7 +1018,7 @@ impl Tk {
                     pb.close();
                     if let Some(path) = pb.finish() {
                         let mut paint = Paint::default();
-                        let border_c = if high_contrast { Color::WHITE } else if dark_mode { Color::rgb(180, 180, 180) } else { draw_border };
+                        let border_c = with_alpha(palette.muted, dim);
                         paint.set_color_rgba8(border_c.r, border_c.g, border_c.b, border_c.a);
                         paint.anti_alias = true;
                         let sw = if high_contrast { 2.0 * scale } else { scale };
@@ -1015,7 +1026,7 @@ impl Tk {
                     }
                     let is_selected = node.radio_var.and_then(|v| v.get(self)) == Some(node.radio_value);
                     if is_selected {
-                        let dot_color = self.style_engine.tokens().palette.accent;
+                        let dot_color = with_alpha(palette.accent, dim);
                         fill_circle(pixmap, circle_cx, circle_cy, 3.5 * scale, clip, dot_color);
                     }
                     let text = node.text.clone();
@@ -1240,12 +1251,23 @@ impl Tk {
                             logical.y + (logical.height - 14.0) / 2.0,
                             14.0, 14.0,
                         ).within(logical);
-                        let check_bg = if high_contrast { Color::BLACK } else if dark_mode { Color::rgb(45, 45, 45) } else { Color::WHITE };
-                        let check_border = if high_contrast { Color::WHITE } else if dark_mode { Color::rgb(180, 180, 180) } else { draw_border };
+                        let palette = self.style_engine.tokens().palette;
+                        let dim = if disabled { DISABLED_ALPHA } else { 1.0 };
+                        let check_bg = with_alpha(palette.field_bg, dim);
+                        let check_border = with_alpha(palette.muted, dim);
                         fill(pixmap, square.scaled(scale), clip, check_bg);
                         outline(pixmap, square.scaled(scale), clip, if high_contrast { 2.0 * scale } else { scale }, (check_border, check_border));
-                        if check.and_then(|var| var.get(self)).unwrap_or(false) {
-                            let fill_c = self.style_engine.tokens().palette.accent;
+                        if self.checkbutton_is_mixed(id) {
+                            let dash_c = with_alpha(palette.accent, dim);
+                            let dash = Rect::new(
+                                square.x + 3.0,
+                                square.y + (square.height - 3.0) / 2.0,
+                                (square.width - 6.0).max(0.0),
+                                3.0,
+                            );
+                            fill(pixmap, dash.scaled(scale), clip, dash_c);
+                        } else if check.and_then(|var| var.get(self)).unwrap_or(false) {
+                            let fill_c = with_alpha(palette.accent, dim);
                             fill(
                                 pixmap, square.inset(3.0, 3.0).scaled(scale),
                                 clip, fill_c,

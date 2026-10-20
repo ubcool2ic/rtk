@@ -5,6 +5,8 @@ use super::*;
 
 /// Trims the text to at most the given number of lines, dropping the oldest lines first.
 pub(crate) fn trim_lines(text: &mut String, max: usize) {
+    // 0 means "unlimited", matching `text_set_max_lines`.
+    if max == 0 { return; }
     let lines: Vec<&str> = text.split('\n').collect();
     if lines.len() > max {
         let drop_count = lines.len() - max;
@@ -164,9 +166,15 @@ impl Tk {
         }
 
         if moved {
+            let moved_line = text[..cursor].matches('\n').count();
             if let Some(node) = self.node_mut(id) {
                 node.cursor = cursor;
                 node.selection_anchor = None;
+                if moved_line < node.text_scroll_row {
+                    node.text_scroll_row = moved_line;
+                } else if vis_rows > 0 && moved_line >= node.text_scroll_row + vis_rows {
+                    node.text_scroll_row = moved_line + 1 - vis_rows;
+                }
             }
             // Only this widget's caret/selection changed.
             self.invalidate_widget(id);
@@ -210,6 +218,8 @@ impl Tk {
         node.text = s;
         node.cursor = node.text.len();
         node.selection_anchor = None;
+        let last_row = node.text.split('\n').count() - 1;
+        node.text_scroll_row = node.text_scroll_row.min(last_row);
         self.dirty = true;
         self.edit_reset(id);
         true
@@ -228,8 +238,12 @@ impl Tk {
             let total = node.text.split('\n').count();
             let vis = node.text_dimensions.1;
             node.text_scroll_row = total.saturating_sub(vis);
+        } else {
+            let last_row = node.text.split('\n').count() - 1;
+            node.text_scroll_row = node.text_scroll_row.min(last_row);
         }
         node.cursor = node.text.len();
+        node.selection_anchor = None;
         self.dirty = true;
         true
     }
@@ -240,6 +254,7 @@ impl Tk {
         if node.kind != Kind::Text { return false; }
         node.text.clear();
         node.cursor = 0;
+        node.selection_anchor = None;
         node.text_scroll_row = 0;
         self.dirty = true;
         true
@@ -264,8 +279,13 @@ impl Tk {
         if node.kind != Kind::Text { return false; }
         node.text_max_lines = Some(max_lines);
         if max_lines > 0 {
+            let old_len = node.text.len();
             trim_lines(&mut node.text, max_lines);
-            node.cursor = node.cursor.min(node.text.len());
+            let removed = old_len - node.text.len();
+            node.cursor = node.cursor.saturating_sub(removed).min(node.text.len());
+            node.selection_anchor = None;
+            let last_row = node.text.split('\n').count() - 1;
+            node.text_scroll_row = node.text_scroll_row.min(last_row);
         }
         self.dirty = true;
         true

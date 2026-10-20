@@ -576,6 +576,12 @@ impl Tk {
             return;
         }
         let (kind, check) = (node.kind, node.check);
+        let radio_var = node.radio_var;
+        let radio_value = node.radio_value;
+        if kind == Kind::Checkbutton && self.tristate_activate(id) {
+            self.run_command(id);
+            return;
+        }
         if kind == Kind::Checkbutton || kind == Kind::Switch {
             if let Some(var) = check {
                 if let Some(value) = var.get(self) {
@@ -583,8 +589,8 @@ impl Tk {
                 }
             }
         } else if kind == Kind::Radiobutton {
-            if let Some(var) = node.radio_var {
-                var.set(self, node.radio_value);
+            if let Some(var) = radio_var {
+                var.set(self, radio_value);
             }
         }
         if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch) {

@@ -16,6 +16,7 @@ impl Tk {
     /// `Entry`, or an enabled, non-read-only `Text`.
     pub fn ime_wanted(&self) -> bool {
         let Some(id) = self.focused else { return false };
+        // (unchanged) focused widget lookup
         let Some(node) = self.node(id) else { return false };
         if node.disabled {
             return false;
@@ -34,7 +35,7 @@ impl Tk {
     /// absent, so focus changes implicitly cancel it.
     pub fn ime_preedit(&self) -> Option<ImePreeditRef<'_>> {
         let (id, text, cursor) = self.ime_preedit.as_ref()?;
-        if Some(*id) != self.focused {
+        if Some(*id) != self.focused || !self.ime_wanted() {
             return None;
         }
         Some((*id, text.as_str(), *cursor))
@@ -59,7 +60,9 @@ impl Tk {
         self.ensure_layout();
         self.drop_stale_preedit();
         if !self.ime_wanted() {
-            self.ime_preedit = None;
+            if self.ime_preedit.take().is_some() {
+                self.dirty = true;
+            }
             return;
         }
         let Some(id) = self.focused else { return };
@@ -86,7 +89,9 @@ impl Tk {
     pub fn sim_ime_commit(&mut self, text: &str) {
         self.ensure_layout();
         self.drop_stale_preedit();
-        self.ime_preedit = None;
+        if self.ime_preedit.take().is_some() {
+            self.dirty = true;
+        }
         if text.is_empty() {
             self.dirty = true;
             return;
@@ -126,7 +131,7 @@ impl Tk {
         let value = node.text.clone();
         let resolved = self.resolved_style(id).unwrap_or_default();
         let line_h = (resolved.font_size * 1.3).max(1.0);
-        let caret = floor_char_boundary(&value, cursor);
+        let caret = floor_char_boundary(&value, cursor.min(value.len()));
         match kind {
             Kind::Entry | Kind::Combobox => {
                 let before = value.get(..caret).unwrap_or_default();

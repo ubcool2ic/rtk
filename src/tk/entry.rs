@@ -136,12 +136,14 @@ impl Tk {
                 }
             }
             None => {
-                let value = clean_entry_limit(inserted, MAX_ENTRY_BYTES.saturating_sub(text.len()));
+                let freed = selection.map_or(0, |(s, e)| e.saturating_sub(s).min(text.len()));
+                let room = MAX_ENTRY_BYTES.saturating_sub(text.len() - freed);
+                let value = clean_entry_limit(inserted, room);
                 if !value.is_empty() {
                     let typing = value.chars().count() == 1;
                     self.replace_selection_with(id, &value, typing);
-                    return;
                 }
+                return;
             }
             _ => {}
         }

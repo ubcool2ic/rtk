@@ -43,7 +43,7 @@ pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, Syste
 pub use timer::TimerId;
 pub use tk::{FrameDamage, Key, ScrollUnit, Tk, TkProxy, ToastId, ToastKind, ToastPosition};
 pub use tk::menu::{MenuId, MenuItem, Menubar};
-pub use tk::inputs_state::{Orient, RingMode};
+pub use tk::inputs_state::{CheckState, Orient, RingMode};
 pub use tk::ring::ProgressRing;
 pub use tk::switch::Switch;
 pub use tk::slider::Slider;
@@ -59,6 +59,7 @@ pub use widgets::{
 
 /// Errors from widget construction and headless image allocation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RtkError {
     /// The given parent is not a live `Frame` (or root) of this toolkit.
     InvalidParent,

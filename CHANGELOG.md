@@ -19,6 +19,7 @@
 - **DoubleSpinbox** (`DoubleSpinbox`): `f64` spin box with `dspin_set_step`, `dspin_set_decimals`, `dspin_set_suffix`, `dspin_get`/`dspin_set`/`dspin_text`; arrows, keys, wheel and text entry (`,` accepted as decimal separator), no float drift.
 - **Horizontal Scrollbar**: `Scrollbar::horizontal`, `scrollbar_orient`; drives the X view of a scrollable Canvas or a ScrollArea.
 - **ScrollArea** (`ScrollArea`): scrollable frame of widgets. `scrollarea_content`, `scrollarea_scroll_to`, `scrollarea_offset`, `scrollarea_content_size`, `scrollarea_attach_scrollbars`; wheel/Shift+wheel, clipping, Tab focus scrolls into view.
+- **Tri-state Checkbutton** (opt-in, default look unchanged): `checkbutton_set_tristate`, `checkbutton_state`/`checkbutton_set_state` with `CheckState::Unchecked`/`Checked`/`Mixed`, and `checkbutton_set_cycle_mixed`. By default a click on a mixed box makes it checked; with cycling on, clicks go Unchecked → Checked → Mixed. Mixed draws a dash in the box. `A11yNode::mixed` is new, and AccessKit reports `Toggled::Mixed`. Tests: `tests/m0_10_tristate.rs`, goldens `tristate_*`.
 - Tests: `tests/m0_10_*.rs` and goldens `ring_*`, `progressbar_*`, `switch_*`, `slider_*`, `dspin_*`, `hscroll_*`, `scrollarea_*`. Example: `gallery_progress_inputs`.
 
 ### 0.11 — Data and navigation

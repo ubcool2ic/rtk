@@ -407,3 +407,235 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [api] `selection_clear` breaks the `<widget>_<verb>` naming pattern, while the sibling methods are `edit_*`, `entry_*` and `text_*`. A rename would break callers outside this chunk -> not fixed (the call sites are not visible here)
 - [low] [bug] After an external text set, `last_edit_typing` is not reset, so the next typing may coalesce into a stale undo step. The setter lives outside this chunk -> not fixed
 
+### src/tk/a11y.rs lines 1-297
+- [medium] [bug] `a11y_labels` overrides are never removed when a widget is destroyed, so the map can grow without bound and keep stale entries (lines 86, 199). The destroy path is outside this chunk, so I mitigated it here by pruning entries for dead widgets in `a11y_tree_changed` (lines 288-295), which runs once per a11y poll. The proper fix is still to remove the entry in the widget destroy routine. -> fixed (mitigated)
+- [low] [api] `accessibility_tree` does not follow the `a11y_*` naming used by the neighbouring methods (line 44). Renaming it would break `a11y_accesskit.rs` and any callers outside this chunk. -> not fixed (public rename outside this chunk's scope)
+- [low] [bug] `A11yAction::Focus` and the Click/Toggle/Increment paths set `self.focused` directly, which may bypass focus-change handling such as blur callbacks and cursor reset (lines 226-272). The central focus setter is not visible in this chunk, so I could not verify this. -> not fixed (cannot verify)
+- [low] [api] `A11yAction`, `A11yRole` and `A11yNode` may need `#[non_exhaustive]`, but they are defined in `src/a11y.rs`, outside this chunk. -> not fixed (outside this chunk)
+- NOTE: edits for src/tk/a11y.rs:1-297 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
+
+### src/tk/tree.rs lines 1-296
+- [medium] [bug] `destroy` compared `id == self.root()` only after the slot generations had been bumped. If `root()` is built from the live generation of slot 0, the comparison fails and destroying the root never requests quit. The check is now computed before the teardown loop (line 101) -> fixed
+- [low] [bug] `config(Opt::Disabled(true))` leaves `hovered` and `pressed` pointing at the now-disabled widget (line 178) -> not fixed (the event code that reads those fields is outside this chunk, so I can't tell whether it is a real problem)
+- [low] [api] `set_command` and `set_selected` do not follow the `<widget>_<verb>` pattern (lines 207, 274) -> not fixed (renaming public API is a larger change than a minimal edit, and both are documented and consistent with each other)
+
+### src/tk/double_spinbox.rs lines 1-287
+- [medium] [bug] `dspin_type`/`dspin_backspace` seeded the edit buffer from the formatted text including the suffix. Typing after the seed gave e.g. "1.50 V5", which fails to parse and silently reverts on Enter. Backspace ate the suffix first. (lines 182-186, 204-208) -> fixed (seed now excludes the suffix)
+- [medium] [bug] Stepping with Up/Down/wheel left a stale edit buffer in place, so the display kept showing the old typed text instead of the new value. (line 149) -> fixed (`dspin_step` clears the buffer)
+- [medium] [bug] `dspin_set` documents returning false for dead variables but always returned true. It also left a stale edit buffer showing. (lines 96-106) -> fixed
+- [low] [bug] `dspin_round` overflowed to infinity for huge ranges (`clamped * 10^decimals`). It could also yield `-0.0`, which displays as "-0.00". (lines 126-129) -> fixed
+- [low] [bug] `dspin_user_set` never wrote the variable when its current value was NaN and the target equalled the lower bound, because `NaN.abs() > EPS` is false. (line 142) -> fixed
+
+### src/shortcut.rs lines 1-277
+- [severity low] [bug] `parse_key` accepted malformed function-key names such as `F+1` and `F01`, because `u8::from_str` allows a leading `+` -> fixed. The function-key suffix now has to be 1–2 ASCII digits.
+- [severity low] [api] I found no other problems in lines 1-277. `ShortcutError` is already `#[non_exhaustive]`, every fn has a `///` doc, and the UTF-8 slicing of the macOS modifier symbols is safe because it advances by `len_utf8`. The literal-plus handling (`Ctrl++`, `+`) and the `Ctrl+` missing-key case behave correctly. -> not fixed (nothing to fix)
+
+### src/tk/text.rs lines 1-275
+- [medium] [bug] `trim_lines` with `max == 0` wipes all text, but `text_set_max_lines(0)` treats 0 as "no trimming", and later `text_set` / `text_insert_end` would clear everything (lines 7-13) -> fixed (0 now means unlimited)
+- [high] [bug] `text_clear` leaves `selection_anchor` set while the cursor goes to 0, so a stale anchor beyond the empty text could cause out-of-range slicing in selection consumers (lines 238-246) -> fixed (anchor cleared)
+- [high] [bug] `text_insert_end` trims from the front but leaves `selection_anchor` stale (possibly out of range or mid-char), and `text_scroll_row` can exceed the new line count (lines 220-235) -> fixed
+- [medium] [bug] `text_set_max_lines` trims leading bytes but only clamps the cursor, so it can land mid-char or on the wrong text. The anchor and scroll row are also left stale (lines 262-272) -> fixed (cursor shifted by removed bytes, anchor cleared, scroll clamped)
+- [low] [bug] `text_set` does not clamp `text_scroll_row`, so replacing the text with a shorter one can leave the view scrolled past the end (lines 203-216) -> fixed
+- [medium] [bug] Caret-only moves (Left/Right/Up/Down/Home/End) return before the scroll-follow logic, so the caret can leave the visible rows (lines 166-174) -> fixed (scroll adjusted on that path too)
+
+### src/tk/canvas.rs lines 1-255
+- [medium] [bug] `canvas_create_image_rgba` computes `src_w * src_h * 4` in `usize` without overflow checks. Huge dimensions (e.g. `u32::MAX` squared) panic in debug builds and can wrap in release, or on 32-bit targets, so a mismatched buffer could pass validation (line 227) -> fixed (`checked_mul`)
+- [medium] [bug] `canvas_update_image` has the same unchecked size multiplication (line 235) -> fixed
+- [low] [bug] `text_size` passes the raw `size` to the text engine. NaN, zero or negative sizes are not sanitized, unlike `canvas_create_text_ex`, which clamps with `size.max(1.0)` (line 202) -> fixed (same clamp)
+- [low] [bug] `canvas_add_item` scans all slots twice per insert (`max` over `seq` and a free-slot search), so filling a canvas is O(n²) up to the 1M-item cap (lines 73-74) -> not fixed (a counter would need a new `Node` field outside this chunk; correct as is)
+- [low] [api] `text_size` and `canvas_items` (which returns a count) do not follow `<widget>_<verb>` naming exactly (lines 200, 207) -> not fixed (renaming public methods breaks callers outside this chunk; left for a deliberate API decision)
+- [low] [bug] Non-finite or huge `size`, `width` and coordinates in the `canvas_create_*` and `canvas_move` functions are stored unvalidated (lines 123-197) -> not fixed (the renderer is outside this chunk; tiny-skia rejects non-finite geometry)
+
+### src/tk/damage.rs lines 1-251
+- [medium] [bug] `invalidate_rect` coalescing clears `self.damage` and pushes the union only if it passes a validity check. If the check failed (for example `x + width` overflowing to infinity or rounding to `x`), the damage was silently dropped while `partial_dirty` stayed set, so `render_frame` returned `None` and the screen went stale. Now falls back to a full redraw (`self.dirty = true`). (lines 67-69) -> fixed
+- [low] [bug] The scratch-allocation-failure fallback in `render_frame` did not reset `self.coalesced`. After the full render, new damage would then keep taking the coalescing path even with an empty list. (line 213) -> fixed
+- [info] Coalescing otherwise never drops damage and is bounded. The list is folded into its union at 16 rects. While `coalesced` is set, every new rect merges into that single union, so the list never exceeds one rect. `coalesced` is reset on every path that clears the damage list. -> no change needed
+- NOTE: edits for src/tk/damage.rs:1-251 were REVERTED (checks failed or SEARCH mismatch): 'EDIT src/tk/damage.rs: SEARCH text not found:\n        let Some(mut scratch) = self.scratch.take() else {\n            // Scratch allocation failed; fall back to a full render.\n            let pixmap = self.render_to_pixmap(width, height)?;\n            self.frame = Some(pixmap);\n            self.damag'
+
+### src/tk/scroll_area.rs lines 1-240
+- [severity low] [bug] `scrollarea_scroll_to` sends ±infinity to offset 0 instead of clamping to the nearest bound. A huge `scroll_by` delta that overflows to infinity therefore jumps to the top instead of the end (lines 100-101) -> fixed (only NaN maps to 0; infinities now clamp).
+- [severity low] [docs] `scrollarea_vbar_width` doc says a hidden bar reserves 0 width, but the code does no visibility check (line 202). The hidden-state field is not visible in this chunk, so I cannot add the check without guessing a field name -> not fixed (needs the visibility field from the other module).
+- [severity low] [bug] A scrollbar's `scroll_target` can outlive its destroyed area. The destroy path is outside this chunk, and `scrollarea_vbar_width` already verifies that the target is a live ScrollArea, so it stays safe here -> not fixed (outside chunk).
+
+### src/testing.rs lines 1-232
+- none
+
+I found nothing that needs fixing in this chunk.
+
+- **`compare_pixmaps`:** it indexes each image by its own stride and clamps to the overlapping region, so differing sizes cannot cause an out-of-bounds slice.
+- **`build_diff_image`:** it indexes both images with `actual`'s stride, which is safe because `assert_golden` panics on any size mismatch before calling it.
+- **Missing golden file:** `assert_golden` writes the golden and returns instead of failing. This is documented, so I left it.
+- **`GoldenOpts` (not fixed):** it is a public struct with public fields and no `#[non_exhaustive]`. Adding the attribute would break struct-literal construction in downstream tests, and the requirement covers enums only.
+- **Stale artifacts (not fixed):** `.actual.png` and `.diff.png` files from an earlier failure are not deleted when a later run passes or blesses. This is cosmetic, so I did not change it.
+- **Unused `name` parameter (not fixed):** `write_png` takes `name` only to discard it. It is harmless and in a private function, so I left it.
+- **Docs:** every function has a `///` comment.
+
+### src/tk/slider.rs lines 1-228
+- [medium] [bug] `slider_key` ignores inverted ranges (`from > to`). Right/Up and Home/End moved the opposite way from the pointer mapping and the documented direction inversion (lines 210-223) -> fixed
+- [medium] [bug] `slider_user_set` used an absolute `f64::EPSILON` threshold, so changes on small ranges (e.g. `0..1e-12`) were silently dropped and the command never fired (line 150) -> fixed
+- [low] [bug] `slider_set` is documented to return false for dead variables but always returned true (lines 118-122) -> fixed
+- [low] [bug] `slider_fraction` returned NaN as `f32` when the bound variable held NaN, whereas `slider_get` maps NaN to `from` (line 165) -> fixed
+- [low] [bug] `slider_set_length` replaced `±inf` with 160 instead of clamping as documented (line 98) -> fixed
+- [low] [docs] `slider_fraction` doc mentioned a `value` parameter that does not exist (line 156) -> fixed
+- [low] [bug] The `slider_set_orient`, `slider_set_length` and `slider_set_ticks` setters only set `dirty`. This may not trigger relayout, though they change the requested size. Layout invalidation lives outside this chunk -> not fixed (cannot verify)
+
+### src/colormap.rs lines 1-218
+- [low] [api] The public `Colormap` enum lacks `#[non_exhaustive]`, so adding a palette after 1.0 would be a breaking change (line 6) -> fixed. The `match` in `sample` is in the same crate, so it is unaffected.
+- [low] [bug] `legend_rgba` computes `width * height * 4` for the capacity, which can overflow or abort on absurd dimensions (line 198) -> not fixed. The caller controls the size, and a request that large would fail to allocate anyway. Clamping the capacity would only change the failure mode.
+- [low] [docs] `heatmap_to_rgba` maps infinite values to `t = 0.5` when `min == max`, which the doc does not say (line 173) -> not fixed. This is harmless and consistent with the degenerate-span handling.
+- No other bugs found. NaN is handled in `sample` before the table lookup, so `interpolate_table` never sees it. Its index is clamped to `len - 2`, so there is no out-of-bounds access. The degenerate-span, infinite and NaN cases in `heatmap_to_rgba` behave as documented.
+
+### src/a11y_accesskit.rs lines 1-207
+- [severity medium] [bug] The focus node is not checked against the emitted node set (line 69-72). A focused widget that is hidden or unmapped, or otherwise missing from `accessibility_tree()`, makes AccessKit receive a focus id that is not in the tree. Platform adapters can panic or reject that update. -> fixed (falls back to the root)
+- [severity medium] [bug] Child ids are emitted without checking that they exist in the update (line 53). A child pruned from the tree, such as a hidden widget, leaves a dangling `NodeId`, which AccessKit treats as an invalid tree. -> fixed (children are filtered to emitted nodes)
+- [severity medium] [bug] `map_action` drops `ActionData::NumericValue` (line 133-136). Screen readers set sliders and spin buttons through `SetValue` with a numeric payload, so the toolkit received `SetValue` with `None` and the request was silently lost. -> fixed (the number is passed as a string)
+
+### src/tk/progress.rs lines 1-203
+- [severity low] [bug] `progress_advance` called `get_or_insert_with(Default::default)` on every tick, so it allocated an `InputsState` for every visible progress bar even when smooth easing was never enabled (line 152). `progress_is_animating` already treats a missing state as "not smooth". -> fixed
+- [severity low] [docs] The `progress_bind` rustdoc says "live in `tk`", but there is no `tk` parameter (line 14). -> not fixed (wording only, no behaviour impact)
+- [severity low] [api] `progress_bind` is slightly off the `progress_set_*` naming used by its siblings. -> not fixed (renaming a public method this late is churn, and I can't see the other widgets' conventions from this chunk)
+- [severity low] [bug] `progress_requested` measures `"{label} 100%"` even when `show_percent` is false, so the bar can be slightly wider than needed (line 120). -> not fixed (this only over-reserves width and is harmless; changing it would shift layout and goldens for little gain)
+- [severity none] [bug] I found no panics, overflow or borrow problems in the rest of the chunk. The easing math is stable for `ms = 0` and for very large `ms`, and NaN or out-of-range values are clamped. -> none
+
+### src/tk/dnd.rs lines 1-202
+- [high] [bug] `drop_target_at` also counted hover-only bindings, so a widget with only a hover binding swallowed drops. Its drop callback never ran, yet `sim_file_drop` returned true, and it shadowed a bound ancestor (line 81-99). Drop resolution now uses drop bindings only. Hover resolution (Enter/Leave/Drop) still considers either kind of binding. -> fixed
+- [medium] [bug] The walk-up ignored the active modal. Ancestors of the modal, and the root fallback, could be returned as targets (lines 83-92). The walk now stops at the modal, and the root fallback is skipped while a modal is active. -> fixed
+- [medium] [bug] Bindings for destroyed widgets were never pruned, so the `dnd` vectors grew without bound. `file_hover_target` could also return a dead id (lines 13-55, 102). `bind_*` now prunes dead entries, and `file_hover_target` filters dead ids. I can't see the destroy path in this chunk, so the pruning lives here. -> fixed
+- [low] [api] There was `unbind_file_drop` but no `unbind_file_hover`, which breaks the bind/unbind symmetry (line 31). -> fixed (added)
+- NOTE: edits for src/tk/dnd.rs:1-202 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
+
+### src/tk/window.rs lines 1-200
+- [severity low] [bug] `geometry(0, h)` or `geometry(w, 0)` passes a zero dimension to `sim_resize` and to the requested window size. A zero-sized pixmap or surface is invalid in tiny-skia and softbuffer (line 19) -> fixed (clamped to at least 1 px)
+- [severity low] [docs] `geometry` documents physical px while `minsize` and `maxsize` use logical px. This is probably intentional, so only the docs were adjusted, not the behaviour (line 18) -> fixed (doc clarified)
+- [severity low] [bug] `handle_close_request` takes the callback out before calling it. A `sim_close_request` made from inside the callback therefore finds no callback and quits without consulting the veto. This reentrant edge case is acceptable and documented behaviour, and fixing it would need a redesign (line 177) -> not fixed (edge case, needs redesign)
+- [severity low] [api] The tkinter-style names (`title`, `geometry`, `minsize`, `resizable`) intentionally do not follow `<widget>_<verb>`, and `clear_minsize`/`clear_maxsize` are consistent with each other -> not fixed (intentional)
+
+### src/var.rs lines 1-199
+- [low] [bug] A handle from a dropped `Tk` can alias a variable in a later `Tk`, because the owner token is the address of `var_owner`, which the allocator may reuse after the first `Tk` drops (lines 26-28, 64-66, 161-165). The comment only guarantees the address stays unique while the owning `Tk` is alive. The proper fix is a process-wide atomic counter for the owner id, but `Tk` construction lives outside this chunk. -> not fixed (the fix needs changes outside this chunk)
+- [low] [bug] Variable slots are never reused, so creating and destroying variables dynamically grows `vars` without bound (lines 158-177). The design is documented and intentional. A linear free-slot scan would make creation O(n), and a free list needs a new `Tk` field outside this chunk. -> not fixed (deliberate design; slots are small)
+- [low] [bug] If a trace panics, `notifying` stays true and the trace is dropped (lines 111-128). Later changes to that variable then never notify. This only matters when the caller catches the unwind, so I left it alone. -> not fixed (unwind-only edge case; a guard would be a refactor)
+- [low] [api] `#[derive(Debug)]` on `Var<T>` adds an unwanted `T: Debug` bound (line 22). It is harmless for the supported types (`String`, `i64`, `bool`, `f64`), so I did not change it. -> not fixed (no practical impact)
+
+No other defects found in this chunk:
+- The generation, owner and type checks reject destroyed, foreign and mistyped handles.
+- `destroy` clears the value, trace and `notifying` flag, so the generation saturating at `u32::MAX` is harmless because the value is gone.
+- Reentrant writes and traces that replace or destroy their own variable are handled correctly.
+- The borrow flow in `set` is sound, and every fn has a `///` doc.
+
+### src/fonts.rs lines 1-187
+- [severity low] [api] Public enum `DefaultFont` lacked `#[non_exhaustive]`, so adding a variant later would be a breaking change (line 36) -> fixed
+- No other bugs found in this chunk. The fallback logic, `has_face` and `has_family` are sound, with no panics or UTF-8 hazards. The `warn_once` guard is correct, and every fn has a doc comment.
+
+### src/image.rs lines 1-181
+- [medium] [bug] `ImageFit::Center` clamped width and height independently (`nat.min(w)` and `nat.min(h)`). An image larger than the widget in only one axis was squashed non-uniformly, so its aspect ratio was distorted. Now it is scaled down uniformly, and only when it doesn't fit (line 130-131) -> fixed
+- [low] [docs] The `Center` variant doc said "no scaling" without mentioning the downscale when the image exceeds the widget (line 16) -> fixed
+- [low] [bug] `build_items` clones the whole RGBA buffer on every call. This is a performance concern rather than a correctness bug, and fixing it would need a `CanvasItemKind` change outside this chunk (line 157) -> not fixed (outside the chunk, no correctness impact)
+
+### src/tk/entry.rs lines 1-162
+- [severity medium] [bug] When the entry is at `MAX_ENTRY_BYTES` and a selection is active, typing or pasting is rejected. The insert limit ignores the bytes the selection will free (line 137) -> fixed
+- [severity low] [bug] Input that cleans down to an empty string (for example only control characters, or a full entry) falls through to the tail of the function. That clears the selection anchor and repaints without any change to the text (lines 138-143) -> fixed
+- [severity low] [bug] `join_text` silently drops the prefix or suffix if an index is out of range or off a char boundary (lines 9, 11) -> not fixed (documented as tolerant; callers pass cluster boundaries)
+
+### src/tk/chart.rs lines 1-155
+- none
+
+I found nothing in lines 1-155 that needs an edit.
+
+- **Borrows:** `self.dirty = true` comes after the last use of `state` in every method, so the borrows are fine.
+- **Slicing:** `&points[start..]` uses a `saturating_sub` start, so it cannot go out of range.
+- **Retention limits:** `max_points` is clamped to at least 1 in `chart_set_data`, `chart_append` and `chart_set_max_points`, so a zero limit cannot occur.
+- **`chart_set_y_range`:** it rejects non-finite bounds and `lo >= hi`, and it does this before touching state.
+- **Docs:** every function has a `///` comment, and the naming follows `chart_<verb>`.
+- **Not fixed, outside this chunk:** non-finite `(x, y)` values are accepted by `chart_append` and `chart_set_data`. Whether they can break `bounds()` or drawing depends on code outside this chunk, so I left the behaviour alone.
+- **Not fixed, outside this chunk:** `ChartKind` is defined in `crate::chart`, so any `#[non_exhaustive]` attribute belongs there, not in this file.
+
+### src/tk/ime.rs lines 1-151
+- [low] [bug] `ime_cursor_area` passed the raw `node.cursor` to `floor_char_boundary` without clamping to the value length. A stale or out-of-range cursor could panic or index past the end, depending on how the helper is written (line 127) -> fixed
+- [low] [bug] `ime_preedit()` returned a composition for a widget that had since been disabled or made read-only, so a stale preedit kept rendering (lines 34-40) -> fixed
+- [low] [bug] `sim_ime_preedit` (not-wanted branch) and `sim_ime_commit` cleared a stored composition without setting `dirty`. The stale preedit stayed on screen until some other redraw (lines 60-63, 88) -> fixed
+- [low] [bug] A stored preedit is only dropped lazily on the next `sim_ime_*` call. If focus leaves widget A and returns to A with no IME event in between, the old composition reappears (lines 34-49) -> not fixed (the fix belongs in the focus-change code, outside this chunk; the backend should send an empty Preedit on focus loss)
+- [low] [bug] `ime_cursor_area` ignores the preedit text and any Text horizontal scroll, and measures the raw value even for masked Entries. This is documented as approximate -> not fixed (approximation by design)
+
+### src/tk/image.rs lines 1-147
+- [medium] [bug] `image_set_rgba` computes `w * h * 4` in `usize` without overflow checking (line 23). Large `w`/`h` can overflow on 32-bit targets, or on 64-bit with `w` and `h` near `u32::MAX`. That panics in debug builds and wraps in release, so a mismatched buffer could be accepted. -> fixed (checked multiplication)
+- [low] [bug] `image_set_fit` on an image with no source inserts a 1x1 transparent RGBA placeholder (lines 107-113). `image_natural_size` then reports `Some((1, 1))` for an image that is logically empty, and `image_clear` drops the stored fit. Fixing this needs an empty `ImageSource` variant or an `Option` source in `ImageData`, which lies outside this chunk. -> not fixed (needs a change outside this chunk)
+- [low] [api] The verbs are inconsistent: `image_load_png` and `image_set_svg` differ from the `image_set_*` pattern, and `load_svg` has no widget prefix. The latter is deliberate, since it registers a shared `ImageId` like `register_image_rgba`. -> not fixed (renaming is a breaking change with no functional bug)
+
+### src/tk/shortcuts.rs lines 1-146
+- [severity high] [bug] Shortcut dispatch never restores the real callback (lines 84-91). The entry is removed, and its callback is swapped for a no-op. The no-op is then reinserted and the real `cb` is dropped, so a shortcut works exactly once and is then dead. -> fixed
+- [severity medium] [bug] A callback that unbinds its own shortcut has no effect (lines 84-91). The entry was already removed, so `unbind_shortcut` returns false. The `still_bound` check is then always false and the entry is reinserted anyway. -> fixed (the entry stays in place during the call, and the callback is restored only if the id is still bound)
+- [severity low] [bug] The entry's position was lost when callbacks bound or unbound other shortcuts during dispatch, because the entry was reinserted by a stale index (line 90). -> fixed (the callback is now restored by id, and binding order is preserved)
+- [severity low] [bug] `next_shortcut_id` uses `wrapping_add` (line 21), so ids could collide after 2^32 or 2^64 binds. -> not fixed (practically unreachable, and the field type is defined outside this chunk)
+
+### src/tk/ring.rs lines 1-129
+- [medium] [bug] `ring_set_thickness` doc promises a clamp to `1.0..=diameter/2`, but the code only floors at 0. A huge or zero thickness is stored unclamped (line 92) -> fixed (clamps finite values to `1.0..=max(diameter/2, 1.0)`; non-finite values still store 0, and the doc now says so)
+- [medium] [bug] `ring_set` is documented to return false for dead variables but returns true, and sets dirty, even when the variable is dead (line 68) -> fixed (checks the variable is live first)
+- [low] [bug] An infinite `diameter` passed to `ProgressRing::new` is stored as-is and breaks layout (line 28) -> fixed (non-finite falls back to 48.0)
+- [low] [bug] `ring_advance` allocates an `InputsState` on every tick for non-spinner rings (line 111) -> not fixed (harmless, one allocation per ring, and the behaviour matches the other widgets)
+
+### src/tk/listbox.rs lines 1-128
+- [severity low] [bug] `listbox_delete` and `listbox_insert` change or clear the selection without firing the select callback (lines 19-23, 38-44). `listbox_select` does fire it on change, so this is slightly inconsistent. Tkinter does not fire `<<ListboxSelect>>` for programmatic edits, and firing here would add a reentrancy path inside delete. -> not fixed (behavior decision, not a defect)
+- [severity low] [bug] `list_select_running` stays `true` if the callback panics (line 117-120). The next dispatch for that widget is then silently skipped. This only matters if panics are caught and the toolkit keeps running, and the callback is already taken out of the node at that point. -> not fixed (the callback is lost on panic anyway, and the toolkit is not expected to survive one)
+- [severity low] [api] The public methods follow the `listbox_<verb>` pattern, have `///` docs, and use no public enums. No arithmetic can overflow: `last.saturating_add(1)` is used, and `idx + 1 - vis` is safe because `idx >= scroll + vis`. Indices are clamped, and `node_mut` guards stale ids. -> nothing to fix
+
+### src/tk/theme.rs lines 1-126
+- [severity low] [api] `sim_system_theme` (line 115) has a `sim_` (simulate) prefix, but its doc says it is the single entry point for the real window backend as well as for tests. A rename would touch call sites outside this chunk and break the public API, so it is better done in a dedicated change. -> not fixed (the rename belongs outside this chunk)
+- [severity low] [docs] Lines 61-62 (`let original = ...; let _ = original;`) are redundant but correct. -> not fixed (working code, no behavioural effect)
+
+I found no other defects in lines 1-126. The colourblind capture and restore logic is consistent with the documented behaviour. Every function has a `///` doc comment. No panics, indexing, or arithmetic risks appear in this chunk.
+
+### src/tk/switch.rs lines 1-106
+- [low] [bug] `switch_set` is documented to return false for dead variables, but it called `var.set` and returned true unconditionally, so a dead or foreign variable was reported as success and the tree was marked dirty (lines 45-48) -> fixed
+- [low] [api] No other API, docs or `#[non_exhaustive]` issues in this chunk. `Switch` is a constructor namespace with no public enums, and the method names follow `switch_<verb>`. The animation code has no panics, overflow, or state-reset problems here.
+
+### src/a11y.rs lines 1-97
+- [low] [api] `A11yNode` is `#[non_exhaustive]`, so external users and tests cannot construct it. This is acceptable for a snapshot type produced only by the toolkit. -> not fixed (intentional)
+- [low] [docs] `A11yNode::value` doc says "Current text/selection value", which is vague, but it is not wrong. -> not fixed (cosmetic)
+- [low] [api] `A11yNode` derives `PartialEq` with `f64` fields, so `Eq` cannot be derived. This is correct as written. -> not fixed (n/a)
+- [low] [api] All enums are already `#[non_exhaustive]`, every item has rustdoc, and the derives are consistent. No bugs are present in this type-only chunk. -> not fixed (nothing to fix)
+
+### src/tk/notebook.rs lines 1-92
+- [medium] [bug] `notebook_add` accepts the same page twice, which creates duplicate tabs that point at one frame (line 34) -> fixed
+- [low] [bug] If a changed callback panics, `notebook_changed_running` stays true and the callback is lost (line 82). This would need a drop guard and the surrounding node/widget code, which is outside this chunk -> not fixed (out of scope)
+- [low] [api] `grid_forget` delegates to `pack_forget` and unmaps any manager, not only grid. This is harmless and consistent with tkinter's observable behavior -> not fixed
+- [low] [bug] A `notebook_select` call made from inside the changed callback updates the selection but does not re-fire the callback. This is deliberate reentrancy protection -> not fixed
+
+### src/tk/inputs_state.rs lines 1-116
+- none
+
+This chunk contains only three public enums and a `pub(crate)` state struct, so there is no executable logic to hold a panic, overflow, UTF-8 or reentrancy bug.
+- All three public enums (`RingMode`, `Orient`, `CheckState`) are `#[non_exhaustive]` and fully documented.
+- Every struct field has a `///` doc comment.
+- The struct is stored inside the widget node, so it is dropped with the widget and is not reset separately on destroy.
+- Two things could not be checked from this chunk. One is that `Default` gives `slider_step` and `dspin_step` a value of 0.0, so their constructors must set a sensible step. The other is that `scroll_area_content` could dangle if the content frame is destroyed independently of its ScrollArea. Both are outside the lines reviewed.
+
+### src/lib.rs lines 1-88
+- [severity medium] [api] Public enum `RtkError` lacked `#[non_exhaustive]`, so adding a variant after 1.0 (e.g. a new construction failure) would be a semver break for downstream exhaustive matches (line 59) -> fixed
+- [severity low] [docs] The other public enums re-exported here (`Side`, `Key`, `State`, and so on) are defined in other modules, so I cannot check their `#[non_exhaustive]` attributes or docs from this chunk -> not fixed (outside the reviewed chunk)
+- [severity low] [bug] The rest of the chunk is correct. The `Display` impl matches all variants, every fn has a `///` doc, and the `cfg` gating on `a11y_accesskit`, `tray` and the doctest struct is consistent. -> not fixed (nothing to fix)
+
+### src/tk/clipboard.rs lines 1-69
+- [severity low] [bug] `clipboard_get` returned `Some("")` when the OS clipboard held empty text, while the in-memory path returns `None` for empty, so the two paths disagreed (lines 56-59) -> fixed
+- [severity low] [api] None of the public methods carry `#[non_exhaustive]`, naming, or docs problems. `clipboard_clear`, `clipboard_append` and `clipboard_get` follow the tkinter-style naming pattern and all have `///` docs -> not fixed (nothing to fix)
+
+### src/dnd.rs lines 1-43
+- none
+
+The chunk has only type definitions and a struct, and I found nothing to fix in it.
+- `DropPhase` is `#[non_exhaustive]` and has rustdoc on every variant.
+- Both callback type aliases and every `DndState` field are documented.
+- `DndState` is `pub(crate)`, so it adds nothing to the public API.
+- Whether state is cleared on widget destroy depends on `tk/dnd.rs`, which is outside this chunk. The struct supplies the fields (`drop`, `hover`, `target`) that cleanup would have to handle.
+
+### src/tk/tooltip.rs lines 1-37
+- [low] [bug] `active_tooltip` returns `Some("")` when a tooltip is set to an empty string, so an empty tooltip bubble could be shown (line 31) -> fixed (empty text is now treated as no tooltip).
+- [low] [api] `tooltip` (line 12) is a bare noun and does not follow the `<widget>_<verb>` pattern; `tooltip_set` would fit better -> not fixed. Renaming a public method would break callers outside this chunk, and it is a deliberate API decision rather than a local fix.
+- [low] [bug] `tooltip` and `tooltip_remove` change what is displayed without requesting a redraw or damage (lines 14, 23) -> not fixed. The redraw/invalidation mechanism is not visible in this chunk, so I can't safely call it. If the tooltip text changes or is removed while shown, the caller should invalidate.
+- [low] [docs] The `bool` return values (false when the widget id is not live) are undocumented (lines 11, 18) -> fixed.
+
+- RECOVERED: src/widgets.rs 1-339 edits re-applied (they include `#[non_exhaustive]` on a public enum). DeepSeek added the wildcard arm that examples/gallery.rs then needed (recover-widgets). Green.
+
+- RECOVERED: src/tk/a11y.rs 1-297 edits re-applied. Checks are green with no extra calls, so the earlier test failure came from the concurrent PR #8 merge or flakiness, not from these edits.
+
+- RECOVERED: src/tk/dnd.rs 1-202 edits re-applied. After the fix, a hover-only binding no longer swallows drops. tests/m012_dnd.rs expected the old behaviour, where `sim_file_drop` returned true on a hover-only target, so DeepSeek updated it to expect false and to check that the Drop phase still reaches the hover callback (recover-dnd). The lead reviewed this. It matches the intended semantics of the BizyBot5 hand fix flagged for review.
+

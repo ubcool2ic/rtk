@@ -55,6 +55,7 @@ fn theme_slug(theme: Theme) -> &'static str {
         Theme::Material => "material",
         Theme::ModernDark => "moderndark",
         Theme::ModernLight => "modernlight",
+        _ => "light",
     }
 }
 
@@ -68,6 +69,7 @@ fn theme_label(theme: Theme) -> &'static str {
         Theme::Material => "Material",
         Theme::ModernDark => "Modern Dark",
         Theme::ModernLight => "Modern Light",
+        _ => "Light",
     }
 }
 

@@ -13,7 +13,8 @@ pub enum ImageFit {
     Contain,
     /// Stretch to fill the whole widget rectangle.
     Fill,
-    /// Draw at the image's natural size, centred (no scaling).
+    /// Draw at the image's natural size, centred (no scaling), unless it is
+    /// larger than the widget, in which case it is scaled down uniformly to fit.
     Center,
 }
 
@@ -127,8 +128,9 @@ pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<C
     let (dx, dy, dw, dh) = match data.fit {
         ImageFit::Fill => (0.0, 0.0, w, h),
         ImageFit::Center => {
-            let dw = nat_w_f.min(w);
-            let dh = nat_h_f.min(h);
+            let s = (w / nat_w_f).min(h / nat_h_f).min(1.0);
+            let dw = nat_w_f * s;
+            let dh = nat_h_f * s;
             ((w - dw) / 2.0, (h - dh) / 2.0, dw, dh)
         }
         ImageFit::Contain => {

@@ -52,6 +52,7 @@ pub(crate) mod slider;
 pub(crate) mod double_spinbox;
 mod table;
 mod treeview;
+mod tristate;
 pub(crate) mod toast;
 pub mod menu;
 
@@ -75,6 +76,8 @@ pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
 #[allow(unused_imports)]
 pub(crate) use inputs_state::RingMode;
+#[allow(unused_imports)]
+pub(crate) use inputs_state::CheckState;
 pub(crate) use style::{dark_default_colors, NodeSnapshot};
 #[allow(unused_imports)]
 pub use scroll_area::ScrollArea;

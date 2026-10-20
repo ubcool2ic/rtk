@@ -97,8 +97,8 @@ impl Tk {
             .unwrap_or((viewport.width, viewport.height));
         let max_x = (content_size.0 - viewport.width).max(0.0);
         let max_y = (content_size.1 - viewport.height).max(0.0);
-        let nx = if x.is_finite() { x.clamp(0.0, max_x) } else { 0.0 };
-        let ny = if y.is_finite() { y.clamp(0.0, max_y) } else { 0.0 };
+        let nx = if x.is_nan() { 0.0 } else { x.clamp(0.0, max_x) };
+        let ny = if y.is_nan() { 0.0 } else { y.clamp(0.0, max_y) };
         let changed = self
             .node(area)
             .and_then(|n| n.inputs.as_ref())

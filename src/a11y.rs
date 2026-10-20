@@ -81,6 +81,8 @@ pub struct A11yNode {
     pub numeric: Option<(f64, f64, f64)>,
     /// Toggled state for check boxes and radio buttons.
     pub toggled: Option<bool>,
+    /// True when a tri-state check box is in the mixed (indeterminate) state.
+    pub mixed: bool,
     /// Whether the widget is disabled.
     pub disabled: bool,
     /// Whether the widget currently holds keyboard focus.

@@ -43,6 +43,9 @@ impl Tk {
             return false;
         }
         let Some(var) = node.check else { return false };
+        if var.get(self).is_none() {
+            return false;
+        }
         var.set(self, value);
         self.dirty = true;
         true

@@ -4,6 +4,7 @@ use crate::Color;
 
 /// Supported color palettes for scalar data mapping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Colormap {
     /// Perceptually uniform blue-green-yellow (matplotlib default).
     Viridis,

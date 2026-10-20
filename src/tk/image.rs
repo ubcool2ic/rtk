@@ -20,7 +20,13 @@ impl Tk {
     ///
     /// Rejects zero dimensions or a buffer whose length is not `w * h * 4`.
     pub fn image_set_rgba(&mut self, id: WidgetId, w: u32, h: u32, rgba: &[u8]) -> bool {
-        if w == 0 || h == 0 || rgba.len() != (w as usize) * (h as usize) * 4 {
+        if w == 0 || h == 0 {
+            return false;
+        }
+        let expected = (w as usize)
+            .checked_mul(h as usize)
+            .and_then(|n| n.checked_mul(4));
+        if expected != Some(rgba.len()) {
             return false;
         }
         let Some(node) = self.node_mut(id) else { return false };

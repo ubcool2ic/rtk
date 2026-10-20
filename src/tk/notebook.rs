@@ -32,6 +32,10 @@ impl Tk {
         let is_nb = self.node(nb).is_some_and(|n| n.kind == Kind::Notebook);
         let is_page = self.node(page).is_some_and(|n| n.kind == Kind::Frame && n.parent == Some(nb));
         if !is_nb || !is_page { return false; }
+        let already = self
+            .node(nb)
+            .is_some_and(|n| n.notebook_pages.iter().any(|(p, _)| *p == page));
+        if already { return false; }
         let title = title.into();
         if let Some(nb_node) = self.node_mut(nb) {
             nb_node.notebook_pages.push((page, title));
