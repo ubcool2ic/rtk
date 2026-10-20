@@ -40,6 +40,10 @@ mod combobox;
 mod notebook;
 mod progress;
 mod tooltip;
+mod shortcuts;
+mod clipboard;
+mod edit;
+mod theme;
 mod chart;
 mod image;
 mod dnd;
@@ -56,6 +60,14 @@ pub(crate) type ModalCancel = Box<dyn FnMut(&mut Tk)>;
 pub(crate) type ModalAccept = Box<dyn FnMut(&mut Tk)>;
 /// Callback run when the text of an Entry inside a modal dialog changes.
 pub(crate) type ModalEntryChanged = Box<dyn FnMut(&mut Tk, WidgetId, &str)>;
+/// Callback invoked on a window close request; returns true to allow quit.
+pub(crate) type CloseCallback = Box<dyn FnMut(&mut Tk) -> bool>;
+/// A bound keyboard shortcut: its id, the parsed chord, and its callback.
+pub(crate) type ShortcutBinding = (
+    crate::shortcut::ShortcutId,
+    crate::shortcut::Shortcut,
+    Box<dyn FnMut(&mut Tk)>,
+);
 
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
@@ -73,6 +85,7 @@ pub struct TkProxy {
 
 impl TkProxy {
     /// Queues a closure to execute on the main thread and wakes the event loop.
+    /// Queues a closure to execute on the main thread and wakes the event loop.
     pub fn post(&self, f: impl FnOnce(&mut Tk) + Send + 'static) {
         self.shared.queue.lock().unwrap_or_else(|e| e.into_inner()).push_back(Box::new(f));
         let waker = self.shared.waker.lock().unwrap_or_else(|e| e.into_inner());
@@ -85,7 +98,8 @@ impl TkProxy {
 const MAX_ENTRY_BYTES: usize = 64 * 1024;
 
 /// Keys understood by the real backend and the headless event harness.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     /// Deletes the character/cluster before the cursor.
     Backspace,
@@ -117,12 +131,19 @@ pub enum Key {
     PageDown,
     /// Closes an open Combobox or cancels a modal dialog.
     Escape,
+    /// A character key: a lowercase letter/digit/punctuation pressed with a
+    /// modifier, or a bare key when no text input applies.
+    Char(char),
+    /// A function key, F1..=F24.
+    F(u8),
+    /// The Insert key.
+    Insert,
 }
 
 /// Scroll step for `yview_scroll`/`xview_scroll`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScrollUnit {
-    /// One row (Listbox/Text) or [`WHEEL_LINE_PX`] logical px (Canvas).
+    /// One row (Listbox/Text) or a fixed wheel step of 48 logical px (Canvas).
     Units,
     /// One visible page of rows/pixels.
     Pages,
@@ -133,9 +154,9 @@ const WHEEL_LINE_PX: f32 = 48.0;
 
 /// The toolkit instance: owns every widget, variable, style and input state.
 ///
-/// Create one with [`Tk::new`], build a widget tree with the constructors in
-/// [`crate::widgets`], then either run the real window loop or drive it
-/// headlessly with the `sim_*` methods.
+/// Create one with [`Tk::new`], build a widget tree with the widget
+/// constructors, then either run the real window loop or drive it headlessly
+/// with the `sim_*` methods.
 pub struct Tk {
     nodes: Vec<WidgetSlot>,
     free: Vec<u32>,
@@ -174,6 +195,29 @@ pub struct Tk {
     pub(crate) modal_cancel: Option<ModalCancel>,
     pub(crate) modal_accept: Option<ModalAccept>,
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
+    /// Window icon as (width, height, straight RGBA bytes).
+    pub(crate) window_icon: Option<(u32, u32, Vec<u8>)>,
+    /// Minimum window size in logical px.
+    pub(crate) window_minsize: Option<(u32, u32)>,
+    /// Maximum window size in logical px.
+    pub(crate) window_maxsize: Option<(u32, u32)>,
+    /// Whether the window is resizable horizontally and vertically.
+    pub(crate) window_resizable: (bool, bool),
+    /// Callback invoked on the window close button; returns true to allow quit.
+    pub(crate) close_callback: Option<CloseCallback>,
+    /// True when window properties (icon, size constraints) need re-applying.
+    pub(crate) window_props_dirty: bool,
+    /// Modifiers of the most recent key press.
+    pub(crate) mods: crate::shortcut::Modifiers,
+    /// Bound keyboard shortcuts, in binding order.
+    pub(crate) shortcuts: Vec<ShortcutBinding>,
+    /// Next shortcut id to hand out.
+    pub(crate) next_shortcut_id: u64,
+    /// In-memory clipboard contents (always available, headless-safe).
+    pub(crate) clipboard_text: String,
+    /// Lazily created OS clipboard handle (only when the real loop runs).
+    #[cfg(feature = "clipboard")]
+    pub(crate) os_clipboard: Option<arboard::Clipboard>,
     pub(crate) dnd: crate::dnd::DndState,
 }
 
@@ -184,6 +228,7 @@ impl Default for Tk {
 }
 
 impl Tk {
+    /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
     /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
     pub fn new() -> Self {
         let _ = crate::app::START.get_or_init(std::time::Instant::now);
@@ -230,20 +275,39 @@ impl Tk {
             modal_cancel: None,
             modal_accept: None,
             modal_entry_changed: None,
+            window_icon: None,
+            window_minsize: None,
+            window_maxsize: None,
+            window_resizable: (true, true),
+            close_callback: None,
+            window_props_dirty: false,
+            mods: crate::shortcut::Modifiers::NONE,
+            shortcuts: Vec::new(),
+            next_shortcut_id: 1,
+            clipboard_text: String::new(),
+            #[cfg(feature = "clipboard")]
+            os_clipboard: None,
             dnd: crate::dnd::DndState::default(),
         }
     }
 
+    /// Obtains a thread-safe proxy to post callbacks from background threads.
     /// Obtains a thread-safe proxy to post callbacks from background threads.
     pub fn proxy(&self) -> TkProxy {
         TkProxy { shared: self.proxy_shared.clone() }
     }
 
     /// Queues a closure to run once on the main thread when idle or on next drain.
+    /// Queues a closure to run once on the main thread when idle or on next drain.
     pub fn after_idle(&mut self, f: impl FnOnce(&mut Tk) + 'static) {
         self.idle_queue.push_back(Box::new(f));
     }
 
+    /// Drains posted and idle tasks reentrantly, returning the number processed.
+    ///
+    /// Tasks queued while draining are run in the same call, up to a bounded
+    /// number of passes so a self-re-posting task cannot hang the main thread;
+    /// anything left over runs on the next call.
     /// Drains posted and idle tasks reentrantly, returning the number processed.
     ///
     /// Tasks queued while draining are run in the same call, up to a bounded
@@ -295,6 +359,7 @@ impl Tk {
     }
 
     /// Returns the root (toplevel) widget, which always exists.
+    /// Returns the root (toplevel) widget, which always exists.
     pub fn root(&self) -> WidgetId {
         WidgetId { index: 0, gen: 0 }
     }
@@ -312,10 +377,12 @@ impl Tk {
     }
 
     /// Returns true if `id` refers to a live widget (tkinter `winfo_exists`).
+    /// Returns true if `id` refers to a live widget (tkinter `winfo_exists`).
     pub fn contains(&self, id: WidgetId) -> bool {
         self.node(id).is_some()
     }
 
+    /// Returns the active theme.
     /// Returns the active theme.
     pub fn theme(&self) -> Theme {
         self.theme
@@ -323,21 +390,27 @@ impl Tk {
 
     /// Which font family became the default sans-serif: the bundled Noto Sans,
     /// or Arial / a platform sans if the bundled font could not be loaded.
+    /// Which font family became the default sans-serif: the bundled Noto Sans,
+    /// or Arial / a platform sans if the bundled font could not be loaded.
     pub fn default_font(&self) -> &crate::fonts::DefaultFont {
         self.text_engine.default_font()
     }
 
+    /// Returns the design tokens (palette, fonts, radii) of the active theme.
     /// Returns the design tokens (palette, fonts, radii) of the active theme.
     pub fn tokens(&self) -> &Tokens {
         self.style_engine.tokens()
     }
 
     /// Replaces the design tokens without changing `theme()`.
+    /// Replaces the design tokens without changing `theme()`.
     pub fn set_tokens(&mut self, tokens: Tokens) {
         self.style_engine.set_tokens(tokens);
         self.dirty = true;
     }
 
+    /// Switches the theme, resetting tokens and the legacy per-widget colours
+    /// that were not explicitly overridden with `Opt::Bg`/`Opt::Fg`.
     /// Switches the theme, resetting tokens and the legacy per-widget colours
     /// that were not explicitly overridden with `Opt::Bg`/`Opt::Fg`.
     pub fn set_theme(&mut self, theme: Theme) {
@@ -388,6 +461,7 @@ impl Tk {
         }
     }
 
+    /// Sets the brand accent color and updates derived tokens and styles.
     /// Sets the brand accent color and updates derived tokens and styles.
     pub fn set_accent(&mut self, accent: Color) {
         let mut tokens = self.style_engine.tokens().clone();

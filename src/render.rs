@@ -187,6 +187,17 @@ impl TextEngine {
     }
 }
 
+/// Returns `(bg, fg)` for a text selection, dimming the highlight when the
+/// widget is not focused.
+fn selection_colors(palette: &crate::style::Palette, focused: bool) -> (Color, Color) {
+    if focused {
+        (palette.selection_bg, palette.selection_fg)
+    } else {
+        let dim = crate::style::blend(palette.selection_bg, palette.field_bg, 0.5);
+        (dim, palette.fg)
+    }
+}
+
 /// Source-over blend of a straight-alpha colour onto a premultiplied RGBA8 pixel.
 fn blend_pixel(data: &mut [u8], index: usize, color: cosmic_text::Color) {
     let alpha = u32::from(color.a());
@@ -476,6 +487,35 @@ impl Tk {
                     let text_cursor = node.cursor;
                     let lines: Vec<&str> = full_text.split('\n').collect();
                     let text_clip = clip.intersection(inner.scaled(scale));
+                    let selection = self.selection_of(id);
+                    let focused = self.focused == Some(id);
+                    let (sel_bg, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
+
+                    // Byte offset of the start of each line.
+                    let mut line_starts = Vec::with_capacity(lines.len());
+                    let mut acc = 0usize;
+                    for line in &lines {
+                        line_starts.push(acc);
+                        acc += line.len() + 1;
+                    }
+
+                    // Selection highlight per visible line.
+                    if let Some((sel_start, sel_end)) = selection {
+                        for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
+                            let line_start = line_starts[i];
+                            let line_end = line_start + line.len();
+                            let seg_start = sel_start.max(line_start);
+                            let seg_end = sel_end.min(line_end);
+                            if seg_start >= seg_end {
+                                continue;
+                            }
+                            let x0 = self.measure_with(&line[..seg_start - line_start], &resolved).width;
+                            let x1 = self.measure_with(&line[..seg_end - line_start], &resolved).width;
+                            let row_y = inner.y + (i - start_row) as f32 * line_h;
+                            let sel_rect = Rect::new(inner.x + x0, row_y + 2.0, (x1 - x0).max(1.0), line_h - 2.0);
+                            fill(&mut pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
+                        }
+                    }
 
                     for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
                         let row_y = inner.y + (i - start_row) as f32 * line_h;
@@ -485,6 +525,28 @@ impl Tk {
                             resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                             origin, text_clip, resolved.opacity,
                         );
+                    }
+
+                    // Redraw selected glyphs in the selection foreground.
+                    if let Some((sel_start, sel_end)) = selection {
+                        for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
+                            let line_start = line_starts[i];
+                            let line_end = line_start + line.len();
+                            let seg_start = sel_start.max(line_start);
+                            let seg_end = sel_end.min(line_end);
+                            if seg_start >= seg_end {
+                                continue;
+                            }
+                            let x0 = self.measure_with(&line[..seg_start - line_start], &resolved).width;
+                            let row_y = inner.y + (i - start_row) as f32 * line_h;
+                            let seg_text = &line[seg_start - line_start..seg_end - line_start];
+                            self.text_engine.draw_styled(
+                                &mut pixmap, seg_text, (resolved.font_size * scale, sel_fg),
+                                resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                                ((inner.x + x0) * scale, (row_y + 2.0) * scale),
+                                text_clip, resolved.opacity,
+                            );
+                        }
                     }
 
                     if self.focused == Some(id) && !disabled {
@@ -581,11 +643,39 @@ impl Tk {
                         (logical.y + (logical.height - resolved.font_size * 1.3) / 2.0) * scale,
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
+                    // Selection highlight behind the glyphs.
+                    let selection = self.selection_of(id);
+                    if let Some((sel_start, sel_end)) = selection {
+                        let focused = self.focused == Some(id);
+                        let (sel_bg, _) = selection_colors(&self.style_engine.tokens().palette, focused);
+                        let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                        let x1 = self.measure_with(text.get(..sel_end).unwrap_or_default(), &resolved).width;
+                        let sel_rect = Rect::new(
+                            inner.x - scroll + x0,
+                            inner.y,
+                            (x1 - x0).max(1.0),
+                            inner.height,
+                        );
+                        fill(&mut pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
+                    }
                     self.text_engine.draw_styled(
                         &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
                         resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                         origin, text_clip, resolved.opacity,
                     );
+                    // Redraw the selected glyphs in the selection foreground.
+                    if let Some((sel_start, sel_end)) = selection {
+                        let focused = self.focused == Some(id);
+                        let (_, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
+                        let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                        let sel_text = text.get(sel_start..sel_end).unwrap_or_default();
+                        self.text_engine.draw_styled(
+                            &mut pixmap, sel_text, (resolved.font_size * scale, sel_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            ((inner.x - scroll + x0) * scale, origin.1),
+                            text_clip, resolved.opacity,
+                        );
+                    }
                     if self.focused == Some(id) && !disabled {
                         fill(
                             &mut pixmap,

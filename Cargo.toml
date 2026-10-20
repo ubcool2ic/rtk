@@ -8,7 +8,8 @@ description = "A small tkinter-style GUI library with an arena-based Rust API"
 readme = "README.md"
 
 [features]
-default = ["svg"]
+default = ["clipboard", "svg"]
+clipboard = ["dep:arboard"]
 svg = ["dep:resvg"]
 tray = ["dep:tray-icon"]
 
@@ -17,6 +18,7 @@ winit = "0.30"
 softbuffer = "0.4"
 tiny-skia = "0.11"
 cosmic-text = "0.12"
+arboard = { version = "3", optional = true, default-features = false }
 resvg = { version = "0.45", default-features = false, optional = true }
 tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"], optional = true }
 

@@ -9,33 +9,61 @@ use crate::Tk;
 /// Built-in monochrome icon set drawn as crisp vector paths at any size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Icon {
+    /// A house outline.
     Home,
+    /// A microchip with pins.
     Chip,
+    /// A USB trident.
     Usb,
+    /// Stacked books/library shelves.
     Library,
+    /// Vertical sliders with handles.
     Sliders,
+    /// A wrench.
     Wrench,
+    /// A filled lightning bolt.
     Bolt,
+    /// A gear.
     Settings,
+    /// An open book.
     Book,
+    /// A shield outline.
     Shield,
+    /// A downward arrow onto a baseline.
     Download,
+    /// An upward arrow from a baseline.
     Upload,
+    /// A check mark.
     Check,
+    /// A warning triangle with an exclamation mark.
     Warning,
+    /// A circle with an X.
     Error,
+    /// A circle with an "i".
     Info,
+    /// A circular refresh arrow.
     Refresh,
+    /// A folder outline.
     Folder,
+    /// A floppy-disk save symbol.
     Save,
+    /// A filled play triangle.
     Play,
+    /// A filled stop square.
     Stop,
+    /// A sun with rays.
     Sun,
+    /// A filled crescent moon.
     Moon,
+    /// A magnifying glass.
     Search,
+    /// A memory module.
     Memory,
+    /// A partitioned square.
     Partition,
+    /// A battery outline with a terminal.
     Battery,
+    /// A clock face.
     Clock,
 }
 

@@ -8,6 +8,7 @@ impl Tk {
     // Combobox API
     // -----------------------------------------------------------------------
 
+    /// Replaces the dropdown choices (tkinter `values`).
     pub fn combobox_set_values(&mut self, id: WidgetId, values: Vec<String>) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Combobox { return false; }
@@ -16,6 +17,7 @@ impl Tk {
         true
     }
 
+    /// Returns the selected `(index, text)` (tkinter `current()` / `get()`).
     pub fn combobox_get(&self, id: WidgetId) -> Option<(i64, String)> {
         let node = self.node(id)?;
         if node.kind != Kind::Combobox { return None; }
