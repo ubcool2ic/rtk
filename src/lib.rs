@@ -1,6 +1,7 @@
 //! A small, software-rendered, tkinter-style GUI.
 
 mod app;
+pub mod chart;
 pub mod colormap;
 pub mod dialog;
 pub mod fonts;
@@ -14,6 +15,7 @@ mod tk;
 mod var;
 mod widgets;
 
+pub use chart::ChartKind;
 pub use colormap::Colormap;
 pub use dialog::MessageKind;
 pub use fonts::DefaultFont;
@@ -24,9 +26,9 @@ pub use timer::TimerId;
 pub use tk::{Key, ScrollUnit, Tk, TkProxy};
 pub use var::Var;
 pub use widgets::{
-    Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Combobox, Command,
+    Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,
     Compound, DragPhase, Entry, Frame, Label, Listbox, Notebook, Opt, ProgressBar, Radiobutton,
-    Scale, Scrollbar, Spinbox, Text, Theme, WidgetId,
+    Scale, Scrollbar, Sparkline, Spinbox, Text, Theme, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.
