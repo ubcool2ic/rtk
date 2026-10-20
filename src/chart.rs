@@ -9,16 +9,13 @@ use std::collections::VecDeque;
 use crate::style::Palette;
 use crate::widgets::{CanvasItemKind, Color};
 
-/// Okabe-Ito colour-blind-safe series palette (black omitted).
-pub const OKABE_ITO: [Color; 7] = [
-    Color::rgb(0, 114, 178),
-    Color::rgb(230, 159, 0),
-    Color::rgb(0, 158, 115),
-    Color::rgb(213, 94, 0),
-    Color::rgb(204, 121, 167),
-    Color::rgb(86, 180, 233),
-    Color::rgb(240, 228, 66),
-];
+/// Okabe-Ito colour-blind-safe series palette in chart order (black omitted), taken from
+/// [`crate::theme::OKABE_ITO`]: blue, orange, bluish green, vermillion, reddish purple,
+/// sky blue, yellow.
+pub const OKABE_ITO: [Color; 7] = {
+    let p = crate::theme::OKABE_ITO;
+    [p[5], p[1], p[3], p[6], p[7], p[2], p[4]]
+};
 
 /// Returns the palette colour for series `index`, cycling through [`OKABE_ITO`].
 pub fn series_color(index: usize) -> Color {
