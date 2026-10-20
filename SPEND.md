@@ -298,3 +298,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/v08_widgets.rs:1-279 | 7379 (0 cached) | 1481 (976 reasoning) | 0.0296 | 5.9827 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/vars.rs:1-54 | 2971 (0 cached) | 711 (454 reasoning) | 0.0131 | 5.9958 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_api.rs:1-142 | 4588 (0 cached) | 795 (539 reasoning) | 0.0171 | 6.0129 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_pinning.rs:1-50 | 3002 (0 cached) | 1183 (600 reasoning) | 0.0178 | 6.0307 |

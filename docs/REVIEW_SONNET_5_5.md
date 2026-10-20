@@ -1192,3 +1192,9 @@ I found nothing in lines 1-142 that needs fixing. Specifically:
 
 I did not add new tests, such as overflowing dimensions or an over-long buffer. I couldn't confirm what those calls return, so an added test might assert the wrong thing.
 
+### tests/window_pinning.rs lines 1-50
+- [severity medium] [bug] Lines 14-18, 25-31: the dirty assertions probably prove nothing. `let _ = tk.is_dirty();` is not documented to clear the flag, since the name suggests a pure getter. If so, `sim_resize` leaves the toolkit dirty and `assert!(tk.is_dirty())` passes whether or not `resizable()`, `minsize()` or `maxsize()` mark it dirty. The second dirty assertion at line 31 would be vacuous even if the first were meaningful. -> not fixed (the reference shows no API that clears or consumes the dirty flag, such as `take_dirty` or `clear_dirty`, and I won't invent one that may not compile. Once such an API exists, call it after `sim_resize` and before each setter, and assert `!is_dirty()` first to prove the baseline is clean.)
+- [severity low] [bug] Lines 32-35: `clear_minsize()` and `clear_maxsize()` are checked only for round-trip, not for requesting a redraw. A missed redraw would leave the OS window constraints stale. -> not fixed (this depends on the same missing dirty-clear primitive).
+- [severity low] [docs] Line 14: the comment "Clear any pending dirty state" is misleading because the line below it does not clear anything. -> not fixed (the right fix depends on the dirty-clearing API above).
+- [severity low] [bug] Lines 38-49: `render_after_constraint_change_succeeds` checks only the pixmap dimensions. The constraints are not applied in a headless render, so it cannot show they have any effect. -> not fixed (the assertions are correct as written and the test is deterministic, so there is nothing to weaken or change).
+
