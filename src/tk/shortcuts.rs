@@ -81,13 +81,12 @@ impl Tk {
             }
         }
         if let Some(idx) = matched {
-            let mut entry = self.shortcuts.remove(idx);
-            let mut cb = std::mem::replace(&mut entry.2, Box::new(|_| {}));
+            let sid = self.shortcuts[idx].0;
+            let mut cb = std::mem::replace(&mut self.shortcuts[idx].2, Box::new(|_| {}));
             cb(self);
-            // If the callback did not unbind itself, put it back.
-            let still_bound = self.shortcuts.iter().any(|(sid, _, _)| *sid == entry.0);
-            if !still_bound {
-                self.shortcuts.insert(idx.min(self.shortcuts.len()), entry);
+            // If the callback did not unbind itself, put the real callback back.
+            if let Some(slot) = self.shortcuts.iter_mut().find(|(s, _, _)| *s == sid) {
+                slot.2 = cb;
             }
             self.dirty = true;
             return;

@@ -561,3 +561,9 @@ I found nothing in lines 1-155 that needs an edit.
 - [low] [bug] `image_set_fit` on an image with no source inserts a 1x1 transparent RGBA placeholder (lines 107-113). `image_natural_size` then reports `Some((1, 1))` for an image that is logically empty, and `image_clear` drops the stored fit. Fixing this needs an empty `ImageSource` variant or an `Option` source in `ImageData`, which lies outside this chunk. -> not fixed (needs a change outside this chunk)
 - [low] [api] The verbs are inconsistent: `image_load_png` and `image_set_svg` differ from the `image_set_*` pattern, and `load_svg` has no widget prefix. The latter is deliberate, since it registers a shared `ImageId` like `register_image_rgba`. -> not fixed (renaming is a breaking change with no functional bug)
 
+### src/tk/shortcuts.rs lines 1-146
+- [severity high] [bug] Shortcut dispatch never restores the real callback (lines 84-91). The entry is removed, and its callback is swapped for a no-op. The no-op is then reinserted and the real `cb` is dropped, so a shortcut works exactly once and is then dead. -> fixed
+- [severity medium] [bug] A callback that unbinds its own shortcut has no effect (lines 84-91). The entry was already removed, so `unbind_shortcut` returns false. The `still_bound` check is then always false and the entry is reinserted anyway. -> fixed (the entry stays in place during the call, and the callback is restored only if the id is still bound)
+- [severity low] [bug] The entry's position was lost when callbacks bound or unbound other shortcuts during dispatch, because the entry was reinserted by a stale index (line 90). -> fixed (the callback is now restored by id, and binding order is preserved)
+- [severity low] [bug] `next_shortcut_id` uses `wrapping_add` (line 21), so ids could collide after 2^32 or 2^64 binds. -> not fixed (practically unreachable, and the field type is defined outside this chunk)
+
