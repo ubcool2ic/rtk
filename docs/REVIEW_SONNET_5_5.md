@@ -680,3 +680,10 @@ I did not check whether `inputs` is dropped when a widget is destroyed, because 
 - [info] F7/F8/F10/F11 concern the file-dialog filter, filter syntax, save-dialog name fill and typed-confirm phrase. None of that code is in lines 1-344. -> not applicable to this chunk
 - The F5 modal stack in `finish_modal`, `close` and `modal_depth` is intact and unchanged.
 
+### src/tk/combobox.rs lines 1-30
+- [severity low] [bug] `combobox_set_values` (line 12) neither clamps nor resets the bound selection variable when the new list is shorter. `combobox_get` then returns `(idx, "")` with a stale index. This is safe: `get` returns `None` for out-of-range indices, and a negative `i64` cast to `usize` becomes huge, so it can't panic. Clamping would mean writing to the variable and could surprise users who set the variable first and values second, and the `combo_var` write path isn't visible in this chunk. -> not fixed (intentional; the caller owns the variable)
+- [severity low] [api] `combobox_get` (line 21) returns the raw variable index with empty text for out-of-range or negative selections, where tkinter's `current()` gives -1. It also defaults to index 0 when no variable is bound. The result is non-panicking and unambiguous (empty text), and other callers in the crate may rely on the raw index, so I left it unchanged. -> not fixed (behaviour change outside this chunk's scope)
+- [severity low] [docs] `combobox_get` doc (line 20) does not state that the text is empty when the index is out of range, nor what `bool` and `Option` mean on the other methods. This is cosmetic, and the lines are otherwise documented. -> not fixed
+
+No edits needed: no panics, UTF-8 slicing, overflow or borrow issues in lines 1-30. The mutable node borrow ends before `self.dirty = true` (NLL), and the casts are safe.
+
