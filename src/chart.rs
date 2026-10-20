@@ -112,9 +112,9 @@ impl ChartState {
         if !any {
             return None;
         }
-        if let Some((lo, hi)) = self.y_range {
-            ymin = lo;
-            ymax = hi;
+        if let Some((lo, hi)) = self.y_range.filter(|(l, h)| l.is_finite() && h.is_finite()) {
+            ymin = lo.min(hi);
+            ymax = lo.max(hi);
         } else if matches!(self.kind, ChartKind::Bar | ChartKind::Area) {
             ymin = ymin.min(0.0);
             ymax = ymax.max(0.0);
@@ -162,13 +162,12 @@ pub fn nice_ticks(min: f64, max: f64, max_ticks: usize) -> Vec<f64> {
     let first = (min / step).ceil() as i64;
     let last = (max / step).floor() as i64;
     let mut ticks = Vec::new();
-    let mut k = first;
-    while k <= last {
-        let v = k as f64 * step;
+    let inv = if magnitude < 1.0 { (1.0 / magnitude).round() } else { 1.0 };
+    for k in first..=last {
+        let v = if magnitude < 1.0 { (k as f64 * nice) / inv } else { k as f64 * step };
         if v >= min - eps && v <= max + eps {
             ticks.push(v);
         }
-        k += 1;
     }
     ticks
 }
@@ -191,25 +190,33 @@ pub fn time_ticks(min: f64, max: f64, max_ticks: usize) -> Vec<(f64, String)> {
     if min == max {
         return vec![(min, format_time(min, 1.0))];
     }
-    let mut step = *TIME_STEPS.last().unwrap_or(&604800.0);
+    let largest = *TIME_STEPS.last().unwrap_or(&604800.0);
+    let mut step = largest;
+    let mut found = false;
     for candidate in TIME_STEPS {
         let count = ((max / candidate).floor() - (min / candidate).ceil() + 1.0).max(0.0);
         if count <= max_ticks as f64 {
             step = candidate;
+            found = true;
             break;
+        }
+    }
+    if !found {
+        let mult = ((max - min) / max_ticks as f64 / largest).ceil().max(1.0);
+        step = largest * mult;
+        if !step.is_finite() {
+            return Vec::new();
         }
     }
     let eps = step * 1e-9;
     let first = (min / step).ceil() as i64;
     let last = (max / step).floor() as i64;
     let mut ticks = Vec::new();
-    let mut k = first;
-    while k <= last {
+    for k in first..=last {
         let v = k as f64 * step;
         if v >= min - eps && v <= max + eps {
             ticks.push((v, format_time(v, step)));
         }
-        k += 1;
     }
     ticks
 }
@@ -268,9 +275,11 @@ fn estimate_width(text: &str, size: f32) -> f32 {
 
 /// Builds the display list for a chart in widget-local logical pixels.
 ///
-/// Colours come only from `palette` and the series colours. Returns an empty
-/// list when the plot area is smaller than 2 px in either direction or there
-/// are no finite points (axes and legend are still drawn when not a sparkline).
+/// Colours come only from `palette` and the series colours. Sparklines return
+/// an empty list when the plot area is smaller than 2 px in either direction
+/// or there are no finite points. Full charts draw the legend first, then
+/// return early (without axes or data) when there are no finite points or the
+/// plot area is smaller than 2 px in either direction.
 pub(crate) fn build_items(
     state: &ChartState,
     w: f32,

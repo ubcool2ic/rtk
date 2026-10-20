@@ -296,3 +296,13 @@ I reviewed only lines 693-698, which hold `Menubar::new`. It has a `///` doc com
 ### src/theme.rs lines 1-282
 - none
 
+### src/chart.rs lines 269-494
+- [severity low] [docs] The `build_items` doc claims an empty list for a too-small plot area and that axes are still drawn with no finite points. In the non-sparkline path, the legend is pushed before the `bounds()` and size checks, so the list can be non-empty when the plot is small. With no finite points only the legend is drawn, with no axes. (line 271) -> fixed
+- [severity low] [bug] I could not check the following because `bounds()`, `nice_ticks` and `time_ticks` are outside this chunk: whether the x/y span is non-zero (divisions at lines 296-297 and 353-354), and whether ticks stay inside the data range. This chunk has no panic, overflow or UTF-8 problems. Bar index/slot handling, the `continue` on an empty bar series, and the NEG_INFINITY label-gap logic are correct. -> not fixed (nothing to change in this chunk; the guarantees belong to `bounds()` and the tick helpers)
+
+### src/chart.rs lines 1-268
+- [medium] [bug] `nice_ticks` computes `k as f64 * step` for sub-unit steps, so it yields values like `0.30000000000000004`, which `format_tick` then prints as ugly labels (line 167) -> fixed (sub-unit ticks are now computed as an integer divided by an exact power of ten)
+- [medium] [bug] `k += 1` in the `nice_ticks` and `time_ticks` loops can overflow `i64` and panic in debug builds when `last` saturates at `i64::MAX` (lines 171, 212) -> fixed (now iterates over an inclusive range)
+- [medium] [bug] `time_ticks` falls back to the 1-week step for huge ranges, which can produce millions of ticks (unbounded allocation) (lines 194-201) -> fixed (the fallback step is scaled up so the tick count stays within `max_ticks`)
+- [low] [bug] `bounds` uses `y_range` as given, so a reversed (`lo > hi`) or non-finite range gives inverted or NaN bounds (lines 115-118) -> fixed (a finite range is normalised so lo ≤ hi; a non-finite range is ignored)
+
