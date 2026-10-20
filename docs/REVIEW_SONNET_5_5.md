@@ -1006,3 +1006,7 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 ### tests/m013_theme_goldens.rs lines 1-139
 - none
 
+### tests/m013_themes.rs lines 1-119
+- [severity low] [bug] `unfollow_stops_theme_changes` starts from what is probably the default Light theme. The `assert_eq!(tk.theme(), Theme::Light)` after `sim_system_theme(Light)` (line 100) could pass even if following never applied anything. Starting from Dark makes the first half exercise the follow path. (line 97) -> fixed
+- [severity low] [docs] none found. Every helper and test has a `///` doc comment, and I found no helper panics or timing dependence. -> not fixed (nothing to fix)
+
