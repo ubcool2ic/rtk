@@ -53,6 +53,8 @@ pub(crate) type ModalCancel = Box<dyn FnMut(&mut Tk)>;
 pub(crate) type ModalAccept = Box<dyn FnMut(&mut Tk)>;
 /// Callback run when the text of an Entry inside a modal dialog changes.
 pub(crate) type ModalEntryChanged = Box<dyn FnMut(&mut Tk, WidgetId, &str)>;
+/// Callback invoked on a window close request; returns true to allow quit.
+pub(crate) type CloseCallback = Box<dyn FnMut(&mut Tk) -> bool>;
 
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
@@ -171,6 +173,18 @@ pub struct Tk {
     pub(crate) modal_cancel: Option<ModalCancel>,
     pub(crate) modal_accept: Option<ModalAccept>,
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
+    /// Window icon as (width, height, straight RGBA bytes).
+    pub(crate) window_icon: Option<(u32, u32, Vec<u8>)>,
+    /// Minimum window size in logical px.
+    pub(crate) window_minsize: Option<(u32, u32)>,
+    /// Maximum window size in logical px.
+    pub(crate) window_maxsize: Option<(u32, u32)>,
+    /// Whether the window is resizable horizontally and vertically.
+    pub(crate) window_resizable: (bool, bool),
+    /// Callback invoked on the window close button; returns true to allow quit.
+    pub(crate) close_callback: Option<CloseCallback>,
+    /// True when window properties (icon, size constraints) need re-applying.
+    pub(crate) window_props_dirty: bool,
 }
 
 impl Default for Tk {
@@ -226,6 +240,12 @@ impl Tk {
             modal_cancel: None,
             modal_accept: None,
             modal_entry_changed: None,
+            window_icon: None,
+            window_minsize: None,
+            window_maxsize: None,
+            window_resizable: (true, true),
+            close_callback: None,
+            window_props_dirty: false,
         }
     }
 

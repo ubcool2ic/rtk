@@ -9,7 +9,7 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{Icon, Window, WindowId};
 
 use crate::tk::RtkUserEvent;
 use crate::{Key, Tk};
@@ -64,16 +64,29 @@ impl Tk {
 impl App {
     fn open(&mut self, event_loop: &ActiveEventLoop) -> Result<(), Box<dyn Error>> {
         let (width, height) = self.tk.initial_size();
-        let window = Arc::new(event_loop.create_window(
-            Window::default_attributes()
-                .with_title(&self.tk.window_title)
-                .with_inner_size(LogicalSize::new(width, height)),
-        )?);
+        let mut attributes = Window::default_attributes()
+            .with_title(&self.tk.window_title)
+            .with_inner_size(LogicalSize::new(width, height));
+        if let Some(icon) = build_icon(&self.tk) {
+            attributes = attributes.with_window_icon(Some(icon));
+        }
+        if let Some((w, h)) = self.tk.window_minsize() {
+            attributes = attributes.with_min_inner_size(LogicalSize::new(f64::from(w), f64::from(h)));
+        }
+        if let Some((w, h)) = self.tk.window_maxsize() {
+            attributes = attributes.with_max_inner_size(LogicalSize::new(f64::from(w), f64::from(h)));
+        }
+        let (rw, rh) = self.tk.is_resizable();
+        attributes = attributes.with_resizable(rw || rh);
+        let window = Arc::new(event_loop.create_window(attributes)?);
         self.tk.sim_scale_factor(window.scale_factor());
         let size = window.inner_size();
         self.tk.sim_resize(size.width, size.height);
         self.window = Some(window);
         self.occluded = false;
+        // Apply size constraints (including single-axis pinning) immediately so
+        // the very first frame already respects them.
+        self.sync_window_props();
         Ok(())
     }
 
@@ -155,6 +168,7 @@ impl App {
     fn draw(&mut self) -> Result<(), Box<dyn Error>> {
         let Some(window) = self.window.clone() else { return Ok(()) };
         window.set_title(&self.tk.window_title);
+        self.apply_window_props();
         let size = window.inner_size();
         if self.occluded || size.width == 0 || size.height == 0 {
             self.tk.dirty = false;
@@ -259,7 +273,9 @@ impl ApplicationHandler<RtkUserEvent> for App {
             return;
         }
         match event {
-            WindowEvent::CloseRequested => self.tk.quit(),
+            WindowEvent::CloseRequested => {
+                self.tk.handle_close_request();
+            }
             WindowEvent::Resized(size) => self.tk.sim_resize(size.width, size.height),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.tk.sim_scale_factor(scale_factor);
@@ -357,6 +373,96 @@ pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
 }
 
+/// Builds a winit [`Icon`] from the toolkit's stored RGBA icon, if any.
+fn build_icon(tk: &Tk) -> Option<Icon> {
+    let (w, h, rgba) = tk.window_icon_rgba()?;
+    Icon::from_rgba(rgba.to_vec(), w, h).ok()
+}
+
+impl App {
+    /// Re-applies window properties (icon, size constraints, resizable) to the
+    /// real window when the toolkit reports they changed.
+    fn apply_window_props(&mut self) {
+        if !self.tk.take_window_props_dirty() {
+            return;
+        }
+        self.sync_window_props();
+    }
+
+    /// Pushes the toolkit's current window properties (icon, size constraints,
+    /// resizable flag) onto the real window, regardless of the dirty flag.
+    ///
+    /// Used both by [`App::apply_window_props`] (when the toolkit reports a
+    /// change) and once right after the window is created in [`App::open`] so
+    /// that single-axis pinning takes effect from the first frame.
+    fn sync_window_props(&mut self) {
+        let Some(window) = self.window.clone() else { return };
+        window.set_window_icon(build_icon(&self.tk));
+        let scale = f64::from(self.tk.scale_factor);
+        let to_logical = |(w, h): (u32, u32)| LogicalSize::new(f64::from(w), f64::from(h));
+        let (rw, rh) = self.tk.is_resizable();
+        window.set_resizable(rw || rh);
+        // Pin the non-resizable axis to the current window size, keeping the
+        // other axis free within the user's min/max constraints.
+        let size = window.inner_size();
+        let cur = (
+            (f64::from(size.width) / scale).round() as u32,
+            (f64::from(size.height) / scale).round() as u32,
+        );
+        let (min, max) = pinned_limits(
+            (rw, rh),
+            cur,
+            self.tk.window_minsize(),
+            self.tk.window_maxsize(),
+        );
+        if let Some(min) = min {
+            window.set_min_inner_size(Some(to_logical(min)));
+        } else {
+            window.set_min_inner_size(None::<LogicalSize<f64>>);
+        }
+        if let Some(max) = max {
+            window.set_max_inner_size(Some(to_logical(max)));
+        } else {
+            window.set_max_inner_size(None::<LogicalSize<f64>>);
+        }
+    }
+}
+
+/// A `(width, height)` pair of logical pixels.
+type Size = (u32, u32);
+
+/// The effective `(min, max)` inner-size constraints for a window.
+type Limits = (Option<Size>, Option<Size>);
+
+/// Computes the effective min/max inner size for a window given its
+/// resizability, current size and the user's requested constraints.
+///
+/// When both axes are resizable the user's constraints are returned verbatim.
+/// When exactly one axis is fixed, that axis is pinned to the current size on
+/// both min and max, while the free axis keeps the user's constraints (falling
+/// back to `1` for min and [`FREE_AXIS_MAX`] for max). When neither axis is
+/// resizable both axes are pinned to the current size.
+fn pinned_limits(resizable: (bool, bool), cur: Size, min: Option<Size>, max: Option<Size>) -> Limits {
+    let (rw, rh) = resizable;
+    if rw && rh {
+        return (min, max);
+    }
+    let (min_w, min_h): Size = min.unwrap_or((1, 1));
+    let (max_w, max_h): Size = max.unwrap_or((FREE_AXIS_MAX, FREE_AXIS_MAX));
+    let (min_w, max_w) = if rw { (min_w, max_w) } else { (cur.0, cur.0) };
+    let (min_h, max_h) = if rh { (min_h, max_h) } else { (cur.1, cur.1) };
+    // Guard against inverted ranges (e.g. a user min larger than the pinned
+    // current size) so winit never receives min > max.
+    let min_w = min_w.min(max_w);
+    let min_h = min_h.min(max_h);
+    let min: Size = (min_w, min_h);
+    let max: Size = (max_w, max_h);
+    (Some(min), Some(max))
+}
+
+/// Upper bound used for a free axis when the user did not set a maximum.
+const FREE_AXIS_MAX: u32 = 100_000;
+
 /// Minimum time between presented frames (about 60 Hz).
 const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
@@ -365,7 +471,7 @@ pub(crate) static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new
 
 #[cfg(test)]
 mod tests {
-    use super::accepts_key_input;
+    use super::{accepts_key_input, pinned_limits, FREE_AXIS_MAX};
 
     #[test]
     fn altgr_text_is_accepted_but_shortcuts_are_not() {
@@ -373,5 +479,59 @@ mod tests {
         assert!(accepts_key_input(true, true, false));
         assert!(!accepts_key_input(true, false, false));
         assert!(!accepts_key_input(false, false, true));
+    }
+
+    #[test]
+    fn fully_resizable_keeps_user_constraints() {
+        let min = Some((100, 200));
+        let max = Some((800, 600));
+        assert_eq!(
+            pinned_limits((true, true), (640, 480), min, max),
+            (min, max)
+        );
+        assert_eq!(pinned_limits((true, true), (640, 480), None, None), (None, None));
+    }
+
+    #[test]
+    fn fixed_width_pins_only_width() {
+        let (min, max) = pinned_limits((false, true), (640, 480), None, None);
+        assert_eq!(min, Some((640, 1)));
+        assert_eq!(max, Some((640, FREE_AXIS_MAX)));
+    }
+
+    #[test]
+    fn fixed_height_pins_only_height() {
+        let (min, max) = pinned_limits((true, false), (640, 480), None, None);
+        assert_eq!(min, Some((1, 480)));
+        assert_eq!(max, Some((FREE_AXIS_MAX, 480)));
+    }
+
+    #[test]
+    fn fixed_width_keeps_user_height_constraints() {
+        let (min, max) = pinned_limits((false, true), (640, 480), Some((10, 200)), Some((900, 700)));
+        assert_eq!(min, Some((640, 200)));
+        assert_eq!(max, Some((640, 700)));
+    }
+
+    #[test]
+    fn fixed_height_keeps_user_width_constraints() {
+        let (min, max) = pinned_limits((true, false), (640, 480), Some((300, 10)), Some((900, 700)));
+        assert_eq!(min, Some((300, 480)));
+        assert_eq!(max, Some((900, 480)));
+    }
+
+    #[test]
+    fn fully_fixed_pins_both_axes() {
+        let (min, max) = pinned_limits((false, false), (640, 480), None, None);
+        assert_eq!(min, Some((640, 480)));
+        assert_eq!(max, Some((640, 480)));
+    }
+
+    #[test]
+    fn inverted_ranges_are_clamped() {
+        // User min larger than the pinned current width must not produce min > max.
+        let (min, max) = pinned_limits((false, true), (100, 480), Some((500, 10)), None);
+        assert_eq!(min, Some((100, 10)));
+        assert_eq!(max, Some((100, FREE_AXIS_MAX)));
     }
 }
