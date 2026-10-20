@@ -479,3 +479,9 @@ I found nothing that needs fixing in this chunk.
 - [low] [docs] `slider_fraction` doc mentioned a `value` parameter that does not exist (line 156) -> fixed
 - [low] [bug] The `slider_set_orient`, `slider_set_length` and `slider_set_ticks` setters only set `dirty`. This may not trigger relayout, though they change the requested size. Layout invalidation lives outside this chunk -> not fixed (cannot verify)
 
+### src/colormap.rs lines 1-218
+- [low] [api] The public `Colormap` enum lacks `#[non_exhaustive]`, so adding a palette after 1.0 would be a breaking change (line 6) -> fixed. The `match` in `sample` is in the same crate, so it is unaffected.
+- [low] [bug] `legend_rgba` computes `width * height * 4` for the capacity, which can overflow or abort on absurd dimensions (line 198) -> not fixed. The caller controls the size, and a request that large would fail to allocate anyway. Clamping the capacity would only change the failure mode.
+- [low] [docs] `heatmap_to_rgba` maps infinite values to `t = 0.5` when `min == max`, which the doc does not say (line 173) -> not fixed. This is harmless and consistent with the degenerate-span handling.
+- No other bugs found. NaN is handled in `sample` before the table lookup, so `interpolate_table` never sees it. Its index is clamped to `len - 2`, so there is no out-of-bounds access. The degenerate-span, infinite and NaN cases in `heatmap_to_rgba` behave as documented.
+
