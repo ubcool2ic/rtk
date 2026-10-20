@@ -9,6 +9,8 @@ use tiny_skia::{Color as SkColor, FilterQuality, GradientStop, LinearGradient, P
 use crate::layout::{Rect, Size};
 use crate::style::{build_rounded_rect_path, ResolvedStyle, State};
 use crate::tk::{cursor_boundary, floor_char_boundary};
+
+mod data;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk, Var};
 
@@ -652,6 +654,36 @@ impl Tk {
                         (arrow_rect.x + (arrow_rect.width - am.width * scale) / 2.0, arrow_rect.y + (arrow_rect.height - am.height * scale) / 2.0),
                         clip, resolved.opacity,
                     );
+                }
+                Kind::Menubar => {
+                    let titles = node.menubar_titles.clone();
+                    let mut cur_x = logical.x;
+                    let active = self.menus.active_bar == Some(id);
+                    let open_menu = self.menus.open.first().map(|o| o.menu);
+                    let sel_bg = self.style_engine.tokens().palette.select_bg;
+                    for (title, menu) in titles.iter() {
+                        let tw = self.measure_with(title, &resolved).width + 24.0;
+                        let tab = Rect::new(cur_x, logical.y, tw, logical.height);
+                        if active && open_menu == Some(*menu) {
+                            fill(pixmap, tab.scaled(scale), clip, sel_bg);
+                        }
+                        let origin = (
+                            (cur_x + 12.0) * scale,
+                            (logical.y + (logical.height - resolved.font_size * 1.3) / 2.0) * scale,
+                        );
+                        self.text_engine.draw_styled(
+                            pixmap, title, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, clip.intersection(tab.scaled(scale)), resolved.opacity,
+                        );
+                        cur_x += tw;
+                    }
+                }
+                Kind::Table => {
+                    data::draw_table(self, pixmap, id, logical, logical_clip, scale, &resolved);
+                }
+                Kind::TreeView => {
+                    data::draw_tree(self, pixmap, id, logical, logical_clip, scale, &resolved);
                 }
                 Kind::Notebook => {
                     let strip_h = 32.0;
@@ -1314,6 +1346,9 @@ impl Tk {
                 }
             }
         }
+
+        data::draw_toast_overlay(self, pixmap, scale);
+        data::draw_menu_overlay(self, pixmap, scale);
 
         if self.tooltip_visible {
             if let Some(text) = self.active_tooltip() {

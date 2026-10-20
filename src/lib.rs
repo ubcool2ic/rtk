@@ -37,7 +37,8 @@ pub use shortcut::{Modifiers, Shortcut, ShortcutError, ShortcutId};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
 pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, SystemTheme, Typography, OKABE_ITO};
 pub use timer::TimerId;
-pub use tk::{FrameDamage, Key, ScrollUnit, Tk, TkProxy};
+pub use tk::{FrameDamage, Key, ScrollUnit, Tk, TkProxy, ToastId, ToastKind, ToastPosition};
+pub use tk::menu::{MenuId, MenuItem, Menubar};
 pub use tk::inputs_state::{Orient, RingMode};
 pub use tk::ring::ProgressRing;
 pub use tk::switch::Switch;
@@ -48,7 +49,7 @@ pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,
     Compound, DragPhase, Entry, Frame, Image, Label, Listbox, Notebook, Opt, ProgressBar,
-    Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Text, Theme, WidgetId,
+    Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Table, Text, Theme, TreeView, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

@@ -222,6 +222,10 @@ pub struct Text;
 pub struct Combobox;
 /// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
+/// Constructor namespace for virtualized, sortable data tables (ttk `Treeview`-like).
+pub struct Table;
+/// Constructor namespace for hierarchical, virtualized tree views.
+pub struct TreeView;
 /// Constructor namespace for line/area/bar charts.
 pub struct Chart;
 /// Constructor namespace for inline sparklines.
@@ -469,6 +473,24 @@ impl Notebook {
 }
 
 #[allow(clippy::new_ret_no_self)]
+impl Table {
+    /// Creates a virtualized table with `columns` and `height_rows` visible rows.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        columns: &[&str],
+        height_rows: usize,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Table, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.table = Some(Box::new(crate::tk::TableState::new(columns)));
+            node.table_height_rows = height_rows.max(1);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
 impl Chart {
     /// Creates a chart of the given kind with the requested logical size.
     pub fn new(
@@ -483,6 +505,19 @@ impl Chart {
             node.canvas_size = (w.max(0.0), h.max(0.0));
             let state = crate::chart::ChartState { kind, ..Default::default() };
             node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl TreeView {
+    /// Creates an empty hierarchical tree view showing `height_rows` rows (at least 1).
+    pub fn new(tk: &mut Tk, parent: WidgetId, height_rows: usize) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::TreeView, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.tree = Some(Box::new(crate::tk::TreeState::new()));
+            node.tree_height_rows = height_rows.max(1);
         }
         Ok(id)
     }
@@ -537,6 +572,9 @@ pub(crate) enum Kind {
     Slider,
     DoubleSpinbox,
     ScrollArea,
+    Table,
+    TreeView,
+    Menubar,
     Chart,
     Image,
 }
@@ -557,6 +595,8 @@ impl Kind {
                 | Self::Switch
                 | Self::Slider
                 | Self::DoubleSpinbox
+                | Self::Table
+                | Self::TreeView
         )
     }
 
@@ -681,6 +721,14 @@ pub(crate) struct WidgetNode {
     pub transition: Option<TransitionState>,
     /// Milestone 0.10 input-widget state (ProgressRing, Switch, ProgressBar polish).
     pub inputs: Option<Box<crate::tk::inputs_state::InputsState>>,
+    // Table
+    pub table: Option<Box<crate::tk::TableState>>,
+    pub table_height_rows: usize,
+    // TreeView
+    pub tree: Option<Box<crate::tk::TreeState>>,
+    pub tree_height_rows: usize,
+    // Menubar
+    pub menubar_titles: Vec<(String, crate::tk::menu::MenuId)>,
     // Selection (Entry/Text): anchor byte index; selection = anchor..cursor.
     pub selection_anchor: Option<usize>,
     // Undo/redo history for Entry/Text.
@@ -783,6 +831,11 @@ impl WidgetNode {
             compound: Compound::Left,
             transition: None,
             inputs: None,
+            table: None,
+            table_height_rows: 5,
+            tree: None,
+            tree_height_rows: 5,
+            menubar_titles: Vec::new(),
             selection_anchor: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),

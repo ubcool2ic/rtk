@@ -34,6 +34,8 @@ impl Tk {
             Kind::Slider => A11yRole::Slider,
             Kind::DoubleSpinbox => A11yRole::SpinButton,
             Kind::ScrollArea => A11yRole::Group,
+            Kind::Table | Kind::TreeView => A11yRole::ListBox,
+            Kind::Menubar => A11yRole::Group,
         }
     }
 

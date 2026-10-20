@@ -25,6 +25,9 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Slider => "TSlider",
         Kind::DoubleSpinbox => "TDoubleSpinbox",
         Kind::ScrollArea => "TScrollArea",
+        Kind::Table => "TTable",
+        Kind::TreeView => "TTreeview",
+        Kind::Menubar => "TMenubar",
         Kind::Chart => "TChart",
         Kind::Image => "TImage",
     }
@@ -340,6 +343,10 @@ impl Tk {
                 }
             }
         }
+
+        if self.toasts.advance(ms) {
+            self.dirty = true;
+        }
         for id in transitioning {
             self.invalidate_widget(id);
         }
@@ -371,9 +378,9 @@ impl Tk {
     }
 
     /// True while any style transition, indeterminate progress bar, ring
-    /// spinner, switch knob, or smooth progress easing needs frames.
+    /// spinner, switch knob, smooth progress easing or toast needs frames.
     pub fn is_animating(&self) -> bool {
-        let base = self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
+        let base = self.toasts.is_animating() || self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
             n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
         });
         if base {

@@ -136,7 +136,11 @@ impl Tk {
     /// True when an overlay that is drawn outside widget rects is visible, which
     /// forces a full redraw.
     fn overlays_visible(&self) -> bool {
-        self.open_combobox.is_some() || self.tooltip_visible || self.modal.is_some()
+        self.open_combobox.is_some()
+            || self.tooltip_visible
+            || self.modal.is_some()
+            || self.menu_is_open()
+            || !self.toasts.list.is_empty()
     }
 
     /// Converts the pending logical damage rectangles to integer-aligned device

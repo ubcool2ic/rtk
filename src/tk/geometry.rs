@@ -106,7 +106,8 @@ impl Tk {
     }
 
     /// Logical-pixel text size using the resolved font family, weight and slant.
-    pub(crate) fn measure_with(&mut self, text: &str, style: &ResolvedStyle) -> Size {
+    #[doc(hidden)]
+    pub fn measure_with(&mut self, text: &str, style: &ResolvedStyle) -> Size {
         let scale = self.scale_factor;
         let size = self.text_engine.measure_styled(
             text,
@@ -239,6 +240,33 @@ impl Tk {
                 Kind::Slider => self.slider_requested(id, &resolved),
                 Kind::DoubleSpinbox => self.dspin_requested(id, &resolved),
                 Kind::ScrollArea => self.scrollarea_requested(id, &resolved),
+                Kind::Table => {
+                    let row_h = (resolved.font_size * 1.6).round().max(8.0);
+                    let (width_sum, height_rows) = self
+                        .node(id)
+                        .and_then(|n| n.table.as_deref().map(|t| (t.widths.iter().sum::<f32>(), n.table_height_rows)))
+                        .unwrap_or((0.0, 5));
+                    Size::new(
+                        specified.unwrap_or(width_sum.max(120.0)) + pad_w,
+                        row_h + height_rows as f32 * row_h + 2.0 + pad_h,
+                    )
+                }
+                Kind::TreeView => {
+                    let row_h = (resolved.font_size * 1.6).round().max(8.0);
+                    let height_rows = self.node(id).map(|n| n.tree_height_rows).unwrap_or(5);
+                    Size::new(
+                        specified.unwrap_or(200.0) + pad_w,
+                        height_rows as f32 * row_h + 2.0 + pad_h,
+                    )
+                }
+                Kind::Menubar => {
+                    let titles = self.node(id).map(|n| n.menubar_titles.clone()).unwrap_or_default();
+                    let mut w = 0.0_f32;
+                    for (title, _) in &titles {
+                        w += self.measure_with(title, &resolved).width + 24.0;
+                    }
+                    Size::new(w.max(specified.unwrap_or(0.0)) + pad_w, resolved.font_size * 1.8 + 8.0 + pad_h)
+                }
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;

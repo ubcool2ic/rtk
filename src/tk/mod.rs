@@ -50,6 +50,12 @@ pub(crate) mod switch;
 pub(crate) mod slider;
 /// Decimal spinbox construction, editing, and interaction.
 pub(crate) mod double_spinbox;
+mod table;
+mod treeview;
+pub(crate) mod toast;
+pub mod menu;
+
+pub use toast::{ToastId, ToastKind, ToastPosition};
 mod shortcuts;
 mod clipboard;
 mod edit;
@@ -72,6 +78,8 @@ pub(crate) use inputs_state::RingMode;
 pub(crate) use style::{dark_default_colors, NodeSnapshot};
 #[allow(unused_imports)]
 pub use scroll_area::ScrollArea;
+pub(crate) use table::TableState;
+pub(crate) use treeview::TreeState;
 
 pub(crate) type PostedTask = Box<dyn FnOnce(&mut Tk) + Send + 'static>;
 pub(crate) type IdleTask = Box<dyn FnOnce(&mut Tk) + 'static>;
@@ -89,6 +97,19 @@ pub(crate) type ShortcutBinding = (
     crate::shortcut::Shortcut,
     Box<dyn FnMut(&mut Tk)>,
 );
+
+/// Saved state of one modal dialog frame, used to restore an outer dialog
+/// after a nested (inner) dialog closes.
+pub(crate) struct ModalFrame {
+    /// Root scrim widget of the saved dialog.
+    pub(crate) modal: Option<WidgetId>,
+    /// Cancel (Escape) handler of the saved dialog.
+    pub(crate) cancel: Option<ModalCancel>,
+    /// Accept (Enter) handler of the saved dialog.
+    pub(crate) accept: Option<ModalAccept>,
+    /// Entry-changed handler of the saved dialog.
+    pub(crate) entry_changed: Option<ModalEntryChanged>,
+}
 
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
@@ -216,6 +237,12 @@ pub struct Tk {
     pub(crate) modal_cancel: Option<ModalCancel>,
     pub(crate) modal_accept: Option<ModalAccept>,
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
+    /// Stack of saved outer modal frames (innermost last) for nested dialogs.
+    pub(crate) modal_stack: Vec<ModalFrame>,
+    /// Menu state (menus, open stack, context bindings).
+    pub(crate) menus: menu::MenuState,
+    /// Toast notification state.
+    pub(crate) toasts: toast::ToastState,
     /// Window icon as (width, height, straight RGBA bytes).
     pub(crate) window_icon: Option<(u32, u32, Vec<u8>)>,
     /// Minimum window size in logical px.
@@ -322,6 +349,9 @@ impl Tk {
             modal_cancel: None,
             modal_accept: None,
             modal_entry_changed: None,
+            modal_stack: Vec::new(),
+            menus: menu::MenuState::default(),
+            toasts: toast::ToastState::default(),
             window_icon: None,
             window_minsize: None,
             window_maxsize: None,

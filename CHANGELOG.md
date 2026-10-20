@@ -21,6 +21,13 @@
 - **ScrollArea** (`ScrollArea`): scrollable frame of widgets. `scrollarea_content`, `scrollarea_scroll_to`, `scrollarea_offset`, `scrollarea_content_size`, `scrollarea_attach_scrollbars`; wheel/Shift+wheel, clipping, Tab focus scrolls into view.
 - Tests: `tests/m0_10_*.rs` and goldens `ring_*`, `progressbar_*`, `switch_*`, `slider_*`, `dspin_*`, `hscroll_*`, `scrollarea_*`. Example: `gallery_progress_inputs`.
 
+### 0.11 — Data and navigation
+- `Table` data grid: virtualized rows, numeric-aware stable sort (header click or `table_sort_by`), resizable columns, selection, keyboard and wheel navigation. 10k rows scroll at ~2 ms/frame (release, 1280x720; `examples/bench_table.rs`).
+- `TreeView`: virtualized hierarchical list with expand/collapse, keyboard navigation and selection.
+- Menus: `Menubar`, popup and context menus (`menu_popup`, `bind_context_menu`, `sim_right_click`), submenus, check items, display-only accelerator labels.
+- Toast notifications (`toast`, `toast_with`, four kinds shown by icon shape as well as color, positions, max stack), driven by the animation clock.
+- Fix: nested modal dialogs now use a modal stack, so closing an inner dialog restores the outer one (review finding F5). New `dialog::modal_depth`.
+- `examples/gallery_m011.rs` gallery and goldens for all of the above in Light, Dark and HighContrast at 1x and 2x.
 ### 0.12 Charts and media
 - **Chart widget** (`Chart`, `Sparkline`): `ChartKind::Line`/`Area`/`Bar`, the `chart_*` API (`chart_add_series`, `chart_set_data`, `chart_append`, `chart_set_max_points`, `chart_set_time_axis`, `chart_set_legend`, `chart_set_y_range`, `chart_set_series_color`, `chart_clear`, plus `chart_series_count`/`chart_series_len`/`chart_point`/`chart_bounds`). Time-axis labels are formatted in UTC. Live `chart_append` keeps only the last `max_points` per series. Optional legend row. `Sparkline` is a compact single-series chart. Series colours default to the colourblind-safe Okabe-Ito palette (`theme::OKABE_ITO`) and can be overridden per series or taken from theme tokens.
 - **Image widget** (`Image`): RGBA (`image_set_rgba`), PNG (`image_load_png`, from a path or in-memory bytes) and SVG (`image_set_svg`) sources, with `ImageFit::Contain`/`Fill`/`Center`. SVG is rasterized at device resolution so it stays crisp at any scale. `Tk::load_svg` rasterizes SVG bytes into an `ImageId` for use as a Button/Label icon via `Opt::Image`. The default `svg` feature uses resvg 0.45 without text/system fonts.
