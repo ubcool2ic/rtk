@@ -17,6 +17,7 @@ use crate::{Tk, WidgetId};
 
 /// Severity / classification icon for informational dialogs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MessageKind {
     /// Informational message.
     Info,
@@ -80,16 +81,6 @@ pub(crate) fn finish_modal(t: &mut Tk, scrim: WidgetId) {
 /// If a dialog is already presented, its state is pushed onto the modal stack
 /// so it can be restored when this new dialog is dismissed.
 fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), crate::RtkError> {
-    if tk.modal.is_some() {
-        let frame = ModalFrame {
-            modal: tk.modal,
-            cancel: tk.modal_cancel.take(),
-            accept: tk.modal_accept.take(),
-            entry_changed: tk.modal_entry_changed.take(),
-        };
-        tk.modal_stack.push(frame);
-        tk.modal = None;
-    }
     let root = tk.root();
     let scrim = Frame::new(tk, root)?;
     tk.config(scrim, Opt::StyleOverride(crate::StyleSpec {
@@ -107,7 +98,13 @@ fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), cra
     };
     tk.place(scrim, scrim_opts);
 
-    let card = Frame::new(tk, scrim)?;
+    let card = match Frame::new(tk, scrim) {
+        Ok(c) => c,
+        Err(e) => {
+            tk.destroy(scrim);
+            return Err(e);
+        }
+    };
     tk.config(card, Opt::Style("Card".into()));
     let card_opts = PlaceOpts {
         relx: 0.5,
@@ -118,6 +115,15 @@ fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), cra
     };
     tk.place(card, card_opts);
 
+    if tk.modal.is_some() {
+        let frame = ModalFrame {
+            modal: tk.modal,
+            cancel: tk.modal_cancel.take(),
+            accept: tk.modal_accept.take(),
+            entry_changed: tk.modal_entry_changed.take(),
+        };
+        tk.modal_stack.push(frame);
+    }
     tk.modal = Some(scrim);
     Ok((scrim, card))
 }
@@ -391,7 +397,8 @@ pub fn ask_typed_confirmation(
 
     let ok_btn = Button::new(tk, btn_row, "Confirm").unwrap();
     tk.config(ok_btn, Opt::Style("Accent.TButton".into()));
-    tk.config(ok_btn, Opt::Disabled(true));
+    // An empty phrase can never trigger an entry change, so start enabled.
+    tk.config(ok_btn, Opt::Disabled(!phrase.is_empty()));
     let bp = PackOpts {
         side: Side::Left,
         padx: 6.0,
@@ -526,7 +533,14 @@ pub fn ask_open_filename(
 
     let cur_dir = Rc::new(RefCell::new(start_dir.to_path_buf()));
     let owned_filters: Vec<(String, Vec<String>)> = filters.iter()
-        .map(|(n, exts)| (n.to_string(), exts.iter().map(|s| s.to_string()).collect()))
+        .map(|(n, exts)| {
+            let norm: Vec<String> = exts
+                .iter()
+                .map(|s| s.trim().trim_start_matches("*.").trim_start_matches('.').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            (n.to_string(), norm)
+        })
         .collect();
     let filter_var = tk.int_var(0);
 
@@ -552,7 +566,16 @@ pub fn ask_open_filename(
     let combo_vals: Vec<String> = if owned_filters.is_empty() {
         vec!["All Files (*)".into()]
     } else {
-        owned_filters.iter().map(|(n, exts)| format!("{n} (*.{})", exts.join(", *."))).collect()
+        owned_filters
+            .iter()
+            .map(|(n, exts)| {
+                if exts.is_empty() || exts.iter().any(|e| e == "*") {
+                    format!("{n} (*)")
+                } else {
+                    format!("{n} (*.{})", exts.join(", *."))
+                }
+            })
+            .collect()
     };
     let combobox = Combobox::new(tk, card, combo_vals, filter_var).unwrap();
     tk.pack(combobox, p);
@@ -675,12 +698,55 @@ pub fn ask_save_filename(
     let listbox = Listbox::new(tk, card, 8).unwrap();
     p.pady = 6.0;
     tk.pack(listbox, p);
-    populate_file_list(tk, listbox, start_dir, &[]);
+    let refresh_files = {
+        let cur_dir = cur_dir.clone();
+        move |t: &mut Tk| {
+            let total = t.listbox_get(listbox).len();
+            if total > 0 {
+                t.listbox_delete(listbox, 0, total);
+            }
+            let dir = cur_dir.borrow().clone();
+            populate_file_list(t, listbox, &dir, &[]);
+            let has_parent = dir.parent().is_some();
+            let first_is_up = t.listbox_get(listbox).first().map(|s| s == "..").unwrap_or(false);
+            if has_parent && !first_is_up {
+                t.listbox_insert(listbox, 0, "..");
+            }
+        }
+    };
+    refresh_files(tk);
 
     let filename_entry = Entry::new(tk, card).unwrap();
     tk.entry_set(filename_entry, default_name);
     p.pady = 6.0;
     tk.pack(filename_entry, p);
+
+    // Enter / double-click: files fill the name entry, directories navigate.
+    {
+        let cur_dir = cur_dir.clone();
+        let refresh_files = refresh_files.clone();
+        tk.listbox_bind_activate(listbox, move |t, _idx| {
+            let sel = t.listbox_curselection(listbox);
+            let items = t.listbox_get(listbox);
+            let Some(idx) = sel else { return };
+            let Some(item) = items.get(idx).cloned() else { return };
+            if item == ".." {
+                let parent = cur_dir.borrow().parent().map(|p| p.to_path_buf());
+                if let Some(parent) = parent {
+                    *cur_dir.borrow_mut() = parent.clone();
+                    t.config(path_lbl, Opt::Text(parent.display().to_string()));
+                    refresh_files(t);
+                }
+            } else if item.ends_with('/') {
+                let child = cur_dir.borrow().join(&item[..item.len() - 1]);
+                *cur_dir.borrow_mut() = child.clone();
+                t.config(path_lbl, Opt::Text(child.display().to_string()));
+                refresh_files(t);
+            } else {
+                t.entry_set(filename_entry, &item);
+            }
+        });
+    }
 
     let btn_row = Frame::new(tk, card).unwrap();
     let bp = PackOpts {
@@ -800,7 +866,8 @@ pub fn ask_directory(
             let Some(idx) = sel else { return };
             let Some(item) = items.get(idx).cloned() else { return };
             if item == ".." {
-                if let Some(parent) = cur_dir.borrow().parent().map(|p| p.to_path_buf()) {
+                let parent = cur_dir.borrow().parent().map(|p| p.to_path_buf());
+                if let Some(parent) = parent {
                     *cur_dir.borrow_mut() = parent.clone();
                     t.config(path_lbl, Opt::Text(parent.display().to_string()));
                     refresh_dirs(t);

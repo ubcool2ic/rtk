@@ -660,3 +660,23 @@ I did not check whether `inputs` is dropped when a widget is destroyed, because 
 - tests/tk_review_regressions_2.rs (Sonnet; compile errors fixed by DeepSeek and Sol): F6-F8, F20, pass-3 F5 (passes; nested dialogs were fixed in 0.11), pass-3 F6 (**failed: real bug**).
 - **pass-3 F6 fixed** (DeepSeek, f6-ask-directory and listbox-activate, with Sol fixing the new test): `ask_directory` now navigates into a sub-directory or `..` on Enter or double-click, and Enter otherwise accepts. This added `Tk::listbox_bind_activate`, which fires on Enter or double-click but not on selection changes, plus tests/listbox_activate.rs.
 
+### src/dialog.rs lines 646-894
+- [high] [bug] `ask_directory`: the ".." branch in `activate` holds a `cur_dir.borrow()` temporary across the whole `if let` body (edition 2021). The `borrow_mut()` inside then panics with `BorrowMutError`, so navigating up crashes (line 803) -> fixed
+- [medium] [bug] F7/F8: the save dialog's list was static. Activating a file did not fill the name entry, directories could not be entered, and the path label never updated (lines 678-683) -> fixed. Enter/double-click on a file now fills the entry, a directory or ".." navigates and refreshes the list, and the path label updates. I only used APIs already visible in this chunk, so the fill happens on activation rather than on single-click selection.
+- [low] [bug] The save dialog's refresh clears the listbox itself and adds ".." if `populate_file_list` didn't, so the result is the same either way -> fixed
+- [low] [bug] F10/F11: the filter syntax and the empty typed-confirm phrase are not in this chunk (646-894), so I could not check or fix them -> not fixed (out of chunk)
+
+### src/dialog.rs lines 345-645
+- [medium] [bug] F11: with an empty `phrase`, Confirm started disabled and the entry never fires a change event, so the dialog could only be confirmed with Enter (line 394) -> fixed (Confirm now starts enabled when `phrase` is empty)
+- [medium] [bug] F8: filter extensions given as `*.png`, `.png` or `*.*` never matched in `read_dir_entries`, and the combobox label showed `*.*.png` or `*.` (lines 528-530, 555) -> fixed (extensions are normalised once, and the label shows `(*)` for match-all filters)
+- [medium] [bug] F7: changing the filter combobox does not refresh the file list. The list is built once from the first filter and only re-filtered on navigation (lines 560-565, 597) -> not fixed (this chunk shows no variable-change or combobox-change hook, and I won't invent API)
+- [low] [bug] F10: the save dialog's list does not fill the name entry -> not fixed (`ask_save_filename` is outside this chunk)
+
+### src/dialog.rs lines 1-344
+- [medium] [bug] `build_scrim_card` pushed the outer dialog's state onto `modal_stack` and cleared `tk.modal` before creating the scrim and card. If `Frame::new` failed (e.g. arena full), the outer dialog was left on the stack with no active modal, and a half-built scrim could leak. The push now happens only after both frames exist, and a card failure destroys the scrim. (lines 82-123) -> fixed
+- [low] [api] Public enum `MessageKind` lacked `#[non_exhaustive]` (line 19) -> fixed
+- [low] [bug] `message_box`, `ask_yes_no` and `ask_string` call `.unwrap()` on `Label::new`, `Button::new`, `Entry::new` and `Frame::new`. This can panic and leave the modal half-built if the arena fills mid-dialog. -> not fixed (it needs a larger restructure of each function, and the failure is only reachable at arena exhaustion)
+- [low] [api] `message_box` ignores `_kind`, so Info, Warning and Error render identically. -> not fixed (the icon is a feature, not a bug)
+- [info] F7/F8/F10/F11 concern the file-dialog filter, filter syntax, save-dialog name fill and typed-confirm phrase. None of that code is in lines 1-344. -> not applicable to this chunk
+- The F5 modal stack in `finish_modal`, `close` and `modal_depth` is intact and unchanged.
+

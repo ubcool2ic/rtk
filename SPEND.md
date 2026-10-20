@@ -218,3 +218,6 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | listbox-activate r0 | 42477 (0 cached) | 5266 (0 reasoning) | 0.0056 | 0.2438 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | listbox-activate r1 | 43562 (11008 cached) | 81 (0 reasoning) | 0.0024 | 0.2462 |
 | 2026-10-20 | openai/gpt-6.1-sol | listbox-activate r2 [Sol fix] | 41654 (0 cached) | 445 (164 reasoning) | 0.1086 | 1.6014 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:646-894 | 6272 (0 cached) | 4204 (2637 reasoning) | 0.0546 | 4.0384 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:345-645 | 7135 (0 cached) | 3035 (1852 reasoning) | 0.0446 | 4.0830 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:1-344 | 7535 (0 cached) | 2869 (1609 reasoning) | 0.0438 | 4.1268 |
