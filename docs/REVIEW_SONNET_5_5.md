@@ -1144,3 +1144,8 @@ I did not run the tests. The assertions that depend on rendering details I could
 
 The two tests look correct and deterministic. They use simulated time through `sim_advance_timers`, so there is no wall-clock flakiness. The first test's assertions are meaningful: the fire count of 4, the widget text "4", `after_cancel` returning true, no further firings after cancel, and no pending timers. The second test asserts the quit flag after the timer fires. I can't see the `Tk` implementation, so I'm assuming `every` and `after` have the signatures these calls use.
 
+### tests/tk_review_regressions.rs lines 1-119
+- [medium] [bug] `f2_opt_text_with_multibyte_does_not_panic` only asserted `is_char_boundary(0)` and `is_char_boundary(len)` on a `String` (line 49). Both are always true for any valid `String`, so the test only caught panics and checked nothing about the text. I replaced them with assertions that the final text holds exactly the two characters typed after the last `Opt::Text`. This holds whether the cursor lands before or after the `a`. -> fixed
+- [low] [bug] `f3_canvas_add_many_items_is_fast` uses a wall-clock bound (line 65). The 10 s limit is loose enough against flakiness for 20k trivial inserts, and it still catches quadratic behaviour. -> not fixed (acceptable as is)
+- [low] [bug] `f3_canvas_delete_then_add_reuses_slot` does not directly observe slot reuse (lines 70-81). It checks only the item counts, because the id semantics are not visible from this chunk. -> not fixed (no safe stronger assertion without knowing the id scheme)
+

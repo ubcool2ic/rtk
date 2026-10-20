@@ -46,7 +46,8 @@ fn f2_opt_text_with_multibyte_does_not_panic() {
     tk.config(e, Opt::Text("a".to_string()));
     tk.sim_text("é");
     let s = tk.entry_get(e).expect("entry text");
-    assert!(s.is_char_boundary(0) && s.is_char_boundary(s.len()));
+    assert_eq!(s.chars().count(), 2, "unexpected entry text: {s:?}");
+    assert!(s.contains('a') && s.contains('é'), "unexpected entry text: {s:?}");
 }
 
 /// F3: adding many canvas items must scale roughly linearly, and the count must be exact.
