@@ -999,3 +999,7 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 - [severity low] [bug] The logical-geometry, hit-testing, dimension and round-trip tests look sound. I found no timing dependence or helper panics. The `Scene.entry` field is never read, which only produces a dead-code warning, so I left it unfixed.
 - NOTE: edits for tests/m013_hidpi.rs:1-330 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n....\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 '
 
+### tests/m013_ime.rs lines 1-165
+- [severity low] [bug] `focus_change_clears_preedit` clicks hard-coded y coordinates (lines 50, 53), so the test breaks if the Entry height changes with theme or font metrics -> fixed (clicks now use `widget_rect` of each entry)
+- [severity low] [docs] Nothing else needs changing. The other tests have meaningful assertions, every fn has a `///` doc comment, and I found no helper panics or timing dependence -> not fixed (nothing to fix)
+
