@@ -805,3 +805,15 @@ I reviewed lines 1-23 and found nothing to fix. The reference API surface does n
 - [medium] [bug] `--theme material` initialises `theme_var` to 0 (the `_ => 0` arm), so the "Light" radio is selected while the Material theme is active. Material is in the picker with value 3, and the comment saying it isn't is wrong (lines 61-68) -> fixed
 - [low] [bug] The `ProgressBar` maximum is 120.0 but it shares `sc_var` with a `Scale` ranging 0..100, so the bar can never reach full. Assuming the `120.0` argument is the maximum, as in tkinter's `ProgressBar` (the signature wasn't checked), I changed it to 100.0 (line 139) -> fixed
 
+### examples/timers.rs lines 1-20
+- none
+
+I found nothing to fix in lines 1-20, but I only had `lib.rs` and not the signatures of `Tk`, `Label`, `Button` or `TimerId`. These points rest on assumptions I could not check:
+- `Label::new` and `Button::new` are assumed to return `Result<WidgetId, RtkError>`, so the `?` conversions into `Box<dyn Error>` work (`RtkError` implements `Error`).
+- `Tk::mainloop` is assumed to return a `Result` whose error type implements `std::error::Error`.
+- `TimerId` is assumed to be `Copy`, so the `move` closure at line 17 can call `after_cancel(id)`.
+- The `n` counter is an `i32` that would take about 68 years of ticks to overflow, so it is not a practical concern.
+- The one-shot `after` at line 16 still fires after Stop is pressed. That is consistent with the header comment, since Stop only cancels the repeating tick.
+- The fallible `Label::new` and `Button::new` calls use `?` rather than `unwrap`, which is the right pattern for an example users copy.
+- `main` has a `///` doc comment.
+
