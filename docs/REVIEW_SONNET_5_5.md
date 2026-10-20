@@ -903,3 +903,8 @@ I found nothing in lines 1-131 that needs a fix.
 - [low] [bug] `double_click_activates_row` depends on `sim_click` treating two back-to-back clicks as a double-click. This is not visible from this chunk, and I could not change it from this file -> not fixed (the dependency lives in the toolkit's click handling, not in this file)
 - [low] [bug] The other tests (lines 28-51) assert something meaningful: the final selection is checked and the activation log is compared exactly -> not fixed (nothing to fix)
 
+### tests/m011_menu.rs lines 1-213
+- [medium] [bug] `test_keyboard_skips_separators` never checks which item Enter activated. It only asserts that the menu closed, so a highlight bug that skipped to the wrong item, or onto the separator or the disabled item, would still pass. The `let _ = (a, b)` line hides this. (lines 66-83) -> fixed (each item now has a command that records a distinct value, and the test asserts B's value)
+- [low] [bug] `test_popup_clamped` checks only the right and bottom edges. A popup clamped to a negative x or y would pass. (lines 197-199) -> fixed (added lower-bound assertions)
+- [low] [docs] `test_check_toggles_var` binds `idx` and then discards it with `let _ = idx;`. This is harmless and I left it as is. (line 44) -> not fixed (not a correctness issue)
+

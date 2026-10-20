@@ -71,6 +71,16 @@ fn test_keyboard_skips_separators() {
     let b = tk.menu_add(menu, MenuItem::command("B"));
     let c = tk.menu_add(menu, MenuItem::command("C"));
     tk.menu_set_enabled(menu, c, false);
+    let var = tk.int_var(0);
+    tk.menu_set_command(menu, a, move |tk| {
+        var.set(tk, 1);
+    });
+    tk.menu_set_command(menu, b, move |tk| {
+        var.set(tk, 2);
+    });
+    tk.menu_set_command(menu, c, move |tk| {
+        var.set(tk, 3);
+    });
     tk.menu_popup(menu, 10.0, 10.0);
     tk.sim_key(Key::Down);
     assert_eq!(tk.menu_open_path(), vec![menu]);
@@ -79,7 +89,7 @@ fn test_keyboard_skips_separators() {
     // Second Down skips separator to B (index 2).
     tk.sim_key(Key::Enter);
     assert!(!tk.menu_is_open());
-    let _ = (a, b);
+    assert_eq!(var.get(&tk), Some(2));
 }
 
 #[test]
@@ -195,6 +205,7 @@ fn test_popup_clamped() {
     tk.menu_add(menu, MenuItem::command("A"));
     tk.menu_popup(menu, 10_000.0, 10_000.0);
     let rect = tk.menu_panel_rect(0).expect("rect");
+    assert!(rect.x >= 0.0 && rect.y >= 0.0);
     assert!(rect.x + rect.width <= 200.0 + 0.5);
     assert!(rect.y + rect.height <= 150.0 + 0.5);
 }
