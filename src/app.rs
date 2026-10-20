@@ -191,11 +191,9 @@ impl App {
             }
             let alpha = u32::from(*a);
             let channel = |value: u8| {
-                if alpha == 0 {
-                    0
-                } else {
-                    ((u32::from(value) * 255 + alpha / 2) / alpha).min(255)
-                }
+                (u32::from(value) * 255 + alpha / 2)
+                    .checked_div(alpha)
+                    .map_or(0, |v| v.min(255))
             };
             *pixel = (channel(*r) << 16) | (channel(*g) << 8) | channel(*b);
         }

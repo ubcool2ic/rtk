@@ -14,6 +14,7 @@ use rtk::{
     ProgressBar, Side, Text, Theme, Tk,
 };
 
+/// Runs the dashboard or saves a headless screenshot when requested.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let mut screenshot_path: Option<PathBuf> = None;
@@ -39,11 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     let sidebar = Frame::new(&mut tk, root)?;
     tk.config(sidebar, Opt::Style("Sidebar".into()));
-    let mut side_pack = PackOpts::default();
-    side_pack.side = Side::Left;
-    side_pack.fill = Fill::Y;
-    side_pack.padx = 8.0;
-    side_pack.pady = 8.0;
+    let side_pack = PackOpts {
+        side: Side::Left,
+        fill: Fill::Y,
+        padx: 8.0,
+        pady: 8.0,
+        ..Default::default()
+    };
     tk.pack(sidebar, side_pack);
 
     let title_icon = icons::icon(&mut tk, Icon::Bolt, 20, Color::rgb(79, 140, 255));
@@ -53,9 +56,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tk.config(brand, Opt::Image(img));
         tk.config(brand, Opt::Compound(Compound::Left));
     }
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 12.0;
+    let p = PackOpts {
+        side: Side::Top,
+        pady: 12.0,
+        ..Default::default()
+    };
     tk.pack(brand, p);
 
     let sidebar_items = [
@@ -74,10 +79,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tk.config(btn, Opt::Image(i));
             tk.config(btn, Opt::Compound(Compound::Left));
         }
-        let mut bp = PackOpts::default();
-        bp.side = Side::Top;
-        bp.fill = Fill::X;
-        bp.pady = 3.0;
+        let bp = PackOpts {
+            side: Side::Top,
+            fill: Fill::X,
+            pady: 3.0,
+            ..Default::default()
+        };
         tk.pack(btn, bp);
         if idx == 0 {
             tk.set_selected(btn, true);
@@ -86,26 +93,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let main_area = Frame::new(&mut tk, root)?;
-    let mut main_pack = PackOpts::default();
-    main_pack.side = Side::Right;
-    main_pack.fill = Fill::Both;
-    main_pack.expand = true;
-    main_pack.padx = 12.0;
-    main_pack.pady = 12.0;
+    let main_pack = PackOpts {
+        side: Side::Right,
+        fill: Fill::Both,
+        expand: true,
+        padx: 12.0,
+        pady: 12.0,
+        ..Default::default()
+    };
     tk.pack(main_area, main_pack);
 
     // Header with theme toggle
     let header = Frame::new(&mut tk, main_area)?;
-    let mut hp = PackOpts::default();
-    hp.side = Side::Top;
-    hp.fill = Fill::X;
-    hp.pady = 4.0;
+    let hp = PackOpts {
+        side: Side::Top,
+        fill: Fill::X,
+        pady: 4.0,
+        ..Default::default()
+    };
     tk.pack(header, hp);
 
     let head_lbl = Label::new(&mut tk, header, "Overview")?;
     tk.config(head_lbl, Opt::Style("Heading".into()));
-    let mut lp = PackOpts::default();
-    lp.side = Side::Left;
+    let lp = PackOpts {
+        side: Side::Left,
+        ..Default::default()
+    };
     tk.pack(head_lbl, lp);
 
     let theme_btn = Button::new(&mut tk, header, " Toggle Theme")?;
@@ -115,8 +128,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tk.config(theme_btn, Opt::Image(img));
         tk.config(theme_btn, Opt::Compound(Compound::Left));
     }
-    let mut tp = PackOpts::default();
-    tp.side = Side::Right;
+    let tp = PackOpts {
+        side: Side::Right,
+        ..Default::default()
+    };
     tk.pack(theme_btn, tp);
 
     tk.set_command(theme_btn, |t| {
@@ -129,19 +144,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Top Cards grid: Status Card & Chips Card
     let cards_row = Frame::new(&mut tk, main_area)?;
-    let mut crp = PackOpts::default();
-    crp.side = Side::Top;
-    crp.fill = Fill::X;
-    crp.pady = 8.0;
+    let crp = PackOpts {
+        side: Side::Top,
+        fill: Fill::X,
+        pady: 8.0,
+        ..Default::default()
+    };
     tk.pack(cards_row, crp);
 
     let card1 = Frame::new(&mut tk, cards_row)?;
     tk.config(card1, Opt::Style("Card".into()));
-    let mut c1p = GridOpts::default();
-    c1p.column = 0;
-    c1p.row = 0;
-    c1p.sticky = rtk::Sticky::NSEW;
-    c1p.padx = 6.0;
+    let c1p = GridOpts {
+        column: 0,
+        row: 0,
+        sticky: rtk::Sticky::NSEW,
+        padx: 6.0,
+        ..Default::default()
+    };
     tk.grid(card1, c1p);
 
     let c1_title = Label::new(&mut tk, card1, "System Health")?;
@@ -149,16 +168,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tk.pack(c1_title, PackOpts::default());
 
     let chips_box = Frame::new(&mut tk, card1)?;
-    let mut chip_pack = PackOpts::default();
-    chip_pack.side = Side::Top;
-    chip_pack.pady = 6.0;
+    let chip_pack = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..Default::default()
+    };
     tk.pack(chips_box, chip_pack);
 
     let chip1 = Label::new(&mut tk, chips_box, "ONLINE")?;
     tk.config(chip1, Opt::Style("Chip.Success".into()));
-    let mut cp = PackOpts::default();
-    cp.side = Side::Left;
-    cp.padx = 4.0;
+    let cp = PackOpts {
+        side: Side::Left,
+        padx: 4.0,
+        ..Default::default()
+    };
     tk.pack(chip1, cp);
 
     let chip2 = Label::new(&mut tk, chips_box, "SYNCED")?;
@@ -171,11 +194,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let card2 = Frame::new(&mut tk, cards_row)?;
     tk.config(card2, Opt::Style("Card".into()));
-    let mut c2p = GridOpts::default();
-    c2p.column = 1;
-    c2p.row = 0;
-    c2p.sticky = rtk::Sticky::NSEW;
-    c2p.padx = 6.0;
+    let c2p = GridOpts {
+        column: 1,
+        row: 0,
+        sticky: rtk::Sticky::NSEW,
+        padx: 6.0,
+        ..Default::default()
+    };
     tk.grid(card2, c2p);
 
     let c2_title = Label::new(&mut tk, card2, "Actions")?;
@@ -184,9 +209,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt_btn = Button::new(&mut tk, card2, "Prompt User")?;
     tk.config(prompt_btn, Opt::Style("Accent.TButton".into()));
-    let mut pbp = PackOpts::default();
-    pbp.side = Side::Top;
-    pbp.pady = 4.0;
+    let pbp = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..Default::default()
+    };
     tk.pack(prompt_btn, pbp);
 
     tk.set_command(prompt_btn, |t| {
@@ -202,11 +229,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Notebook for Tabs
     let notebook = Notebook::new(&mut tk, main_area)?;
-    let mut np = PackOpts::default();
-    np.side = Side::Top;
-    np.fill = Fill::Both;
-    np.expand = true;
-    np.pady = 8.0;
+    let np = PackOpts {
+        side: Side::Top,
+        fill: Fill::Both,
+        expand: true,
+        pady: 8.0,
+        ..Default::default()
+    };
     tk.pack(notebook, np);
 
     let page_log = Frame::new(&mut tk, notebook)?;
@@ -214,11 +243,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_text = Text::new(&mut tk, page_log, 60, 8)?;
     tk.config(log_text, Opt::Monospace(true));
-    let mut text_pack = PackOpts::default();
-    text_pack.side = Side::Top;
-    text_pack.fill = Fill::Both;
-    text_pack.expand = true;
-    text_pack.pady = 4.0;
+    let text_pack = PackOpts {
+        side: Side::Top,
+        fill: Fill::Both,
+        expand: true,
+        pady: 4.0,
+        ..Default::default()
+    };
     tk.pack(log_text, text_pack);
     tk.text_insert_end(log_text, "[system] initialization completed\n[network] connected to gateway\n");
 
@@ -232,18 +263,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec!["Balanced Profile".into(), "Performance Mode".into(), "Power Saver".into()],
         combo_var,
     )?;
-    let mut comb_pack = PackOpts::default();
-    comb_pack.side = Side::Top;
-    comb_pack.pady = 8.0;
+    let comb_pack = PackOpts {
+        side: Side::Top,
+        pady: 8.0,
+        ..Default::default()
+    };
     tk.pack(combo, comb_pack);
 
     // Background thread feeding progress bar via TkProxy
     let progress_var = tk.int_var(0);
     let pbar = ProgressBar::new(&mut tk, main_area, 300.0, progress_var)?;
-    let mut pbar_pack = PackOpts::default();
-    pbar_pack.side = Side::Bottom;
-    pbar_pack.fill = Fill::X;
-    pbar_pack.pady = 6.0;
+    let pbar_pack = PackOpts {
+        side: Side::Bottom,
+        fill: Fill::X,
+        pady: 6.0,
+        ..Default::default()
+    };
     tk.pack(pbar, pbar_pack);
 
     let proxy = tk.proxy();

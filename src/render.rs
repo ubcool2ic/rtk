@@ -1,3 +1,5 @@
+//! Software rendering, text shaping, and headless image export.
+
 use std::error::Error;
 use std::path::Path;
 
@@ -757,9 +759,8 @@ impl Tk {
                                         pb.cubic_to(cx - rx, cy - dy, cx - dx, cy - ry, cx, cy - ry);
                                         pb.close();
                                         if let Some(path) = pb.finish() {
-                                            let mut paint = Paint::default();
+                                            let mut paint = Paint { anti_alias: true, ..Paint::default() };
                                             paint.set_color_rgba8(color.r, color.g, color.b, color.a);
-                                            paint.anti_alias = true;
                                             sub.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
                                         }
                                     }
@@ -778,8 +779,7 @@ impl Tk {
                                     CanvasItemKind::RoundRect { x0, y0, x1, y1, radius, fill: f, outline } => {
                                         let r = Rect::new(x0.min(x1) * scale, y0.min(y1) * scale, (x1 - x0).abs() * scale, (y1 - y0).abs() * scale);
                                         if let Some(path) = build_rounded_rect_path(r, radius * scale) {
-                                            let mut paint = Paint::default();
-                                            paint.anti_alias = true;
+                                            let mut paint = Paint { anti_alias: true, ..Paint::default() };
                                             if let Some(c) = f {
                                                 paint.set_color_rgba8(c.r, c.g, c.b, c.a);
                                                 sub.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
@@ -1029,6 +1029,7 @@ impl Tk {
                 // Owned snapshot: (rect, values, var) so drawing can borrow self mutably.
                 struct Snap { rect: Rect, combo_values: Vec<String>, combo_var: Option<Var<i64>> }
                 let cnode = Snap { rect: cnode.0, combo_values: cnode.1, combo_var: cnode.2 };
+                let _ = &cnode;
                 let resolved = self.resolved_style(combo_id).unwrap_or_default();
                 let item_h = (resolved.font_size * 1.3 + 8.0).max(20.0);
                 let drop_h = (cnode.combo_values.len() as f32 * item_h).clamp(item_h, 240.0);

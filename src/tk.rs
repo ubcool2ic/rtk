@@ -27,6 +27,12 @@ use crate::{Opt, RtkError, WidgetId};
 
 pub(crate) type PostedTask = Box<dyn FnOnce(&mut Tk) + Send + 'static>;
 pub(crate) type IdleTask = Box<dyn FnOnce(&mut Tk) + 'static>;
+/// Callback run when a modal dialog is cancelled (Escape).
+pub(crate) type ModalCancel = Box<dyn FnMut(&mut Tk)>;
+/// Callback run when a modal dialog is accepted (Enter / default button).
+pub(crate) type ModalAccept = Box<dyn FnMut(&mut Tk)>;
+/// Callback run when the text of an Entry inside a modal dialog changes.
+pub(crate) type ModalEntryChanged = Box<dyn FnMut(&mut Tk, WidgetId, &str)>;
 
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
@@ -142,9 +148,9 @@ pub struct Tk {
     pub(crate) idle_queue: VecDeque<IdleTask>,
     /// Root of the current modal overlay subtree, if any.
     pub modal: Option<WidgetId>,
-    pub(crate) modal_cancel: Option<Box<dyn FnMut(&mut Tk)>>,
-    pub(crate) modal_accept: Option<Box<dyn FnMut(&mut Tk)>>,
-    pub(crate) modal_entry_changed: Option<Box<dyn FnMut(&mut Tk, WidgetId, &str)>>,
+    pub(crate) modal_cancel: Option<ModalCancel>,
+    pub(crate) modal_accept: Option<ModalAccept>,
+    pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
 }
 
 impl Default for Tk {
@@ -1609,21 +1615,19 @@ impl Tk {
                     }
                     self.open_combobox = if open { Some(id) } else { None };
                 }
-                Kind::Notebook => {
-                    if y < node.rect.y + 32.0 {
-                        let mut cur_x = node.rect.x;
-                        let pages = node.notebook_pages.clone();
-                        // Same metrics as `update_requested`, so hit areas match drawn tabs.
-                        let tab_style = self.resolved_style(id).unwrap_or_default();
-                        for (idx, (_, title)) in pages.iter().enumerate() {
-                            let m = self.measure_with(title, &tab_style);
-                            let tab_w = m.width + 24.0;
-                            if x >= cur_x && x < cur_x + tab_w {
-                                self.notebook_select(id, idx);
-                                break;
-                            }
-                            cur_x += tab_w;
+                Kind::Notebook if y < node.rect.y + 32.0 => {
+                    let mut cur_x = node.rect.x;
+                    let pages = node.notebook_pages.clone();
+                    // Same metrics as `update_requested`, so hit areas match drawn tabs.
+                    let tab_style = self.resolved_style(id).unwrap_or_default();
+                    for (idx, (_, title)) in pages.iter().enumerate() {
+                        let m = self.measure_with(title, &tab_style);
+                        let tab_w = m.width + 24.0;
+                        if x >= cur_x && x < cur_x + tab_w {
+                            self.notebook_select(id, idx);
+                            break;
                         }
+                        cur_x += tab_w;
                     }
                 }
                 _ => {}
@@ -2061,14 +2065,16 @@ impl Tk {
                     self.edit_text(id, Some(key), "");
                 }
             }
-            Kind::Combobox if matches!(key, Key::Up | Key::Down) => {
-                let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
-                let max_idx = node.combo_values.len().saturating_sub(1) as i64;
-                let new_val = if key == Key::Up { old.saturating_sub(1) } else { old.saturating_add(1) }.clamp(0, max_idx);
-                if let Some(var) = node.combo_var {
-                    var.set(self, new_val);
+            Kind::Combobox => {
+                if matches!(key, Key::Up | Key::Down) {
+                    let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
+                    let max_idx = node.combo_values.len().saturating_sub(1) as i64;
+                    let new_val = if key == Key::Up { old.saturating_sub(1) } else { old.saturating_add(1) }.clamp(0, max_idx);
+                    if let Some(var) = node.combo_var {
+                        var.set(self, new_val);
+                    }
+                    self.dirty = true;
                 }
-                self.dirty = true;
             }
             Kind::Button | Kind::Checkbutton | Kind::Radiobutton if matches!(key, Key::Enter | Key::Space) => {
                 self.activate(id);

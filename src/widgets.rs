@@ -137,6 +137,10 @@ pub(crate) struct CanvasItemSlot {
 pub type Command = Box<dyn FnMut(&mut Tk)>;
 /// Boxed canvas drag callback: `(tk, x, y, phase)` in canvas-local logical pixels.
 pub type CanvasDragCallback = Box<dyn FnMut(&mut Tk, f32, f32, DragPhase)>;
+/// Boxed Listbox selection callback: `(tk, selected_index)`.
+pub type ListSelectCallback = Box<dyn FnMut(&mut Tk, Option<usize>)>;
+/// Boxed Notebook tab-change callback: `(tk, selected_index)`.
+pub type NotebookChangedCallback = Box<dyn FnMut(&mut Tk, usize)>;
 
 /// Configuration options accepted by `Tk::config` (tkinter `widget.config(...)`).
 pub enum Opt {
@@ -545,7 +549,7 @@ pub(crate) struct WidgetNode {
     pub text_autoscroll: bool,
     pub text_max_lines: Option<usize>,
     // Listbox callback
-    pub list_select_cb: Option<Box<dyn FnMut(&mut Tk, Option<usize>)>>,
+    pub list_select_cb: Option<ListSelectCallback>,
     pub list_select_running: bool,
     // Combobox
     pub combo_values: Vec<String>,
@@ -554,7 +558,7 @@ pub(crate) struct WidgetNode {
     // Notebook
     pub notebook_pages: Vec<(WidgetId, String)>,
     pub notebook_selected: usize,
-    pub notebook_changed_cb: Option<Box<dyn FnMut(&mut Tk, usize)>>,
+    pub notebook_changed_cb: Option<NotebookChangedCallback>,
     pub notebook_changed_running: bool,
     // Tooltip
     pub tooltip: Option<String>,

@@ -43,20 +43,24 @@ fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), cra
         border_width: Some(0.0),
         ..Default::default()
     }));
-    let mut scrim_opts = PlaceOpts::default();
-    scrim_opts.relx = 0.0;
-    scrim_opts.rely = 0.0;
-    scrim_opts.relwidth = Some(1.0);
-    scrim_opts.relheight = Some(1.0);
+    let scrim_opts = PlaceOpts {
+        relx: 0.0,
+        rely: 0.0,
+        relwidth: Some(1.0),
+        relheight: Some(1.0),
+        ..PlaceOpts::default()
+    };
     tk.place(scrim, scrim_opts);
 
     let card = Frame::new(tk, scrim)?;
     tk.config(card, Opt::Style("Card".into()));
-    let mut card_opts = PlaceOpts::default();
-    card_opts.relx = 0.5;
-    card_opts.rely = 0.5;
-    card_opts.anchor = Anchor::Center;
-    card_opts.width = Some(width);
+    let card_opts = PlaceOpts {
+        relx: 0.5,
+        rely: 0.5,
+        anchor: Anchor::Center,
+        width: Some(width),
+        ..PlaceOpts::default()
+    };
     tk.place(card, card_opts);
 
     tk.modal = Some(scrim);
@@ -79,9 +83,11 @@ pub fn message_box(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let msg_lbl = Label::new(tk, card, message).unwrap();
@@ -141,9 +147,11 @@ pub fn ask_yes_no(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let msg_lbl = Label::new(tk, card, message).unwrap();
@@ -156,9 +164,11 @@ pub fn ask_yes_no(
 
     let yes_btn = Button::new(tk, btn_row, "Yes").unwrap();
     tk.config(yes_btn, Opt::Style("Accent.TButton".into()));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(yes_btn, bp);
 
     let no_btn = Button::new(tk, btn_row, "No").unwrap();
@@ -225,9 +235,11 @@ pub fn ask_string(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let prompt_lbl = Label::new(tk, card, prompt).unwrap();
@@ -242,16 +254,20 @@ pub fn ask_string(
     tk.focused = Some(entry);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut rp = PackOpts::default();
-    rp.side = Side::Top;
-    rp.pady = 4.0;
+    let rp = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, rp);
 
     let ok_btn = Button::new(tk, btn_row, "OK").unwrap();
     tk.config(ok_btn, Opt::Style("Accent.TButton".into()));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(ok_btn, bp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -320,9 +336,11 @@ pub fn ask_typed_confirmation(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let warn_lbl = Label::new(tk, card, warning).unwrap();
@@ -342,17 +360,21 @@ pub fn ask_typed_confirmation(
     tk.focused = Some(entry);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut rp = PackOpts::default();
-    rp.side = Side::Top;
-    rp.pady = 4.0;
+    let rp = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, rp);
 
     let ok_btn = Button::new(tk, btn_row, "Confirm").unwrap();
     tk.config(ok_btn, Opt::Style("Accent.TButton".into()));
     tk.config(ok_btn, Opt::Disabled(true));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(ok_btn, bp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -501,9 +523,11 @@ pub fn ask_open_filename(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -532,16 +556,20 @@ pub fn ask_open_filename(
     populate_file_list(tk, listbox, start_dir, &active_filter);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let open_btn = Button::new(tk, btn_row, "Open").unwrap();
     tk.config(open_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(open_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -632,9 +660,11 @@ pub fn ask_save_filename(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -653,16 +683,20 @@ pub fn ask_save_filename(
     tk.pack(filename_entry, p);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let save_btn = Button::new(tk, btn_row, "Save").unwrap();
     tk.config(save_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(save_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -728,9 +762,11 @@ pub fn ask_directory(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -763,16 +799,20 @@ pub fn ask_directory(
     refresh_dirs(tk);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let select_btn = Button::new(tk, btn_row, "Select Folder").unwrap();
     tk.config(select_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(select_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();

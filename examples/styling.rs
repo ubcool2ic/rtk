@@ -62,7 +62,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         Theme::HighContrast => 4,
         // Modern themes (v0.8) are not in this demo picker.
         _ => 0,
-        Theme::HighContrast => 4,
     });
 
     let themes = [
