@@ -198,3 +198,12 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r0 | 7167 (3072 cached) | 302 (0 reasoning) | 0.0005 | 0.2233 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r1 | 7310 (7040 cached) | 299 (0 reasoning) | 0.0002 | 0.2235 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tristate.rs:1-172 | 4934 (0 cached) | 1321 (916 reasoning) | 0.0231 | 3.3753 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | dialog-anchor r0 | 22286 (0 cached) | 1579 (0 reasoning) | 0.0026 | 0.2261 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | dialog-anchor-fix r0 | 23581 (3200 cached) | 2194 (0 reasoning) | 0.0028 | 0.2288 |
+| 2026-10-20 | openai/gpt-6.1-sol | dialog-anchor-fix r1 [Sol fix] | 23597 (0 cached) | 91 (0 reasoning) | 0.0599 | 1.1484 |
+| 2026-10-20 | openai/gpt-6.1-sol | dialog-anchor-fix r2 [Sol fix] | 25194 (0 cached) | 1664 (1552 reasoning) | 0.0796 | 1.2280 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | paint-order r0 | 20044 (3072 cached) | 1820 (0 reasoning) | 0.0023 | 0.2311 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | paint-order-fix r0 | 21174 (7808 cached) | 347 (0 reasoning) | 0.0013 | 0.2324 |
+| 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r1 [Sol fix] | 24871 (0 cached) | 498 (167 reasoning) | 0.0672 | 1.2951 |
+| 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r2 [Sol fix] | 22467 (0 cached) | 1451 (1383 reasoning) | 0.0707 | 1.3658 |
+| hand glue | lead | Dialog anchor + paint-order fix: reverted a Sol edit to tests/golden_m011.rs (it tried to dodge the expected golden change); tests/paint_order.rs scene: added `sim_resize`, place `width/height: None` instead of `Some(0.0)`; marked the hover hit-test `#[ignore]` as an open decision (hit-testing skips non-interactive frames). Re-blessed m011_modal_* after a visual check. | $0 |

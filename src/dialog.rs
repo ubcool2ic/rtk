@@ -102,6 +102,7 @@ fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), cra
         rely: 0.0,
         relwidth: Some(1.0),
         relheight: Some(1.0),
+        anchor: Anchor::Nw,
         ..PlaceOpts::default()
     };
     tk.place(scrim, scrim_opts);
