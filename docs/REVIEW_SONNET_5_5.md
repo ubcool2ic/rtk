@@ -1003,3 +1003,6 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 - [severity low] [bug] `focus_change_clears_preedit` clicks hard-coded y coordinates (lines 50, 53), so the test breaks if the Entry height changes with theme or font metrics -> fixed (clicks now use `widget_rect` of each entry)
 - [severity low] [docs] Nothing else needs changing. The other tests have meaningful assertions, every fn has a `///` doc comment, and I found no helper panics or timing dependence -> not fixed (nothing to fix)
 
+### tests/m013_theme_goldens.rs lines 1-139
+- none
+
