@@ -1016,3 +1016,9 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 - [low] [bug] `status_contrast_meets_wcag` (line 42) relaxes the Light/warning threshold to 3.0. This is a deliberate, narrow exception, and loosening or removing it would be wrong. -> not fixed (intentional)
 - [low] [bug] `text_contrast_meets_wcag` (line 20) skips Fluent and Material. -> not fixed (the expected contrast of those themes is unknown, and adding assertions could introduce false failures)
 
+### tests/m0_10_a11y.rs lines 1-129
+- [severity low] [bug] The `slider_increment_action` test (line 90) only asserts `value > 5.0`, which is weak, and it never checks the a11y node's numeric value after the action. I can't verify the step size without the Slider API, so a stricter assertion would be a guess. -> not fixed (the step size is unknown, and a wrong exact-value expectation would be worse than the current check)
+- [severity low] [bug] The `switch_toggle_action` test (line 58) checks the value after the action and re-reads the node, which is meaningful. No flakiness found: tests are headless and use `sim_resize`, with no timing dependence. -> not fixed (nothing to fix)
+- [severity low] [docs] Every helper and test has a `///` doc comment, and the file has a `//!` module doc. -> not fixed (nothing to fix)
+- [severity low] [bug] No panics in the helpers: `setup` uses `expect` on valid construction, and `node_for` returns an `Option`. -> not fixed (nothing to fix)
+
