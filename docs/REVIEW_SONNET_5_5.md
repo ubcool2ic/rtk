@@ -549,3 +549,10 @@ I found nothing in lines 1-155 that needs an edit.
 - **Not fixed, outside this chunk:** non-finite `(x, y)` values are accepted by `chart_append` and `chart_set_data`. Whether they can break `bounds()` or drawing depends on code outside this chunk, so I left the behaviour alone.
 - **Not fixed, outside this chunk:** `ChartKind` is defined in `crate::chart`, so any `#[non_exhaustive]` attribute belongs there, not in this file.
 
+### src/tk/ime.rs lines 1-151
+- [low] [bug] `ime_cursor_area` passed the raw `node.cursor` to `floor_char_boundary` without clamping to the value length. A stale or out-of-range cursor could panic or index past the end, depending on how the helper is written (line 127) -> fixed
+- [low] [bug] `ime_preedit()` returned a composition for a widget that had since been disabled or made read-only, so a stale preedit kept rendering (lines 34-40) -> fixed
+- [low] [bug] `sim_ime_preedit` (not-wanted branch) and `sim_ime_commit` cleared a stored composition without setting `dirty`. The stale preedit stayed on screen until some other redraw (lines 60-63, 88) -> fixed
+- [low] [bug] A stored preedit is only dropped lazily on the next `sim_ime_*` call. If focus leaves widget A and returns to A with no IME event in between, the old composition reappears (lines 34-49) -> not fixed (the fix belongs in the focus-change code, outside this chunk; the backend should send an empty Preedit on focus loss)
+- [low] [bug] `ime_cursor_area` ignores the preedit text and any Text horizontal scroll, and measures the raw value even for masked Entries. This is documented as approximate -> not fixed (approximation by design)
+
