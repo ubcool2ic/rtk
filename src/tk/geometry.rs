@@ -133,6 +133,10 @@ impl Tk {
                     // Pages are not geometry-managed; they must still be measured
                     // (before the notebook itself, i.e. later in `order`).
                     pending.extend(node.notebook_pages.iter().map(|(pid, _)| *pid));
+                } else if node.kind == Kind::ScrollArea {
+                    // The content frame is owned by the viewport rather than
+                    // managed with pack/grid, but still needs bottom-up measurement.
+                    pending.extend(self.scrollarea_content(id));
                 } else {
                     pending.extend(self.managed_children(id));
                 }
@@ -194,7 +198,17 @@ impl Tk {
                     }
                     Size::new(specified.unwrap_or(max_w + 24.0).max(80.0) + pad_w, (node_snap.list_height as f32 * line_h).max(30.0) + pad_h)
                 }
-                Kind::Scrollbar => Size::new(16.0 + pad_w, 100.0 + pad_h),
+                Kind::Scrollbar => {
+                    let horizontal = self
+                        .node(id)
+                        .and_then(|n| n.inputs.as_ref())
+                        .is_some_and(|s| s.scrollbar_horizontal);
+                    if horizontal {
+                        Size::new(100.0 + pad_w, 16.0 + pad_h)
+                    } else {
+                        Size::new(16.0 + pad_w, 100.0 + pad_h)
+                    }
+                }
                 Kind::Radiobutton => {
                     let text = self.node(id).map(|n| n.text.clone()).unwrap_or_default();
                     let measured = self.measure_with(&text, &resolved);
@@ -206,7 +220,7 @@ impl Tk {
                     let m = self.measure_with(&text, &resolved);
                     Size::new(specified.unwrap_or(m.width + 50.0).max(70.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
-                Kind::ProgressBar => Size::new(node_snap.progress_length + pad_w, 20.0 + pad_h),
+                Kind::ProgressBar => self.progress_requested(id, &resolved),
                 Kind::Text => {
                     let (cols, rows) = self.node(id).map(|n| n.text_dimensions).unwrap_or((40, 10));
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
@@ -220,6 +234,11 @@ impl Tk {
                     let m = self.measure_with(&cur_str, &resolved);
                     Size::new(specified.unwrap_or(m.width + 48.0).max(80.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
+                Kind::ProgressRing => self.ring_requested(id, &resolved),
+                Kind::Switch => self.switch_requested(id, &resolved),
+                Kind::Slider => self.slider_requested(id, &resolved),
+                Kind::DoubleSpinbox => self.dspin_requested(id, &resolved),
+                Kind::ScrollArea => self.scrollarea_requested(id, &resolved),
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;
@@ -299,6 +318,19 @@ impl Tk {
                 continue;
             }
 
+            if node.kind == Kind::ScrollArea {
+                let content = node.inputs.as_ref().and_then(|s| s.scroll_area_content);
+                let (ox, oy) = node.inputs.as_ref().map_or((0.0, 0.0), |s| s.scroll_area_offset);
+                if let Some(content_id) = content {
+                    let requested = self.node(content_id).map(|c| c.requested).unwrap_or_default();
+                    let cw = requested.width.max(rect.width);
+                    let ch = requested.height.max(rect.height);
+                    let content_rect = Rect::new(rect.x - ox, rect.y - oy, cw, ch);
+                    pending.push((content_id, content_rect, clip));
+                }
+                continue;
+            }
+
             let children = self.managed_children(id);
             let (mut pack_children, mut grid_children, mut place_children) = (Vec::new(), Vec::new(), Vec::new());
             for child in children {
@@ -346,9 +378,19 @@ impl Tk {
         }
     }
 
+    /// Reports focus eligibility, allowing Tab to reveal scrolled-out content.
     pub(crate) fn is_focusable(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| {
-            !node.disabled && node.visible && (node.kind.focusable() || (node.kind == Kind::Canvas && node.scrollregion.is_some())) && node.clip.width > 0.0 && node.clip.height > 0.0
+            let accepts_focus = node.kind.focusable()
+                || (node.kind == Kind::Canvas && node.scrollregion.is_some());
+            let in_view = node.clip.width > 0.0 && node.clip.height > 0.0;
+            let scrollable_into_view = node.rect.width > 0.0
+                && node.rect.height > 0.0
+                && self.nearest_scroll_area(id).is_some();
+            !node.disabled
+                && node.visible
+                && accepts_focus
+                && (in_view || scrollable_into_view)
         })
     }
 

@@ -11,6 +11,16 @@
 - Editing: clipboard (`clipboard_get`/`append`/`clear`; OS clipboard through the default `clipboard` feature, which uses arboard). Text selection in Entry and Text by Shift+keys, mouse drag and Primary+A. Copy, cut and paste. Undo/redo with typing coalescing. New `selection_bg`/`selection_fg` palette tokens.
 - CI workflow for Windows, Linux and macOS plus MSRV, in `ci/rust.yml`. Move it to `.github/workflows/` to turn it on.
 
+### 0.10 Progress and inputs
+- **ProgressRing** (`ProgressRing`, `RingMode::Percent`/`Spinner`): `ring_set`/`ring_get`, `ring_set_mode`/`ring_mode`, `ring_set_show_text` (centred "NN%"), `ring_set_thickness`. The spinner animates on the existing animation clock and only while visible.
+- **ProgressBar polish** (opt-in, default look unchanged): `progress_set_show_percent`, `progress_set_label`, `progress_set_smooth` (eased value changes), `progress_get`. Text colour is picked per region for WCAG contrast.
+- **Switch** (`Switch`): toggle bound to `Var<bool>`, click/Space/Enter, animated knob, `switch_get`/`switch_set`, `set_command`.
+- **Slider** (`Slider`, `Orient`): `f64` slider with `slider_set_orient` (vertical), `slider_set_step`, `slider_set_ticks`, `slider_set_length`, `slider_get`/`slider_set`; drag, arrow/Home/End/PageUp/PageDown keys and wheel.
+- **DoubleSpinbox** (`DoubleSpinbox`): `f64` spin box with `dspin_set_step`, `dspin_set_decimals`, `dspin_set_suffix`, `dspin_get`/`dspin_set`/`dspin_text`; arrows, keys, wheel and text entry (`,` accepted as decimal separator), no float drift.
+- **Horizontal Scrollbar**: `Scrollbar::horizontal`, `scrollbar_orient`; drives the X view of a scrollable Canvas or a ScrollArea.
+- **ScrollArea** (`ScrollArea`): scrollable frame of widgets. `scrollarea_content`, `scrollarea_scroll_to`, `scrollarea_offset`, `scrollarea_content_size`, `scrollarea_attach_scrollbars`; wheel/Shift+wheel, clipping, Tab focus scrolls into view.
+- Tests: `tests/m0_10_*.rs` and goldens `ring_*`, `progressbar_*`, `switch_*`, `slider_*`, `dspin_*`, `hscroll_*`, `scrollarea_*`. Example: `gallery_progress_inputs`.
+
 ### 0.12 Charts and media
 - **Chart widget** (`Chart`, `Sparkline`): `ChartKind::Line`/`Area`/`Bar`, the `chart_*` API (`chart_add_series`, `chart_set_data`, `chart_append`, `chart_set_max_points`, `chart_set_time_axis`, `chart_set_legend`, `chart_set_y_range`, `chart_set_series_color`, `chart_clear`, plus `chart_series_count`/`chart_series_len`/`chart_point`/`chart_bounds`). Time-axis labels are formatted in UTC. Live `chart_append` keeps only the last `max_points` per series. Optional legend row. `Sparkline` is a compact single-series chart. Series colours default to the colourblind-safe Okabe-Ito palette (`theme::OKABE_ITO`) and can be overridden per series or taken from theme tokens.
 - **Image widget** (`Image`): RGBA (`image_set_rgba`), PNG (`image_load_png`, from a path or in-memory bytes) and SVG (`image_set_svg`) sources, with `ImageFit::Contain`/`Fill`/`Center`. SVG is rasterized at device resolution so it stays crisp at any scale. `Tk::load_svg` rasterizes SVG bytes into an `ImageId` for use as a Button/Label icon via `Opt::Image`. The default `svg` feature uses resvg 0.45 without text/system fonts.

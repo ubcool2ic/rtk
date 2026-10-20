@@ -29,6 +29,7 @@ impl Tk {
         true
     }
 
+    /// Returns the frontmost interactive widget at a logical pointer position.
     pub(crate) fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
         self.paint_order.iter().rev().copied().find(|id| {
             if let Some(modal_id) = self.modal {
@@ -38,7 +39,7 @@ impl Tk {
             }
             self.node(*id).is_some_and(|node| {
                 let interactive = node.kind.focusable()
-                    || matches!(node.kind, Kind::Canvas | Kind::Scrollbar | Kind::Notebook)
+                    || matches!(node.kind, Kind::Canvas | Kind::Scrollbar | Kind::Notebook | Kind::ScrollArea)
                     || node.tooltip.is_some();
                 node.visible && interactive && node.clip.contains(x, y)
             })
@@ -83,15 +84,34 @@ impl Tk {
         }
 
         if let Some((scrollbar_id, start_my, _)) = self.scrollbar_drag {
-            let bar_h = self.node(scrollbar_id).map(|n| n.rect.height).unwrap_or(0.0);
-            if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
-                if let Some((total, visible, _)) = self.scroll_metrics(target_id) {
-                    let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
-                    let avail = bar_h - thumb_h;
-                    if avail > 0.0 {
-                        let start = self.scrollbar_drag_start;
-                        let pos = start + (y - start_my) / avail * (total - visible);
-                        self.set_scroll_pos(target_id, pos);
+            let horizontal = self
+                .node(scrollbar_id)
+                .and_then(|n| n.inputs.as_ref())
+                .is_some_and(|s| s.scrollbar_horizontal);
+            if horizontal {
+                let bar_w = self.node(scrollbar_id).map(|n| n.rect.width).unwrap_or(0.0);
+                if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
+                    if let Some((total, visible, _)) = self.scroll_metrics_x(target_id) {
+                        let thumb_w = (bar_w * (visible / total)).clamp(16.0, bar_w);
+                        let avail = bar_w - thumb_w;
+                        if avail > 0.0 {
+                            let start = self.scrollbar_drag_start;
+                            let pos = start + (x - start_my) / avail * (total - visible);
+                            self.set_scroll_pos_x(target_id, pos);
+                        }
+                    }
+                }
+            } else {
+                let bar_h = self.node(scrollbar_id).map(|n| n.rect.height).unwrap_or(0.0);
+                if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
+                    if let Some((total, visible, _)) = self.scroll_metrics(target_id) {
+                        let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                        let avail = bar_h - thumb_h;
+                        if avail > 0.0 {
+                            let start = self.scrollbar_drag_start;
+                            let pos = start + (y - start_my) / avail * (total - visible);
+                            self.set_scroll_pos(target_id, pos);
+                        }
                     }
                 }
             }
@@ -100,6 +120,10 @@ impl Tk {
         if let Some(id) = self.pressed {
             if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
                 self.drag_scale(id, x);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::Slider && !node.disabled) {
+                if let Some(value) = self.slider_value_at(id, x, y) {
+                    self.slider_user_set(id, value);
+                }
             } else if self.node(id).is_some_and(|node| matches!(node.kind, Kind::Entry | Kind::Text) && !node.disabled) {
                 self.drag_text_selection(id, x, y);
             }
@@ -265,6 +289,21 @@ impl Tk {
                     }
                 }
                 Kind::Scale => self.drag_scale(id, x),
+                Kind::Slider => {
+                    if let Some(value) = self.slider_value_at(id, x, y) {
+                        self.slider_user_set(id, value);
+                    }
+                }
+                Kind::DoubleSpinbox => {
+                    let rx = x - node.rect.x;
+                    let rw = node.rect.width;
+                    let ry = y - node.rect.y;
+                    let rh = node.rect.height;
+                    if rx >= rw - 20.0 {
+                        let direction = if ry < rh / 2.0 { 1 } else { -1 };
+                        self.dspin_step(id, direction);
+                    }
+                }
                 Kind::Listbox => {
                     let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
                     let local_y = y - node.rect.y;
@@ -294,21 +333,46 @@ impl Tk {
                     }
                 }
                 Kind::Scrollbar => {
-                    let ry = y - node.rect.y;
-                    let bar_h = node.rect.height;
-                    if let Some(target_id) = node.scroll_target {
-                        if let Some((total, visible, pos)) = self.scroll_metrics(target_id) {
-                            let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
-                            let avail = bar_h - thumb_h;
-                            let max = total - visible;
-                            let thumb_y = if max > 0.0 { avail * (pos / max) } else { 0.0 };
-                            if ry < thumb_y {
-                                self.set_scroll_pos(target_id, pos - visible);
-                            } else if ry > thumb_y + thumb_h {
-                                self.set_scroll_pos(target_id, pos + visible);
-                            } else {
-                                self.scrollbar_drag = Some((id, y, 0));
-                                self.scrollbar_drag_start = pos;
+                    let horizontal = node
+                        .inputs
+                        .as_ref()
+                        .is_some_and(|s| s.scrollbar_horizontal);
+                    if horizontal {
+                        let rx = x - node.rect.x;
+                        let bar_w = node.rect.width;
+                        if let Some(target_id) = node.scroll_target {
+                            if let Some((total, visible, pos)) = self.scroll_metrics_x(target_id) {
+                                let thumb_w = (bar_w * (visible / total)).clamp(16.0, bar_w);
+                                let avail = bar_w - thumb_w;
+                                let max = total - visible;
+                                let thumb_x = if max > 0.0 { avail * (pos / max) } else { 0.0 };
+                                if rx < thumb_x {
+                                    self.set_scroll_pos_x(target_id, pos - visible);
+                                } else if rx > thumb_x + thumb_w {
+                                    self.set_scroll_pos_x(target_id, pos + visible);
+                                } else {
+                                    self.scrollbar_drag = Some((id, x, 0));
+                                    self.scrollbar_drag_start = pos;
+                                }
+                            }
+                        }
+                    } else {
+                        let ry = y - node.rect.y;
+                        let bar_h = node.rect.height;
+                        if let Some(target_id) = node.scroll_target {
+                            if let Some((total, visible, pos)) = self.scroll_metrics(target_id) {
+                                let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                                let avail = bar_h - thumb_h;
+                                let max = total - visible;
+                                let thumb_y = if max > 0.0 { avail * (pos / max) } else { 0.0 };
+                                if ry < thumb_y {
+                                    self.set_scroll_pos(target_id, pos - visible);
+                                } else if ry > thumb_y + thumb_h {
+                                    self.set_scroll_pos(target_id, pos + visible);
+                                } else {
+                                    self.scrollbar_drag = Some((id, y, 0));
+                                    self.scrollbar_drag_start = pos;
+                                }
                             }
                         }
                     }
@@ -428,7 +492,7 @@ impl Tk {
             return;
         }
         let (kind, check) = (node.kind, node.check);
-        if kind == Kind::Checkbutton {
+        if kind == Kind::Checkbutton || kind == Kind::Switch {
             if let Some(var) = check {
                 if let Some(value) = var.get(self) {
                     var.set(self, !value);
@@ -439,7 +503,7 @@ impl Tk {
                 var.set(self, node.radio_value);
             }
         }
-        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton) {
+        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch) {
             self.run_command(id);
         }
     }
@@ -564,6 +628,9 @@ impl Tk {
         }
         if matches!(key, Key::Tab | Key::ShiftTab) {
             self.traverse_focus(key == Key::ShiftTab);
+            if let Some(focused) = self.focused {
+                self.scrollarea_reveal(focused);
+            }
             return;
         }
         if let Some(modal_id) = self.modal {
@@ -622,7 +689,7 @@ impl Tk {
                     self.dirty = true;
                 }
             }
-            Kind::Button | Kind::Checkbutton | Kind::Radiobutton if matches!(key, Key::Enter | Key::Space) => {
+            Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch if matches!(key, Key::Enter | Key::Space) => {
                 self.activate(id);
             }
             Kind::Scale if matches!(key, Key::Left | Key::Right) => {
@@ -646,6 +713,12 @@ impl Tk {
                         self.listbox_select(id, new_sel);
                     }
                 }
+            }
+            Kind::Slider => {
+                self.slider_key(id, key);
+            }
+            Kind::DoubleSpinbox => {
+                self.dspin_key(id, key);
             }
             Kind::Spinbox if matches!(key, Key::Up | Key::Down) => {
                 let (from, to) = node.range;
@@ -674,6 +747,8 @@ impl Tk {
                 self.edit_entry(id, None, text);
             } else if self.node(id).is_some_and(|node| node.kind == Kind::Text && !node.disabled && !node.text_read_only) {
                 self.edit_text(id, None, text);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::DoubleSpinbox && !node.disabled) {
+                self.dspin_type(id, text);
             }
         }
     }

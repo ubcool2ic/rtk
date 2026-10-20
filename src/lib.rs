@@ -38,6 +38,12 @@ pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, 
 pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, SystemTheme, Typography, OKABE_ITO};
 pub use timer::TimerId;
 pub use tk::{FrameDamage, Key, ScrollUnit, Tk, TkProxy};
+pub use tk::inputs_state::{Orient, RingMode};
+pub use tk::ring::ProgressRing;
+pub use tk::switch::Switch;
+pub use tk::slider::Slider;
+pub use tk::double_spinbox::DoubleSpinbox;
+pub use tk::scroll_area::ScrollArea;
 pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,

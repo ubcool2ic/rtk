@@ -113,6 +113,9 @@ fn map_action_kind(action: A11yAction) -> Option<Action> {
         A11yAction::SetValue => Some(Action::SetValue),
         A11yAction::Increment => Some(Action::Increment),
         A11yAction::Decrement => Some(Action::Decrement),
+        // AccessKit has no dedicated toggle action; screen readers toggle
+        // check boxes and switches by issuing a Click.
+        A11yAction::Toggle => Some(Action::Click),
     }
 }
 

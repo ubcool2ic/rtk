@@ -229,6 +229,8 @@ pub struct Sparkline;
 /// Constructor namespace for image widgets (PNG/RGBA/SVG).
 pub struct Image;
 
+
+
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
     /// Creates an empty container frame under `parent`.
@@ -326,9 +328,20 @@ impl Listbox {
 
 #[allow(clippy::new_ret_no_self)]
 impl Scrollbar {
-    /// Creates a scrollbar; link it to a widget with `Tk::scrollbar_attach`-style APIs.
+    /// Creates a vertical scrollbar; link it to a widget with `Tk::link_scrollbar`.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Scrollbar, parent, String::new())
+    }
+
+    /// Creates a horizontal scrollbar (thumb along x); link it with
+    /// `Tk::link_scrollbar` to a Canvas with a scrollregion or a ScrollArea.
+    pub fn horizontal(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Scrollbar, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            let state = node.inputs.get_or_insert_with(Default::default);
+            state.scrollbar_horizontal = true;
+        }
+        Ok(id)
     }
 }
 
@@ -519,6 +532,11 @@ pub(crate) enum Kind {
     Text,
     Combobox,
     Notebook,
+    ProgressRing,
+    Switch,
+    Slider,
+    DoubleSpinbox,
+    ScrollArea,
     Chart,
     Image,
 }
@@ -536,13 +554,23 @@ impl Kind {
                 | Self::Spinbox
                 | Self::Text
                 | Self::Combobox
+                | Self::Switch
+                | Self::Slider
+                | Self::DoubleSpinbox
         )
     }
 
     pub fn has_command(self) -> bool {
         matches!(
             self,
-            Self::Button | Self::Checkbutton | Self::Scale | Self::Listbox | Self::Radiobutton
+            Self::Button
+                | Self::Checkbutton
+                | Self::Scale
+                | Self::Listbox
+                | Self::Radiobutton
+                | Self::Switch
+                | Self::Slider
+                | Self::DoubleSpinbox
         )
     }
 }
@@ -579,6 +607,8 @@ pub(crate) struct WidgetNode {
     pub check: Option<Var<bool>>,
     pub scale: Option<Var<i64>>,
     pub range: (i64, i64),
+    /// Floating-point range for Slider/DoubleSpinbox.
+    pub range_f64: (f64, f64),
     pub style: Style,
     pub command: Option<Command>,
     pub command_running: bool,
@@ -649,6 +679,8 @@ pub(crate) struct WidgetNode {
     pub image: Option<ImageId>,
     pub compound: Compound,
     pub transition: Option<TransitionState>,
+    /// Milestone 0.10 input-widget state (ProgressRing, Switch, ProgressBar polish).
+    pub inputs: Option<Box<crate::tk::inputs_state::InputsState>>,
     // Selection (Entry/Text): anchor byte index; selection = anchor..cursor.
     pub selection_anchor: Option<usize>,
     // Undo/redo history for Entry/Text.
@@ -658,6 +690,8 @@ pub(crate) struct WidgetNode {
     pub last_edit_ms: u64,
     /// True when the last edit was a single-character insertion (coalescable).
     pub last_edit_typing: bool,
+    /// ScrollArea that owns this widget as its content frame, if any.
+    pub scroll_area_owner: Option<WidgetId>,
 }
 
 /// A snapshot of editable text state for undo/redo.
@@ -683,6 +717,7 @@ impl WidgetNode {
             check: None,
             scale: None,
             range: (0, 100),
+            range_f64: (0.0, 1.0),
             style: Style {
                 bg: if matches!(kind, Kind::Entry | Kind::Listbox) {
                     Color::WHITE
@@ -747,11 +782,13 @@ impl WidgetNode {
             image: None,
             compound: Compound::Left,
             transition: None,
+            inputs: None,
             selection_anchor: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             last_edit_ms: 0,
             last_edit_typing: false,
+            scroll_area_owner: None,
         }
     }
 }

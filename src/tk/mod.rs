@@ -43,10 +43,19 @@ mod combobox;
 mod notebook;
 mod progress;
 mod tooltip;
+pub(crate) mod inputs_state;
+pub(crate) mod ring;
+pub(crate) mod switch;
+/// Decimal slider construction and interaction.
+pub(crate) mod slider;
+/// Decimal spinbox construction, editing, and interaction.
+pub(crate) mod double_spinbox;
 mod shortcuts;
 mod clipboard;
 mod edit;
 mod theme;
+/// Scrollable viewport frame of widgets.
+pub(crate) mod scroll_area;
 mod ime;
 mod damage;
 mod a11y;
@@ -58,7 +67,11 @@ mod dnd;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
+#[allow(unused_imports)]
+pub(crate) use inputs_state::RingMode;
 pub(crate) use style::{dark_default_colors, NodeSnapshot};
+#[allow(unused_imports)]
+pub use scroll_area::ScrollArea;
 
 pub(crate) type PostedTask = Box<dyn FnOnce(&mut Tk) + Send + 'static>;
 pub(crate) type IdleTask = Box<dyn FnOnce(&mut Tk) + 'static>;

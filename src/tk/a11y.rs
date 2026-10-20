@@ -29,6 +29,11 @@ impl Tk {
             Kind::Notebook => A11yRole::TabList,
             Kind::Scrollbar => A11yRole::ScrollBar,
             Kind::Canvas | Kind::Chart | Kind::Image => A11yRole::Canvas,
+            Kind::ProgressRing => A11yRole::ProgressIndicator,
+            Kind::Switch => A11yRole::CheckBox,
+            Kind::Slider => A11yRole::Slider,
+            Kind::DoubleSpinbox => A11yRole::SpinButton,
+            Kind::ScrollArea => A11yRole::Group,
         }
     }
 
@@ -87,6 +92,7 @@ impl Tk {
             }
             Kind::Canvas => None,
             Kind::Frame => None,
+            Kind::ScrollArea => None,
             _ => {
                 let text = self.widget_text(id).unwrap_or_default();
                 if text.is_empty() { None } else { Some(text) }
@@ -101,6 +107,7 @@ impl Tk {
             Kind::Entry => self.entry_get(id),
             Kind::Text => self.text_get(id),
             Kind::Combobox => self.combobox_get(id).map(|(_, s)| s),
+            Kind::DoubleSpinbox => self.dspin_text(id),
             _ => None,
         }
     }
@@ -122,6 +129,20 @@ impl Tk {
                 };
                 Some((value, 0.0, 100.0))
             }
+            Kind::ProgressRing => {
+                let value = self.ring_get(id).unwrap_or(0.0);
+                Some((value, 0.0, 1.0))
+            }
+            Kind::Slider => {
+                let (from, to) = node.range_f64;
+                let value = self.slider_get(id).unwrap_or(from);
+                Some((value, from, to))
+            }
+            Kind::DoubleSpinbox => {
+                let (from, to) = node.range_f64;
+                let value = self.dspin_get(id).unwrap_or(from);
+                Some((value, from, to))
+            }
             _ => None,
         }
     }
@@ -131,6 +152,7 @@ impl Tk {
         let node = self.node(id)?;
         match node.kind {
             Kind::Checkbutton => node.check.and_then(|v| v.get(self)),
+            Kind::Switch => self.switch_get(id),
             Kind::Radiobutton => {
                 let var = node.radio_var?;
                 let current = var.get(self)?;
@@ -149,8 +171,12 @@ impl Tk {
         let mut actions = Vec::new();
         match node.kind {
             Kind::Button | Kind::Checkbutton | Kind::Radiobutton => actions.push(A11yAction::Click),
+            Kind::Switch => {
+                actions.push(A11yAction::Click);
+                actions.push(A11yAction::Toggle);
+            }
             Kind::Entry | Kind::Text => actions.push(A11yAction::SetValue),
-            Kind::Scale | Kind::Spinbox => {
+            Kind::Scale | Kind::Spinbox | Kind::Slider | Kind::DoubleSpinbox => {
                 actions.push(A11yAction::Increment);
                 actions.push(A11yAction::Decrement);
             }
@@ -182,11 +208,39 @@ impl Tk {
         let kind = node.kind;
         match action {
             A11yAction::Click => {
-                if !matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton) {
+                if !matches!(
+                    kind,
+                    Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch
+                ) {
                     return false;
+                }
+                // A Switch has no separate "activate" semantics: a click
+                // toggles it, mirroring the Toggle action.
+                if kind == Kind::Switch {
+                    let Some(current) = self.switch_get(id) else { return false };
+                    if !self.switch_set(id, !current) {
+                        return false;
+                    }
+                    self.focused = Some(id);
+                    self.run_command(id);
+                    self.dirty = true;
+                    return true;
                 }
                 self.focused = Some(id);
                 self.activate(id);
+                self.dirty = true;
+                true
+            }
+            A11yAction::Toggle => {
+                if kind != Kind::Switch {
+                    return false;
+                }
+                let Some(current) = self.switch_get(id) else { return false };
+                if !self.switch_set(id, !current) {
+                    return false;
+                }
+                self.focused = Some(id);
+                self.run_command(id);
                 self.dirty = true;
                 true
             }
@@ -207,7 +261,10 @@ impl Tk {
                 }
             }
             A11yAction::Increment | A11yAction::Decrement => {
-                if !matches!(kind, Kind::Scale | Kind::Spinbox) {
+                if !matches!(
+                    kind,
+                    Kind::Scale | Kind::Spinbox | Kind::Slider | Kind::DoubleSpinbox
+                ) {
                     return false;
                 }
                 self.focused = Some(id);

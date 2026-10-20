@@ -61,6 +61,8 @@ pub enum A11yAction {
     Increment,
     /// Decrease a range widget's value.
     Decrement,
+    /// Toggle a check box or switch between on and off.
+    Toggle,
 }
 
 /// A snapshot of one widget in the accessibility tree.
