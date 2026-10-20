@@ -526,3 +526,8 @@ No other defects found in this chunk:
 - [severity low] [api] Public enum `DefaultFont` lacked `#[non_exhaustive]`, so adding a variant later would be a breaking change (line 36) -> fixed
 - No other bugs found in this chunk. The fallback logic, `has_face` and `has_family` are sound, with no panics or UTF-8 hazards. The `warn_once` guard is correct, and every fn has a doc comment.
 
+### src/image.rs lines 1-181
+- [medium] [bug] `ImageFit::Center` clamped width and height independently (`nat.min(w)` and `nat.min(h)`). An image larger than the widget in only one axis was squashed non-uniformly, so its aspect ratio was distorted. Now it is scaled down uniformly, and only when it doesn't fit (line 130-131) -> fixed
+- [low] [docs] The `Center` variant doc said "no scaling" without mentioning the downscale when the image exceeds the widget (line 16) -> fixed
+- [low] [bug] `build_items` clones the whole RGBA buffer on every call. This is a performance concern rather than a correctness bug, and fixing it would need a `CanvasItemKind` change outside this chunk (line 157) -> not fixed (outside the chunk, no correctness impact)
+
