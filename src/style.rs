@@ -201,7 +201,7 @@ impl Tokens {
         t.palette.accent = Color::rgb(0, 103, 192);
         t.palette.surface2 = Color::rgb(240, 240, 240);
         t.radius = Radius { sm: 2.0, md: 4.0, lg: 6.0 };
-        t.font_family = Some("Segoe UI".into());
+        // Bundled Noto Sans everywhere (v0.8.2); set a family explicitly to override.
         t
     }
 
@@ -226,7 +226,7 @@ impl Tokens {
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 4.0, md: 10.0, lg: 20.0 },
             type_scale: TypeScale { small: 12.0, body: 14.0, title: 20.0, heading: 26.0 },
-            font_family: Some("Roboto".into()),
+            font_family: None, // bundled Noto Sans (v0.8.2)
         }
     }
 
@@ -486,7 +486,7 @@ impl StyleEngine {
             opacity: Some(1.0),
             font_family: Some(ff.clone()),
             font_size: Some(ts.body),
-            font_weight: Some(500),
+            font_weight: Some(400), // 400/700 only: Windows' Arial has no 500 face (garbled labels)
             italic: Some(false),
             transition_ms: Some(120),
         });
@@ -584,7 +584,7 @@ impl StyleEngine {
             opacity: Some(1.0),
             font_family: Some(ff.clone()),
             font_size: Some(ts.body),
-            font_weight: Some(500),
+            font_weight: Some(400), // 400/700 only: Windows' Arial has no 500 face (garbled labels)
             italic: Some(false),
             transition_ms: Some(100),
         });
@@ -612,7 +612,7 @@ impl StyleEngine {
             opacity: Some(1.0),
             font_family: Some(ff.clone()),
             font_size: Some(ts.body),
-            font_weight: Some(500),
+            font_weight: Some(400), // 400/700 only: Windows' Arial has no 500 face (garbled labels)
             italic: Some(false),
             transition_ms: Some(100),
         });
@@ -719,7 +719,7 @@ impl StyleEngine {
                 opacity: Some(1.0),
                 font_family: Some(ff.clone()),
                 font_size: Some(12.0),
-                font_weight: Some(500),
+                font_weight: Some(400), // 400/700 only: Windows' Arial has no 500 face (garbled labels)
                 italic: Some(false),
                 transition_ms: Some(0),
             });
@@ -1454,4 +1454,45 @@ pub fn build_rounded_rect_path(rect: Rect, radius: f32) -> Option<tiny_skia::Pat
 fn css_number(text: &str) -> Option<f32> {
     let value = text.trim().trim_end_matches("px").parse::<f32>().ok()?;
     (value.is_finite() && value >= 0.0).then_some(value)
+}
+
+#[cfg(test)]
+mod font_weight_tests {
+    //! Built-in styles may only use font weights that every desktop's default
+    //! sans-serif font really has. Windows' Arial ships Regular (400) and Bold
+    //! (700) only; asking for 500 made the matcher pick an unrelated face and
+    //! button labels rendered as boxes and symbols.
+
+    use super::*;
+
+    /// Weights that the default fonts on Windows, Linux and macOS all provide.
+    const SAFE: [u16; 2] = [400, 700];
+
+    /// Every theme preset's base styles and state maps use only 400 or 700.
+    #[test]
+    fn builtin_styles_use_only_400_or_700() {
+        let presets = [
+            ("light", Tokens::light()),
+            ("dark", Tokens::dark()),
+            ("fluent", Tokens::fluent()),
+            ("material", Tokens::material()),
+            ("high_contrast", Tokens::high_contrast()),
+            ("modern_dark", Tokens::modern_dark()),
+            ("modern_light", Tokens::modern_light()),
+        ];
+        for (theme, tokens) in presets {
+            let engine = StyleEngine::new(tokens);
+            for (name, spec) in &engine.styles {
+                if let Some(w) = spec.font_weight {
+                    assert!(SAFE.contains(&w), "theme {theme}: style {name} uses font weight {w}");
+                }
+            }
+            for ((name, state), spec) in &engine.state_maps {
+                if let Some(w) = spec.font_weight {
+                    assert!(SAFE.contains(&w), "theme {theme}: style {name} state {state} uses font weight {w}");
+                }
+            }
+            assert_eq!(engine.lookup("TButton").and_then(|s| s.font_weight), Some(400), "theme {theme}: TButton");
+        }
+    }
 }

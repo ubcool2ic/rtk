@@ -290,6 +290,12 @@ impl Tk {
         self.theme
     }
 
+    /// Which font family became the default sans-serif: the bundled Noto Sans,
+    /// or Arial / a platform sans if the bundled font could not be loaded.
+    pub fn default_font(&self) -> &crate::fonts::DefaultFont {
+        self.text_engine.default_font()
+    }
+
     /// Returns the design tokens (palette, fonts, radii) of the active theme.
     pub fn tokens(&self) -> &Tokens {
         self.style_engine.tokens()
@@ -879,6 +885,20 @@ impl Tk {
     /// Shorthand for `config(id, Opt::Command(...))`.
     pub fn set_command(&mut self, id: WidgetId, command: impl FnMut(&mut Tk) + 'static) -> bool {
         self.config(id, Opt::Command(Box::new(command)))
+    }
+
+    /// Runs `callback` when Enter is pressed in the single-line Entry `id`
+    /// (tkinter `entry.bind("<Return>", ...)`), e.g. to submit a search box.
+    /// Inside an open dialog, Enter still accepts the dialog first.
+    /// Returns false if `id` is not a live Entry. Calling it again replaces the callback.
+    pub fn entry_bind_submit(&mut self, id: WidgetId, callback: impl FnMut(&mut Tk) + 'static) -> bool {
+        match self.node_mut(id) {
+            Some(node) if node.kind == Kind::Entry => {
+                node.command = Some(Box::new(callback));
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Current text of an Entry (tkinter `entry.get()`); `None` for other kinds.
@@ -2027,6 +2047,9 @@ impl Tk {
             Kind::Entry => {
                 if key == Key::Space {
                     self.sim_text(" ");
+                } else if key == Key::Enter {
+                    // Submit callback from `entry_bind_submit` (no-op if none).
+                    self.run_command(id);
                 } else {
                     self.edit_entry(id, Some(key), "");
                 }

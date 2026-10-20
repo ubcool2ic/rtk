@@ -3,6 +3,7 @@
 mod app;
 pub mod colormap;
 pub mod dialog;
+pub mod fonts;
 pub mod icons;
 pub mod layout;
 mod render;
@@ -14,6 +15,7 @@ mod widgets;
 
 pub use colormap::Colormap;
 pub use dialog::MessageKind;
+pub use fonts::DefaultFont;
 pub use icons::Icon;
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
