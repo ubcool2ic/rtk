@@ -5,12 +5,19 @@ use crate::Color;
 /// Supported color palettes for scalar data mapping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Colormap {
+    /// Perceptually uniform blue-green-yellow (matplotlib default).
     Viridis,
+    /// Perceptually uniform black-red-yellow.
     Inferno,
+    /// Perceptually uniform black-purple-pink.
     Magma,
+    /// Perceptually uniform blue-purple-orange-yellow.
     Plasma,
+    /// Classic rainbow (blue-cyan-yellow-red).
     Jet,
+    /// High-contrast rainbow with a dark blue start.
     Turbo,
+    /// Linear black-to-white ramp.
     Grayscale,
 }
 

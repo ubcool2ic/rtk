@@ -1,3 +1,4 @@
+/// Handle identifying a scheduled `after`/`every` timer, used to cancel it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TimerId(pub(crate) u64);
 
@@ -85,6 +86,7 @@ impl crate::Tk {
         self.timers.cancel(id)
     }
 
+    /// Number of timers currently scheduled (repeating timers count once).
     pub fn pending_timers(&self) -> usize {
         self.timers.len()
     }

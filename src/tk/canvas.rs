@@ -41,18 +41,22 @@ impl Tk {
 
 
     // Canvas methods
+    /// Creates a filled rectangle from `(x0, y0)` to `(x1, y1)` in canvas coordinates.
     pub fn canvas_create_rect(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
         self.canvas_add_item(id, CanvasItemKind::Rect { x0, y0, x1, y1, color })
     }
 
+    /// Creates a filled ellipse inscribed in the box `(x0, y0)`–`(x1, y1)`.
     pub fn canvas_create_oval(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
         self.canvas_add_item(id, CanvasItemKind::Oval { x0, y0, x1, y1, color })
     }
 
+    /// Creates a straight line segment from `(x0, y0)` to `(x1, y1)`.
     pub fn canvas_create_line(&mut self, id: WidgetId, x0: f32, y0: f32, x1: f32, y1: f32, color: Color) -> Option<CanvasItem> {
         self.canvas_add_item(id, CanvasItemKind::Line { x0, y0, x1, y1, color })
     }
 
+    /// Creates a text item anchored at `(x, y)` using the default font.
     pub fn canvas_create_text(&mut self, id: WidgetId, x: f32, y: f32, text: impl Into<String>, color: Color) -> Option<CanvasItem> {
         self.canvas_add_item(id, CanvasItemKind::Text { x, y, text: text.into(), color })
     }
@@ -83,6 +87,7 @@ impl Tk {
         Some(item)
     }
 
+    /// Deletes every item on the canvas (tkinter `delete("all")`).
     pub fn canvas_clear(&mut self, id: WidgetId) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Canvas {
@@ -96,6 +101,7 @@ impl Tk {
         true
     }
 
+    /// Deletes a single item; returns false if the handle is stale.
     pub fn canvas_delete(&mut self, id: WidgetId, item: CanvasItem) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Canvas {
@@ -111,6 +117,7 @@ impl Tk {
         true
     }
 
+    /// Translates an item by `(dx, dy)` logical px (tkinter `move`).
     pub fn canvas_move(&mut self, id: WidgetId, item: CanvasItem, dx: f32, dy: f32) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Canvas {
@@ -126,6 +133,7 @@ impl Tk {
         true
     }
 
+    /// Returns the item's bounding box as `[x0, y0, x1, y1]` in canvas coordinates.
     pub fn canvas_coords(&self, id: WidgetId, item: CanvasItem) -> Option<[f32; 4]> {
         let node = self.node(id)?;
         if node.kind != Kind::Canvas {
@@ -193,6 +201,7 @@ impl Tk {
         (s.width, s.height)
     }
 
+    /// Number of live items on the canvas.
     pub fn canvas_items(&self, id: WidgetId) -> usize {
         self.node(id)
             .filter(|n| n.kind == Kind::Canvas)
@@ -200,6 +209,7 @@ impl Tk {
             .unwrap_or(0)
     }
 
+    /// Binds a drag callback receiving canvas coordinates and the drag phase.
     pub fn canvas_bind_drag(&mut self, id: WidgetId, cb: impl FnMut(&mut Tk, f32, f32, DragPhase) + 'static) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Canvas {

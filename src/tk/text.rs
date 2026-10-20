@@ -189,10 +189,12 @@ impl Tk {
     // Text widget API
     // -----------------------------------------------------------------------
 
+    /// Returns the full text contents (tkinter `get("1.0", "end")`).
     pub fn text_get(&self, id: WidgetId) -> Option<String> {
         self.node(id).filter(|n| n.kind == Kind::Text).map(|n| n.text.clone())
     }
 
+    /// Replaces the contents, moves the cursor to the end and resets undo.
     pub fn text_set(&mut self, id: WidgetId, text: impl Into<String>) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Text { return false; }
@@ -208,6 +210,8 @@ impl Tk {
         true
     }
 
+    /// Appends `text` at the end, trimming to the max line count and
+    /// auto-scrolling to the bottom when enabled.
     pub fn text_insert_end(&mut self, id: WidgetId, text: &str) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Text { return false; }
@@ -225,6 +229,7 @@ impl Tk {
         true
     }
 
+    /// Removes all text and resets the cursor and scroll position.
     pub fn text_clear(&mut self, id: WidgetId) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Text { return false; }
@@ -235,6 +240,7 @@ impl Tk {
         true
     }
 
+    /// Enables or disables user editing (tkinter `state="disabled"`).
     pub fn text_set_readonly(&mut self, id: WidgetId, read_only: bool) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Text { return false; }
@@ -242,10 +248,12 @@ impl Tk {
         true
     }
 
+    /// Number of lines (newline-separated) in the text.
     pub fn text_line_count(&self, id: WidgetId) -> Option<usize> {
         self.node(id).filter(|n| n.kind == Kind::Text).map(|n| n.text.split('\n').count())
     }
 
+    /// Caps the retained line count, trimming the oldest lines immediately.
     pub fn text_set_max_lines(&mut self, id: WidgetId, max_lines: usize) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Text { return false; }
