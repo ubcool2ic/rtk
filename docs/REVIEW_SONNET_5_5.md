@@ -866,3 +866,6 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [medium] [bug] `test_scrollbar_drag_changes_view` asserts nothing: `view_after_page` is discarded and the thumb drag is never checked (lines 76-83) -> not fixed. I can't see an accessor for the listbox view offset, so I can't write a correct assertion. A pixel-diff assertion would depend on layout details I can't verify here. This test needs a view-offset getter or a golden comparison.
 - [low] [docs] `blue.gen` (line 292) uses `gen`, a reserved keyword in edition 2024 -> not fixed. This is a library field name and compiles fine in edition 2021.
 
+### tests/fonts.rs lines 1-17
+- [severity medium] [bug] The assertion `p[0] < 100` (line 15) passes trivially if the default background has a red channel below 100, for example in a dark theme. It also passes if any non-text element is dark. It does not prove that text was drawn with the font. -> fixed. The test now renders a baseline pixmap before adding the label and asserts that the pixels differ afterwards.
+
