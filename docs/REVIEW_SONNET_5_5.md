@@ -970,3 +970,7 @@ I found nothing in lines 1-75 that needs a fix, though I could only check the fi
 - [severity low] [bug] The scene is about 96+96+button height plus padding in a 320x240 logical window; I can't confirm from here that the button isn't clipped at 1x, and the goldens would encode that either way (line 50) -> not fixed (needs layout metrics not visible in this chunk)
 - Assertions are meaningful (`assert_golden` plus checked `image_set_*`/`config` return values). No timing dependence, and the helpers can't panic outside of `unwrap`s that signal real failures.
 
+### tests/m012_image.rs lines 1-113
+- [severity medium] [bug] `load_svg_button_icon` never packs the frame or the button, so the render may not draw them. It also asserts only `pixmap.width() == 120`, which is trivially true, so the test would pass even if the icon never rendered (lines 73-78) -> fixed. The frame and button are now packed. The test renders before and after `Opt::Image` and asserts that the pixels differ, and it also asserts the height.
+- Other tests in the chunk (rgba validation, PNG load, SVG red square, invalid SVG, contain aspect, wrong-kind rejection) check meaningful behaviour. I found no flakiness, helper panics or wrong expectations in them.
+

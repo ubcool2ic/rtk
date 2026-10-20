@@ -73,9 +73,17 @@ fn load_svg_button_icon() {
     let root = tk.root();
     let frame = Frame::new(&mut tk, root).unwrap();
     let btn = Button::new(&mut tk, frame, "Go").unwrap();
+    tk.pack(
+        frame,
+        rtk::PackOpts { fill: rtk::Fill::Both, expand: true, ..rtk::PackOpts::default() },
+    );
+    tk.pack(btn, rtk::PackOpts::default());
+    let before = tk.render_to_pixmap(120, 60).unwrap().data().to_vec();
     assert!(tk.config(btn, Opt::Image(icon)));
     let pixmap = tk.render_to_pixmap(120, 60).unwrap();
     assert_eq!(pixmap.width(), 120);
+    assert_eq!(pixmap.height(), 60);
+    assert_ne!(pixmap.data(), &before[..], "icon should change the rendered button");
 }
 
 /// Contain fit keeps aspect ratio: a square image in a wide widget leaves the
