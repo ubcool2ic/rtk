@@ -1104,3 +1104,15 @@ I also checked the rest of the chunk and found no problems:
 - [severity low] [bug] `inferno_brightens` claims monotonic brightness but only checks three points (1.0, 0.75, 0.25). A fold-back to black near t=0 or a dip at 0.5 would go undetected (line 15) -> fixed: now checks a chain of anchor points 0.0 < 0.25 < 0.5 < 0.75 < 1.0.
 - [severity low] [docs] Viridis test: assertion and doc comment are consistent and meaningful (line 8) -> not fixed (nothing to fix).
 
+### tests/scrollarea_width.rs lines 1-58
+- none
+
+I reviewed lines 1-58 and found nothing that needs changing.
+
+- **Helpers:** The test has no helpers that could panic. The `expect` calls only assert the preconditions it relies on.
+- **Assertions:** The assertions check meaningful values: content width against the expected scrollbar-axis width, and pixmap dimensions. The 0.5 tolerance is reasonable for float layout.
+- **Timing:** There is no timing dependence, so no flakiness risk.
+- **Expectations:** The vertical-only case subtracts the scrollbar width and clamps at zero. The two-axis case expects the full area width. Both match the doc comment.
+
+I could not check the signatures of `Scrollbar::horizontal`, `scrollarea_content_size` or `render_to_pixmap` against the API, because only `lib.rs` was given. They are assumed to exist as used.
+
