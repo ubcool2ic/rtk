@@ -426,3 +426,7 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [bug] `dspin_round` overflowed to infinity for huge ranges (`clamped * 10^decimals`). It could also yield `-0.0`, which displays as "-0.00". (lines 126-129) -> fixed
 - [low] [bug] `dspin_user_set` never wrote the variable when its current value was NaN and the target equalled the lower bound, because `NaN.abs() > EPS` is false. (line 142) -> fixed
 
+### src/shortcut.rs lines 1-277
+- [severity low] [bug] `parse_key` accepted malformed function-key names such as `F+1` and `F01`, because `u8::from_str` allows a leading `+` -> fixed. The function-key suffix now has to be 1–2 ASCII digits.
+- [severity low] [api] I found no other problems in lines 1-277. `ShortcutError` is already `#[non_exhaustive]`, every fn has a `///` doc, and the UTF-8 slicing of the macOS modifier symbols is safe because it advances by `len_utf8`. The literal-plus handling (`Ctrl++`, `+`) and the `Ctrl+` missing-key case behave correctly. -> not fixed (nothing to fix)
+

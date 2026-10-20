@@ -239,9 +239,11 @@ fn parse_key(name: &str) -> Result<Key, ShortcutError> {
                 }
             }
             if let Some(number) = lower.strip_prefix('f') {
-                if let Ok(number) = number.parse::<u8>() {
-                    if (1..=24).contains(&number) {
-                        return Ok(Key::F(number));
+                if (1..=2).contains(&number.len()) && number.bytes().all(|b| b.is_ascii_digit()) {
+                    if let Ok(number) = number.parse::<u8>() {
+                        if (1..=24).contains(&number) {
+                            return Ok(Key::F(number));
+                        }
                     }
                 }
             }
