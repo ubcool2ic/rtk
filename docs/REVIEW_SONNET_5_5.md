@@ -531,3 +531,8 @@ No other defects found in this chunk:
 - [low] [docs] The `Center` variant doc said "no scaling" without mentioning the downscale when the image exceeds the widget (line 16) -> fixed
 - [low] [bug] `build_items` clones the whole RGBA buffer on every call. This is a performance concern rather than a correctness bug, and fixing it would need a `CanvasItemKind` change outside this chunk (line 157) -> not fixed (outside the chunk, no correctness impact)
 
+### src/tk/entry.rs lines 1-162
+- [severity medium] [bug] When the entry is at `MAX_ENTRY_BYTES` and a selection is active, typing or pasting is rejected. The insert limit ignores the bytes the selection will free (line 137) -> fixed
+- [severity low] [bug] Input that cleans down to an empty string (for example only control characters, or a full entry) falls through to the tail of the function. That clears the selection anchor and repaints without any change to the text (lines 138-143) -> fixed
+- [severity low] [bug] `join_text` silently drops the prefix or suffix if an index is out of range or off a char boundary (lines 9, 11) -> not fixed (documented as tolerant; callers pass cluster boundaries)
+
