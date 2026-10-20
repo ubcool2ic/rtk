@@ -13,6 +13,7 @@ clipboard = ["dep:arboard"]
 svg = ["dep:resvg"]
 tray = ["dep:tray-icon"]
 accesskit = ["dep:accesskit", "dep:accesskit_winit"]
+native-dialogs = ["dep:rfd"]
 
 [dependencies]
 winit = "0.30"
@@ -24,6 +25,7 @@ accesskit_winit = { version = "0.34", optional = true }
 arboard = { version = "3", optional = true, default-features = false }
 resvg = { version = "0.45", default-features = false, optional = true }
 tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"], optional = true }
+rfd = { version = "0.17.2", optional = true, default-features = false, features = ["xdg-portal"] }
 
 [profile.dev]
 debug = 0

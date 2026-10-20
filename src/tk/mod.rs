@@ -293,6 +293,8 @@ pub struct Tk {
     #[cfg(feature = "clipboard")]
     pub(crate) os_clipboard: Option<arboard::Clipboard>,
     pub(crate) dnd: crate::dnd::DndState,
+    /// Custom file dialog backend; `None` selects the default for the build.
+    pub(crate) file_dialog_backend: Option<Box<dyn crate::file_dialog::FileDialogBackend>>,
 }
 
 impl Default for Tk {
@@ -377,6 +379,7 @@ impl Tk {
             #[cfg(feature = "clipboard")]
             os_clipboard: None,
             dnd: crate::dnd::DndState::default(),
+            file_dialog_backend: None,
         }
     }
 
