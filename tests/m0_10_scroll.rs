@@ -138,30 +138,35 @@ fn scrollarea_hit_test_respects_clip() {
     tk.config(spacer, rtk::Opt::Width(20));
     let top = Button::new(&mut tk, content, "top").unwrap();
     tk.pack(top, PackOpts::default());
-    let filler = Frame::new(&mut tk, content).unwrap();
-    tk.pack(filler, PackOpts::default());
-    tk.config(filler, rtk::Opt::Width(20));
+    for i in 0..30 {
+        let filler = Label::new(&mut tk, content, format!("filler {i}")).unwrap();
+        tk.pack(filler, PackOpts::default());
+    }
     let bottom = Button::new(&mut tk, content, "bottom").unwrap();
     tk.pack(bottom, PackOpts::default());
     tk.sim_resize(320, 200);
     let hits = Rc::new(Cell::new(0));
     let h = hits.clone();
     tk.set_command(bottom, move |_| h.set(h.get() + 1));
-    // Scroll so the bottom button is visible, then click it.
-    assert!(tk.scrollarea_scroll_to(area, 0.0, 1000.0));
+    // Scroll to the end so the bottom button is fully visible, then click it.
+    let (_, content_height) = tk.scrollarea_content_size(area).unwrap();
+    assert!(tk.scrollarea_scroll_to(area, 0.0, content_height));
     let br = tk.widget_rect(bottom).unwrap();
     let ar = tk.widget_rect(area).unwrap();
-    if br.y >= ar.y && br.y + br.height <= ar.y + ar.height {
-        tk.sim_click(br.x + br.width / 2.0, br.y + br.height / 2.0);
-        assert_eq!(hits.get(), 1);
-    }
+    assert!(
+        br.y >= ar.y && br.y + br.height <= ar.y + ar.height + 0.5,
+        "bottom {br:?} not inside area {ar:?}"
+    );
+    tk.sim_click(br.x + br.width / 2.0, br.y + br.height / 2.0);
+    assert_eq!(hits.get(), 1);
     // Scroll back to the top: the bottom button is out of view and not clickable.
     assert!(tk.scrollarea_scroll_to(area, 0.0, 0.0));
     let br = tk.widget_rect(bottom).unwrap();
-    if br.y >= ar.y + ar.height {
-        tk.sim_click(br.x + br.width / 2.0, ar.y + ar.height - 2.0);
-        assert_eq!(hits.get(), 1);
-    }
+    assert!(br.y >= ar.y + ar.height, "bottom {br:?} should be below area {ar:?}");
+    tk.sim_click(br.x + br.width / 2.0, br.y + br.height / 2.0);
+    assert_eq!(hits.get(), 1);
+    tk.sim_click(br.x + br.width / 2.0, ar.y + ar.height - 2.0);
+    assert_eq!(hits.get(), 1);
 }
 
 /// Tab focus reaches and reveals focusable widgets below the static labels.

@@ -1200,3 +1200,5 @@ I did not add new tests, such as overflowing dimensions or an over-long buffer. 
 
 - RECOVERED: examples/gallery.rs 1-309. DeepSeek fixed the clippy clone-on-Copy (recover-gallery).
 - RECOVERED: tests/gallery_smoke.rs. The test now validates the PNG header and size. DeepSeek fixed a stray brace (recover-gallery-smoke).
+- RECOVERED: tests/m013_hidpi.rs and tests/m0_10_scroll.rs. Sonnet's stricter assertions exposed that `label_ink_scales_with_scale_factor` hard-coded a wrong background colour (the old test was meaningless), and that the scroll test only clicked conditionally. DeepSeek and Sol (hidpi-bg-fix) now sample the background from the pixmap and scroll by the real content height. The assertions are unconditional and green.
+

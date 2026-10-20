@@ -302,3 +302,6 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery r0 | 13401 (0 cached) | 102 (0 reasoning) | 0.0010 | 0.2472 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r0 | 5661 (0 cached) | 333 (0 reasoning) | 0.0006 | 0.2477 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r1 | 5783 (3584 cached) | 948 (0 reasoning) | 0.0007 | 0.2484 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | hidpi-bg-fix r0 | 18992 (2816 cached) | 473 (0 reasoning) | 0.0014 | 0.2498 |
+| 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r1 [Sol fix] | 19141 (0 cached) | 3427 (2951 reasoning) | 0.0821 | 1.6836 |
+| 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r2 [Sol fix] | 22852 (0 cached) | 463 (347 reasoning) | 0.0618 | 1.7453 |
