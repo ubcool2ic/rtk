@@ -19,9 +19,9 @@ const BUDGET_MS: f64 = 16.7;
 
 /// Builds a table with 10,000 rows and 4 columns, returning the table id and
 /// the wall time spent building and setting the rows.
-fn build_table(tk: &mut Tk) -> (rtk::WidgetId, f64) {
+fn build_table(tk: &mut Tk) -> Result<(rtk::WidgetId, f64), Box<dyn Error>> {
     let root = tk.root();
-    let table = Table::new(tk, root, &["ID", "Name", "Value", "Extra"], 20).expect("table");
+    let table = Table::new(tk, root, &["ID", "Name", "Value", "Extra"], 20)?;
     tk.pack(
         table,
         PackOpts {
@@ -43,14 +43,14 @@ fn build_table(tk: &mut Tk) -> (rtk::WidgetId, f64) {
         .collect();
     tk.table_set_rows(table, rows);
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-    (table, elapsed)
+    Ok((table, elapsed))
 }
 
 /// Builds a tree with 100 roots each holding 100 children (10,000 visible
 /// nodes once expanded), returning the tree id and the build time in ms.
-fn build_tree(tk: &mut Tk) -> (rtk::WidgetId, f64) {
+fn build_tree(tk: &mut Tk) -> Result<(rtk::WidgetId, f64), Box<dyn Error>> {
     let root = tk.root();
-    let tree = TreeView::new(tk, root, 20).expect("tree");
+    let tree = TreeView::new(tk, root, 20)?;
     tk.pack(
         tree,
         PackOpts {
@@ -68,7 +68,7 @@ fn build_tree(tk: &mut Tk) -> (rtk::WidgetId, f64) {
     }
     tk.tree_expand_all(tree);
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-    (tree, elapsed)
+    Ok((tree, elapsed))
 }
 
 /// Renders `FRAMES` frames while scrolling `rows_per_frame` rows per frame,
@@ -126,7 +126,7 @@ fn report(label: &str, mean: f64, max: f64) {
 fn main() -> Result<(), Box<dyn Error>> {
     let mut tk = Tk::new();
     tk.sim_resize(WIDTH, HEIGHT);
-    let (table, build_ms) = build_table(&mut tk);
+    let (table, build_ms) = build_table(&mut tk)?;
     println!("table build+set_rows: {build_ms:.2} ms");
 
     let start = Instant::now();
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut tk = Tk::new();
     tk.sim_resize(WIDTH, HEIGHT);
-    let (tree, tree_build_ms) = build_tree(&mut tk);
+    let (tree, tree_build_ms) = build_tree(&mut tk)?;
     println!("tree build+expand_all: {tree_build_ms:.2} ms");
 
     let start = Instant::now();

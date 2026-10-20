@@ -691,3 +691,9 @@ No edits needed: no panics, UTF-8 slicing, overflow or borrow issues in lines 1-
 - [severity low] [docs] The `demo_like` doc comment says the tree is "three side-by-side frames containing a label and entry". The function actually builds radio buttons, a checkbutton, a scale, a spinbox, a progress bar, a listbox with a scrollbar, and a canvas with 60 ovals. Since users copy from this example, the doc could mislead them (line 10) -> fixed
 - [severity low] [bug] I found nothing else in this chunk that needs changing. There are no panics on user paths: `?` and `ok_or` are used instead of `unwrap`. `w - (i % 2)` cannot underflow for the sizes used. The integer-literal inference in `f64::from(frames)` compiles, so I left it. -> not fixed (no issue)
 
+### examples/bench_table.rs lines 1-173
+- [low] [bug] `build_table` and `build_tree` use `.expect()` on the fallible `Table::new` and `TreeView::new` constructors (lines 24, 53), even though `main` already returns `Result<_, Box<dyn Error>>`. Users copy this example, so it should show error propagation with `?` instead of panicking. I assumed both constructors return `Result<_, RtkError>`, which is consistent with `RtkError::InvalidParent` and `ArenaFull` in lib.rs. -> fixed
+- [low] [bug] The `.expect("root")` on `tree_insert` (line 64) and the discarded result of the leaf `tree_insert` (line 66) are not changed. I can't see the return type of `tree_insert`, so I can't convert it safely. -> not fixed (the signature is outside this chunk)
+- [low] [docs] The first `Tk` stays alive after it is shadowed at line 156, so two toolkits exist at once. This is harmless in a headless run, and `Tk::new` allocates nothing global as far as the visible API shows. -> not fixed
+- [low] [docs] `report` prints FAIL but `main` still exits 0, so the "performance check" cannot gate CI. This is a design choice for an example, so I left it. -> not fixed
+
