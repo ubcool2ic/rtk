@@ -914,3 +914,9 @@ I found nothing in lines 1-131 that needs a fix.
 - [severity low] [api] The test reads the `tk.modal` field (lines 159, 167) and calls `tk.contains`. I could not check from the files given that these are public, so a visibility problem would show up as a compile error. -> not fixed (cannot verify; the file otherwise appears to compile against the public API).
 - [severity low] [docs] No other problems found in lines 1-171. Helpers and tests have `///` docs, the tests are deterministic (headless `sim_*` calls with no timing), and no helper can panic except through its own assertions. -> none needed
 
+### tests/m011_table.rs lines 1-242
+- [medium] [bug] `test_table_10k_rows_performance` asserts a 2-second wall-clock bound, which is flaky on loaded or slow debug-build CI (line 226) -> fixed (bound raised to 10 s; it still catches quadratic regressions on 10k rows)
+- [medium] [bug] `test_table_clear` claims to check that the selection is reset, but nothing is selected before the clear, so the assertion passes trivially (lines 188-191) -> fixed (selects a row first and asserts it is selected)
+- [medium] [bug] `test_table_wheel_scroll_bounds` only asserts `top < 100` after scrolling far down, which holds even if the max clamp is broken (lines 139-140) -> fixed (asserts `top > 0` and that further wheel-down leaves the position unchanged)
+- [low] [bug] The two render tests use `assert!(x.is_ok())`, which discards the error message on failure (lines 201-202, 240) -> fixed (use `expect`)
+
