@@ -42,6 +42,7 @@ mod progress;
 mod tooltip;
 mod chart;
 mod image;
+mod dnd;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -173,6 +174,7 @@ pub struct Tk {
     pub(crate) modal_cancel: Option<ModalCancel>,
     pub(crate) modal_accept: Option<ModalAccept>,
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
+    pub(crate) dnd: crate::dnd::DndState,
 }
 
 impl Default for Tk {
@@ -228,6 +230,7 @@ impl Tk {
             modal_cancel: None,
             modal_accept: None,
             modal_entry_changed: None,
+            dnd: crate::dnd::DndState::default(),
         }
     }
 

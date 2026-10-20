@@ -333,6 +333,32 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     }
                 }
             }
+            WindowEvent::HoveredFile(path) => {
+                let (x, y) = self.tk.pointer;
+                self.tk.sim_file_hover(x, y, path);
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.tk.sim_file_hover_cancel();
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::DroppedFile(path) => {
+                let (x, y) = self.tk.pointer;
+                self.tk.sim_file_drop(x, y, &[path]);
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
             WindowEvent::Focused(false) => self.tk.clear_input(),
             WindowEvent::RedrawRequested => {
                 self.last_frame = Instant::now();
