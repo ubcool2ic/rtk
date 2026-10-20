@@ -447,13 +447,11 @@ impl Tk {
     }
 
     /// Laid-out rectangle in logical px of a mapped widget (runs layout if dirty).
-    /// Laid-out rectangle in logical px of a mapped widget (runs layout if dirty).
     pub fn widget_rect(&mut self, id: WidgetId) -> Option<Rect> {
         self.ensure_layout();
         self.node(id).filter(|node| node.visible).map(|node| node.rect)
     }
 
-    /// Widget holding keyboard focus (tkinter `focus_get`).
     /// Widget holding keyboard focus (tkinter `focus_get`).
     pub fn focused_widget(&self) -> Option<WidgetId> {
         self.focused.filter(|id| self.node(*id).is_some())

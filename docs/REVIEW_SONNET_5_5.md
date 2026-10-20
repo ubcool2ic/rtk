@@ -306,3 +306,23 @@ I reviewed only lines 693-698, which hold `Menubar::new`. It has a `///` doc com
 - [medium] [bug] `time_ticks` falls back to the 1-week step for huge ranges, which can produce millions of ticks (unbounded allocation) (lines 194-201) -> fixed (the fallback step is scaled up so the tick count stays within `max_ticks`)
 - [low] [bug] `bounds` uses `y_range` as given, so a reversed (`lo > hi`) or non-finite range gives inverted or NaN bounds (lines 115-118) -> fixed (a finite range is normalised so lo ≤ hi; a non-finite range is ignored)
 
+### src/tk/geometry.rs lines 325-483
+- [severity low] [docs] `widget_rect` has its `///` doc line duplicated, so rustdoc renders the sentence twice (lines 449-450) -> fixed
+- [severity low] [docs] `focused_widget` has its `///` doc line duplicated (lines 456-457) -> fixed
+- [severity low] [api] `is_mapped` and `focused_widget` don't follow the strict `<widget>_<verb>` pattern (tkinter's `winfo_ismapped` and `focus_get`). Renaming would be a breaking change to existing callers beyond this chunk's scope -> not fixed
+- [severity low] [bug] When pack children exist, grid children of the same parent are silently left unmapped (line 396-401). This is a deliberate `else if` that stands in for tkinter's "cannot mix managers" error, and the behaviour is consistent -> not fixed
+
+I found no panics, overflow, UTF-8 or reentrancy bugs in the layout, focus-reset or notebook/scroll-area paths of this chunk.
+
+### src/tk/geometry.rs lines 1-324
+- none
+
+I read lines 1-324 and found nothing I could confirm as a bug or API problem.
+
+- **Layout order:** the bottom-up measurement order is correct. It is a pre-order walk, reversed, so every descendant is measured before its parent. Notebook pages and ScrollArea content are included in that walk.
+- **Borrows:** the listbox and menubar code takes and restores or clones state without borrow or ordering problems.
+- **Size conversion:** the `initial_size` float-to-`u32` cast is NaN-safe, because `NaN.max(200.0)` gives 200.
+- **Docs and naming:** every fn has a `///` comment, and no public enum in this chunk needs `#[non_exhaustive]`. The method names (`pack`, `grid`, `place`, `grid_columnconfigure`, `grid_rowconfigure`) follow tkinter's own names.
+- **Unverified (radiobutton text, line 222):** the Radiobutton branch reads `n.text` directly, while the generic branch uses `widget_text`. If `widget_text` resolves a bound text variable, a Radiobutton's size would ignore it. I can't see `widget_text` from this chunk, so I left it alone rather than risk an empty-string regression.
+- **Unverified (zero window size):** `initial_size` returns `window_size` unclamped. A zero size is only a problem if the setter doesn't already reject it, and I can't see the setter.
+
