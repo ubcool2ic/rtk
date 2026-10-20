@@ -510,3 +510,15 @@ I found nothing that needs fixing in this chunk.
 - [severity low] [bug] `handle_close_request` takes the callback out before calling it. A `sim_close_request` made from inside the callback therefore finds no callback and quits without consulting the veto. This reentrant edge case is acceptable and documented behaviour, and fixing it would need a redesign (line 177) -> not fixed (edge case, needs redesign)
 - [severity low] [api] The tkinter-style names (`title`, `geometry`, `minsize`, `resizable`) intentionally do not follow `<widget>_<verb>`, and `clear_minsize`/`clear_maxsize` are consistent with each other -> not fixed (intentional)
 
+### src/var.rs lines 1-199
+- [low] [bug] A handle from a dropped `Tk` can alias a variable in a later `Tk`, because the owner token is the address of `var_owner`, which the allocator may reuse after the first `Tk` drops (lines 26-28, 64-66, 161-165). The comment only guarantees the address stays unique while the owning `Tk` is alive. The proper fix is a process-wide atomic counter for the owner id, but `Tk` construction lives outside this chunk. -> not fixed (the fix needs changes outside this chunk)
+- [low] [bug] Variable slots are never reused, so creating and destroying variables dynamically grows `vars` without bound (lines 158-177). The design is documented and intentional. A linear free-slot scan would make creation O(n), and a free list needs a new `Tk` field outside this chunk. -> not fixed (deliberate design; slots are small)
+- [low] [bug] If a trace panics, `notifying` stays true and the trace is dropped (lines 111-128). Later changes to that variable then never notify. This only matters when the caller catches the unwind, so I left it alone. -> not fixed (unwind-only edge case; a guard would be a refactor)
+- [low] [api] `#[derive(Debug)]` on `Var<T>` adds an unwanted `T: Debug` bound (line 22). It is harmless for the supported types (`String`, `i64`, `bool`, `f64`), so I did not change it. -> not fixed (no practical impact)
+
+No other defects found in this chunk:
+- The generation, owner and type checks reject destroyed, foreign and mistyped handles.
+- `destroy` clears the value, trace and `notifying` flag, so the generation saturating at `u32::MAX` is harmless because the value is gone.
+- Reentrant writes and traces that replace or destroy their own variable are handled correctly.
+- The borrow flow in `set` is sound, and every fn has a `///` doc.
+
