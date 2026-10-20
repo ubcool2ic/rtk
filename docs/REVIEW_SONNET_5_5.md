@@ -600,3 +600,12 @@ I found no other defects in lines 1-126. The colourblind capture and restore log
 - [low] [api] `grid_forget` delegates to `pack_forget` and unmaps any manager, not only grid. This is harmless and consistent with tkinter's observable behavior -> not fixed
 - [low] [bug] A `notebook_select` call made from inside the changed callback updates the selection but does not re-fire the callback. This is deliberate reentrancy protection -> not fixed
 
+### src/tk/inputs_state.rs lines 1-116
+- none
+
+This chunk contains only three public enums and a `pub(crate)` state struct, so there is no executable logic to hold a panic, overflow, UTF-8 or reentrancy bug.
+- All three public enums (`RingMode`, `Orient`, `CheckState`) are `#[non_exhaustive]` and fully documented.
+- Every struct field has a `///` doc comment.
+- The struct is stored inside the widget node, so it is dropped with the widget and is not reset separately on destroy.
+- Two things could not be checked from this chunk. One is that `Default` gives `slider_step` and `dspin_step` a value of 0.0, so their constructors must set a sensible step. The other is that `scroll_area_content` could dangle if the content frame is destroyed independently of its ScrollArea. Both are outside the lines reviewed.
+
