@@ -303,5 +303,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    tk.mainloop()
+    let result = tk.mainloop();
+    // Tell the background worker to stop once the event loop has exited.
+    running.store(false, Ordering::Relaxed);
+    result
 }

@@ -778,3 +778,9 @@ Two assumptions I could not verify:
 - `PackOpts` must be `Copy`, because `options` is passed by value twice (lines 13-14).
 - `mainloop()` must return a `Result` whose error converts into `Box<dyn Error>`.
 
+### examples/modern.rs lines 1-308
+- [low] [bug] The worker thread is never told to stop after `mainloop()` returns. `running` is only cleared in screenshot mode, so the thread keeps running and posting to the proxy after the window closes. Users who copy this pattern inherit the leak. (lines 300-306) -> fixed
+- [low] [docs] The `val <= 100` loop guard is dead, because `val` wraps at 102 and never exceeds 100. Only the `running` flag ends the loop, and that is now cleared on exit. -> not fixed (harmless, no behaviour change)
+
+I found no other real API misuse or panic paths in this chunk. Every fallible constructor uses `?`, and the `--screenshot` argument parsing is bounds-checked.
+
