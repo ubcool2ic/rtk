@@ -24,6 +24,7 @@ const TEXT_CACHE_LIMIT: usize = 2048;
 /// Upper bound on cached text measurements.
 const MEASURE_CACHE_LIMIT: usize = 65_536;
 
+/// Font system, glyph cache and shaping/measurement caches used for all text drawing.
 pub(crate) struct TextEngine {
     fonts: FontSystem,
     cache: SwashCache,
@@ -187,7 +188,7 @@ impl TextEngine {
         if clip.width <= 0.0 || clip.height <= 0.0 {
             return;
         }
-        let origin = (origin.0.round(), origin.1.round());
+        let origin = (origin.0.round().clamp(-1.0e7, 1.0e7), origin.1.round().clamp(-1.0e7, 1.0e7));
         let effective_alpha = (color.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
         let draw_color = cosmic_text::Color::rgba(color.r, color.g, color.b, effective_alpha);
         let key: TextKey = (text.to_owned(), size.to_bits(), family.map(str::to_owned), weight, italic);
@@ -897,24 +898,26 @@ impl Tk {
                     if horizontal {
                         let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics_x(tid));
                         if let Some((total, visible, scroll)) = target_info {
-                            let track_w = logical.width;
-                            let thumb_w = (track_w * (visible / total)).clamp(16.0, track_w);
+                            let track_w = logical.width.max(0.0);
+                            let ratio = if total > 0.0 { visible / total } else { 1.0 };
+                            let thumb_w = (track_w * ratio).max(16.0).min(track_w);
                             let avail = track_w - thumb_w;
                             let max_scroll = total - visible;
-                            let thumb_x = if max_scroll > 0.0 { avail * (scroll / max_scroll) } else { 0.0 };
-                            let thumb_rect = Rect::new(logical.x + thumb_x, logical.y + 1.0, thumb_w, logical.height - 2.0).scaled(scale);
+                            let thumb_x = if max_scroll > 0.0 { avail * (scroll / max_scroll).clamp(0.0, 1.0) } else { 0.0 };
+                            let thumb_rect = Rect::new(logical.x + thumb_x, logical.y + 1.0, thumb_w, (logical.height - 2.0).max(0.0)).scaled(scale);
                             let thumb_color = resolved.fg;
                             fill(pixmap, thumb_rect, clip, thumb_color);
                         }
                     } else {
                         let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics(tid));
                         if let Some((total, visible, scroll)) = target_info {
-                            let track_h = logical.height;
-                            let thumb_h = (track_h * (visible / total)).clamp(16.0, track_h);
+                            let track_h = logical.height.max(0.0);
+                            let ratio = if total > 0.0 { visible / total } else { 1.0 };
+                            let thumb_h = (track_h * ratio).max(16.0).min(track_h);
                             let avail = track_h - thumb_h;
                             let max_scroll = total - visible;
-                            let thumb_y = if max_scroll > 0.0 { avail * (scroll / max_scroll) } else { 0.0 };
-                            let thumb_rect = Rect::new(logical.x + 1.0, logical.y + thumb_y, logical.width - 2.0, thumb_h).scaled(scale);
+                            let thumb_y = if max_scroll > 0.0 { avail * (scroll / max_scroll).clamp(0.0, 1.0) } else { 0.0 };
+                            let thumb_rect = Rect::new(logical.x + 1.0, logical.y + thumb_y, (logical.width - 2.0).max(0.0), thumb_h).scaled(scale);
                             let thumb_color = resolved.fg;
                             fill(pixmap, thumb_rect, clip, thumb_color);
                         }
@@ -1363,8 +1366,8 @@ impl Tk {
                 let m = self.measure(&text, 12.0);
                 let tip_w = m.width + 12.0;
                 let tip_h = m.height + 8.0;
-                let tip_x = (self.pointer.0 + 12.0).clamp(2.0, (width as f32 / scale) - tip_w - 2.0);
-                let tip_y = (self.pointer.1 + 16.0).clamp(2.0, (height as f32 / scale) - tip_h - 2.0);
+                let tip_x = (self.pointer.0 + 12.0).clamp(2.0, ((width as f32 / scale) - tip_w - 2.0).max(2.0));
+                let tip_y = (self.pointer.1 + 16.0).clamp(2.0, ((height as f32 / scale) - tip_h - 2.0).max(2.0));
                 let tip_rect = Rect::new(tip_x, tip_y, tip_w, tip_h);
                 let tip_clip = Rect::new(0.0, 0.0, width as f32, height as f32);
 
