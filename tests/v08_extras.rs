@@ -153,7 +153,7 @@ fn modal_blocks_background_clicks() {
 /// Tests that the file browser dialog lists directory contents and returns an accepted path.
 #[test]
 fn dialog_file_browser_lists_and_accepts() {
-    let tmp = std::env::temp_dir().join("rtk_test_file_dialog");
+    let tmp = std::env::temp_dir().join(format!("rtk_test_file_dialog_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(tmp.join("subdir")).unwrap();
     std::fs::write(tmp.join("data.bin"), b"1234").unwrap();

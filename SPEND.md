@@ -294,3 +294,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/tk_review_regressions.rs:1-119 | 4781 (0 cached) | 1395 (860 reasoning) | 0.0235 | 5.8552 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/tk_review_regressions_2.rs:1-152 | 5661 (0 cached) | 2850 (1710 reasoning) | 0.0398 | 5.8950 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/treeview_notebook.rs:1-80 | 3480 (0 cached) | 2498 (1310 reasoning) | 0.0319 | 5.9269 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/v08_extras.rs:1-258 | 6753 (0 cached) | 1272 (838 reasoning) | 0.0262 | 5.9531 |

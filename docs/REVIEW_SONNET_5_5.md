@@ -1161,3 +1161,9 @@ The two tests look correct and deterministic. They use simulated time through `s
 - [low] [bug] The test never checks that the page really became selected, because the `notebook_select` result is ignored (line 50) -> not fixed. The row-count and render assertions cover it indirectly, and I can't confirm the return type from here.
 - [low] [bug] A `u32` multiplication in the pixel index could overflow only for absurd sizes. The 400x300 pixmap is far below that, so no change (line 71) -> not fixed.
 
+### tests/v08_extras.rs lines 1-258
+- [severity low] [bug] The file-dialog test uses a fixed shared temp directory name, `rtk_test_file_dialog` (line 156). Concurrent `cargo test` runs, or a stale directory left by another user, can collide and cause flaky failures or deletion of foreign data. -> fixed (the name now includes the process id)
+- [severity low] [bug] Line 197 passes `tmp` by value to `remove_dir_all`. This is harmless, but I made no change. -> not fixed (correct as written)
+- [severity low] [docs] The icon list in `all_icons_render_and_register` is hand-maintained (line 240), so a newly added `Icon` variant would go untested. -> not fixed (I can't see the `Icon` definition and have no way to enumerate its variants)
+- Other tests: assertions are meaningful, there are no timing dependencies, and the helpers don't panic.
+
