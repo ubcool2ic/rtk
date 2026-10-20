@@ -1167,3 +1167,9 @@ The two tests look correct and deterministic. They use simulated time through `s
 - [severity low] [docs] The icon list in `all_icons_render_and_register` is hand-maintained (line 240), so a newly added `Icon` variant would go untested. -> not fixed (I can't see the `Icon` definition and have no way to enumerate its variants)
 - Other tests: assertions are meaningful, there are no timing dependencies, and the helpers don't panic.
 
+### tests/v08_widgets.rs lines 1-279
+- [severity low] [bug] `test_monospace_font_option` only asserts `pm.is_ok()`, so a render failure reports nothing about its cause (lines 198-199) -> fixed (the error is now surfaced via `expect`)
+- [severity low] [bug] `test_progressbar_f64_and_indeterminate` binds the f64 var (0.75) but never checks the bound value, so the "f64" half of the test is weak (lines 174-175) -> not fixed (no progress value getter is visible in the provided API, so I can't add a correct assertion)
+- [severity low] [bug] `test_tooltips` relies on a tooltip delay between 200 ms and 550 ms of simulated time. This is deterministic because it uses `sim_advance_time`, not wall-clock time, so it is not flaky (lines 216-219) -> not fixed (no change needed)
+- [severity low] [docs] `test_notebook_and_geometry_forget` mixes notebook and `pack_forget` checks. The coverage is fine and the doc comment is accurate -> not fixed (no change needed)
+
