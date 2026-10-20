@@ -351,3 +351,13 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
 - [low] [bug] `watch_stylesheet` ignores the initial load error and still returns true (line 104) -> not fixed (the return value is documented as stat-only; changing it alters behaviour)
 - [low] [bug] `ImageId` allocation uses `saturating_add`, and no image unload exists in this chunk, so `images` grows without bound -> not fixed (an unload API would live outside this chunk)
 
+### src/icons.rs lines 351-417
+- [severity medium] [bug] F2: `icon()` registers the image with the requested `size_px` for both width and height, but `render_rgba` (not visible in this chunk) may render a different size for icons under 8px, e.g. by clamping or returning an empty buffer for 0. The buffer length then does not match `size_px²·4`, so registration fails or produces a garbled image. (lines 413-416) -> fixed. The registered dimensions are now derived from the actual buffer, and an empty or non-square buffer returns `None`. I could not see the clamp in the top part of `render_rgba`, so I did not touch it.
+- [severity low] [docs] `icon()` doc comment did not say what happens for tiny or zero sizes (line 412) -> fixed
+- [severity low] [bug] The unpremultiply loop (lines 394-409) and the `from_xywh(..).unwrap()` calls use constant positive sizes scaled by `k`, which is only positive if `size_px` is non-zero. Zero-size input is now rejected in `icon()`, which makes these safe. -> not fixed (no change needed beyond the `icon()` guard)
+
+### src/icons.rs lines 1-350
+- [medium] [bug] `render_rgba` clamps `size_px` up to 8, so a request for 1–7 px returns an 8×8 buffer. The caller expects `size_px*size_px*4` bytes, so the buffer length is wrong (F2). Size 0 and over-large sizes hit the same path, because `Pixmap::new` fails and the fallback is again 8×8 (lines 72-73). -> fixed: the requested size is honored, and 0 or an unallocatable size returns an empty `Vec`.
+- [low] [api] The public enum `Icon` lacks `#[non_exhaustive]`, so adding icons later would be a breaking change (line 10). -> fixed
+- [low] [docs] The `render_rgba` doc did not state the buffer length or the empty-buffer cases (line 70). -> fixed
+
