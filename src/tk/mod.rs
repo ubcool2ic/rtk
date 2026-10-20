@@ -43,6 +43,7 @@ mod tooltip;
 mod shortcuts;
 mod clipboard;
 mod edit;
+mod theme;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
