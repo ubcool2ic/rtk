@@ -980,3 +980,6 @@ I found nothing in lines 1-75 that needs a fix, though I could only check the fi
 - [low] [bug] The `validate_icon` tests do not cover the exact boundaries or huge-dimension overflow of `w*h*4`. This is only a coverage gap, and the signature of `validate_icon` is not visible here -> not fixed
 - [low] [bug] The `dispatch_*` tests rely on a thread-local handler (implied by the `Rc` captures). With `--test-threads=1`, handlers may leak between tests, but they are all overwritten or harmless -> not fixed (no flakiness in practice)
 
+### tests/m013_a11y.rs lines 1-122
+- none
+
