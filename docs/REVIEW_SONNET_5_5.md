@@ -614,3 +614,7 @@ This chunk contains only three public enums and a `pub(crate)` state struct, so 
 - [severity low] [docs] The other public enums re-exported here (`Side`, `Key`, `State`, and so on) are defined in other modules, so I cannot check their `#[non_exhaustive]` attributes or docs from this chunk -> not fixed (outside the reviewed chunk)
 - [severity low] [bug] The rest of the chunk is correct. The `Display` impl matches all variants, every fn has a `///` doc, and the `cfg` gating on `a11y_accesskit`, `tray` and the doctest struct is consistent. -> not fixed (nothing to fix)
 
+### src/tk/clipboard.rs lines 1-69
+- [severity low] [bug] `clipboard_get` returned `Some("")` when the OS clipboard held empty text, while the in-memory path returns `None` for empty, so the two paths disagreed (lines 56-59) -> fixed
+- [severity low] [api] None of the public methods carry `#[non_exhaustive]`, naming, or docs problems. `clipboard_clear`, `clipboard_append` and `clipboard_get` follow the tkinter-style naming pattern and all have `///` docs -> not fixed (nothing to fix)
+
