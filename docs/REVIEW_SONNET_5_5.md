@@ -908,3 +908,9 @@ I found nothing in lines 1-131 that needs a fix.
 - [low] [bug] `test_popup_clamped` checks only the right and bottom edges. A popup clamped to a negative x or y would pass. (lines 197-199) -> fixed (added lower-bound assertions)
 - [low] [docs] `test_check_toggles_var` binds `idx` and then discards it with `let _ = idx;`. This is harmless and I left it as is. (line 44) -> not fixed (not a correctness issue)
 
+### tests/m011_modal.rs lines 1-171
+- [severity low] [bug] `stale_closure_does_not_close_restored_outer` never checked that the outer dialog survived, and line 168 repeated the line 163 depth assertion (lines 163-168). The test passed whether or not the outer scrim was still alive. -> fixed. It now takes the restored `tk.modal` scrim, asserts the widget still exists, and asserts the outer callback has not fired.
+- [severity low] [bug] The test does not call a stale teardown closure directly, because the public API gives no handle to one. The new assertions cover only the observable effect, that the outer dialog is intact after the inner one closes. -> not fixed (no API to reach the closure from an integration test).
+- [severity low] [api] The test reads the `tk.modal` field (lines 159, 167) and calls `tk.contains`. I could not check from the files given that these are public, so a visibility problem would show up as a compile error. -> not fixed (cannot verify; the file otherwise appears to compile against the public API).
+- [severity low] [docs] No other problems found in lines 1-171. Helpers and tests have `///` docs, the tests are deterministic (headless `sim_*` calls with no timing), and no helper can panic except through its own assertions. -> none needed
+
