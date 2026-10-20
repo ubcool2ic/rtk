@@ -584,3 +584,7 @@ I found nothing in lines 1-155 that needs an edit.
 
 I found no other defects in lines 1-126. The colourblind capture and restore logic is consistent with the documented behaviour. Every function has a `///` doc comment. No panics, indexing, or arithmetic risks appear in this chunk.
 
+### src/tk/switch.rs lines 1-106
+- [low] [bug] `switch_set` is documented to return false for dead variables, but it called `var.set` and returned true unconditionally, so a dead or foreign variable was reported as success and the tree was marked dirty (lines 45-48) -> fixed
+- [low] [api] No other API, docs or `#[non_exhaustive]` issues in this chunk. `Switch` is a constructor namespace with no public enums, and the method names follow `switch_<verb>`. The animation code has no panics, overflow, or state-reset problems here.
+
