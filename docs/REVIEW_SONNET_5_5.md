@@ -869,3 +869,10 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 ### tests/fonts.rs lines 1-17
 - [severity medium] [bug] The assertion `p[0] < 100` (line 15) passes trivially if the default background has a red channel below 100, for example in a dark theme. It also passes if any non-text element is dark. It does not prove that text was drawn with the font. -> fixed. The test now renders a baseline pixmap before adding the label and asserts that the pixels differ afterwards.
 
+### tests/gallery_smoke.rs lines 1-76
+- [medium] [bug] The screenshot checks only assert `len() > 0`, so a garbage or truncated file would pass (lines 63-72). -> fixed: a helper now checks the PNG signature and a non-zero IHDR width and height.
+- [low] [bug] The 2x HiDPI screenshot was only checked for existence and non-emptiness, so it could be a 1x render without failing (lines 69-72). -> fixed: its width must now exceed the 1x light/basics width.
+- [low] [docs] The test returns silently when `RTK_GALLERY_TEST` is unset, so it reports as passed with no hint it was skipped (line 30). -> fixed: it prints a skip message to stderr.
+- [low] [bug] The temp dir is left behind when an assertion fails (line 74). -> not fixed: keeping the output on failure is useful for debugging.
+- NOTE: edits for tests/gallery_smoke.rs:1-76 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror: unexpected closing delimiter: `}`\n  --> tests/gallery_smoke.rs:56:5\n   |\n46 | fn gallery_screenshots() {\n   |                          - this delimiter might not be properly closed...\n...\n55 |         }\n   |         - ...as it matches this but it has different indentation\n56 | '
+
