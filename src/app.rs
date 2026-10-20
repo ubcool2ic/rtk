@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
@@ -27,6 +27,8 @@ struct App {
     last_sheet_poll: Instant,
     first_frame_done: bool,
     last_draw: Instant,
+    /// Last value pushed to `Window::set_ime_allowed`, to avoid redundant calls.
+    ime_allowed: bool,
 }
 
 impl Tk {
@@ -53,6 +55,7 @@ impl Tk {
             last_sheet_poll: now,
             first_frame_done: false,
             last_draw: now,
+            ime_allowed: false,
         };
         event_loop.run_app(&mut app)?;
         match app.error {
@@ -174,6 +177,7 @@ impl App {
         let Some(window) = self.window.clone() else { return Ok(()) };
         window.set_title(&self.tk.window_title);
         self.apply_window_props();
+        self.sync_ime(&window);
         let size = window.inner_size();
         if self.occluded || size.width == 0 || size.height == 0 {
             self.tk.dirty = false;
@@ -190,7 +194,7 @@ impl App {
         }
         if self.surface.is_none() {
             if let Some(context) = &self.context {
-                self.surface = Some(Surface::new(context, window)?);
+                self.surface = Some(Surface::new(context, window.clone())?);
             }
         }
         self.last_draw = Instant::now();
@@ -224,6 +228,7 @@ impl App {
                 t_present.elapsed().as_secs_f64() * 1000.0
             );
         }
+        self.sync_ime_cursor_area(&window);
         if !self.first_frame_done {
             self.first_frame_done = true;
             // Opt-in diagnostics used by docs/PERFORMANCE.md.
@@ -325,7 +330,31 @@ impl ApplicationHandler<RtkUserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                self.tk.sim_ime_preedit(&text, cursor);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                self.tk.sim_ime_commit(&text);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(Ime::Disabled) => {
+                self.tk.sim_ime_preedit("", None);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                // While a composition is active the platform delivers composed
+                // text through `Ime::Commit`; ignore raw key text for that widget.
+                if self.tk.ime_preedit().is_some() {
+                    self.schedule(event_loop);
+                    return;
+                }
                 let key = match &event.logical_key {
                     WinitKey::Named(NamedKey::Backspace) => Some(Key::Backspace),
                     WinitKey::Named(NamedKey::Delete) => Some(Key::Delete),
@@ -406,6 +435,30 @@ impl App {
             return;
         }
         self.sync_window_props();
+    }
+
+    /// Enables or disables IME input on the window when the toolkit's
+    /// [`Tk::ime_wanted`] state changes.
+    fn sync_ime(&mut self, window: &Window) {
+        let wanted = self.tk.ime_wanted();
+        if wanted != self.ime_allowed {
+            self.ime_allowed = wanted;
+            window.set_ime_allowed(wanted);
+        }
+    }
+
+    /// Positions the IME candidate window at the caret when composition is
+    /// wanted; otherwise leaves the platform default in place.
+    fn sync_ime_cursor_area(&mut self, window: &Window) {
+        if !self.tk.ime_wanted() {
+            return;
+        }
+        if let Some(area) = self.tk.ime_cursor_area() {
+            window.set_ime_cursor_area(
+                LogicalPosition::new(f64::from(area.x), f64::from(area.y)),
+                LogicalSize::new(f64::from(area.width.max(1.0)), f64::from(area.height.max(1.0))),
+            );
+        }
     }
 
     /// Pushes the toolkit's current window properties (icon, size constraints,

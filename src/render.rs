@@ -8,7 +8,7 @@ use tiny_skia::{Color as SkColor, FilterQuality, GradientStop, LinearGradient, P
 
 use crate::layout::{Rect, Size};
 use crate::style::{build_rounded_rect_path, ResolvedStyle, State};
-use crate::tk::cursor_boundary;
+use crate::tk::{cursor_boundary, floor_char_boundary};
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk, Var};
 
@@ -474,7 +474,18 @@ impl Tk {
                     // Own the text so `node`'s borrow ends before drawing (text_engine needs &mut self).
                     let full_text = node.text.clone();
                     let text_cursor = node.cursor;
-                    let lines: Vec<&str> = full_text.split('\n').collect();
+                    let preedit = self.ime_preedit().and_then(|(pid, s, _)| if pid == id { Some(s.to_owned()) } else { None });
+                    let caret = floor_char_boundary(&full_text, text_cursor);
+                    let display = if let Some(p) = &preedit {
+                        let mut s = String::with_capacity(full_text.len() + p.len());
+                        s.push_str(full_text.get(..caret).unwrap_or_default());
+                        s.push_str(p);
+                        s.push_str(full_text.get(caret..).unwrap_or_default());
+                        s
+                    } else {
+                        full_text.clone()
+                    };
+                    let lines: Vec<&str> = display.split('\n').collect();
                     let text_clip = clip.intersection(inner.scaled(scale));
 
                     for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
@@ -485,6 +496,22 @@ impl Tk {
                             resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                             origin, text_clip, resolved.opacity,
                         );
+                    }
+                    if let Some(p) = &preedit {
+                        let before = full_text.get(..caret).unwrap_or_default();
+                        let line_index = before.matches('\n').count();
+                        if line_index >= start_row && line_index < start_row + vis_rows {
+                            let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+                            let col = before.get(line_start..).unwrap_or_default();
+                            let col_w = self.measure_with(col, &resolved).width;
+                            let preedit_w = self.measure_with(p, &resolved).width;
+                            let row_y = inner.y + (line_index - start_row) as f32 * line_h;
+                            fill(
+                                &mut pixmap,
+                                Rect::new(inner.x + col_w, row_y + 2.0 + resolved.font_size * 1.3, preedit_w.max(1.0), 1.0).scaled(scale),
+                                text_clip, draw_fg,
+                            );
+                        }
                     }
 
                     if self.focused == Some(id) && !disabled {
@@ -581,11 +608,42 @@ impl Tk {
                         (logical.y + (logical.height - resolved.font_size * 1.3) / 2.0) * scale,
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
-                    self.text_engine.draw_styled(
-                        &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
-                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
-                        origin, text_clip, resolved.opacity,
-                    );
+                    let preedit = self.ime_preedit().and_then(|(pid, s, _)| if pid == id { Some(s.to_owned()) } else { None });
+                    if let Some(preedit) = preedit {
+                        let before = text.get(..cursor).unwrap_or_default();
+                        let after = text.get(cursor..).unwrap_or_default();
+                        let before_w = self.measure_with(before, &resolved).width;
+                        let preedit_w = self.measure_with(&preedit, &resolved).width;
+                        self.text_engine.draw_styled(
+                            &mut pixmap, before, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, text_clip, resolved.opacity,
+                        );
+                        self.text_engine.draw_styled(
+                            &mut pixmap, &preedit, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            ((inner.x - scroll + before_w) * scale, origin.1),
+                            text_clip, resolved.opacity,
+                        );
+                        self.text_engine.draw_styled(
+                            &mut pixmap, after, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            ((inner.x - scroll + before_w + preedit_w) * scale, origin.1),
+                            text_clip, resolved.opacity,
+                        );
+                        let underline_y = (logical.y + (logical.height + resolved.font_size * 1.3) / 2.0).min(logical.y + logical.height - 1.0);
+                        fill(
+                            &mut pixmap,
+                            Rect::new(inner.x - scroll + before_w, underline_y, preedit_w.max(1.0), 1.0).scaled(scale),
+                            text_clip, draw_fg,
+                        );
+                    } else {
+                        self.text_engine.draw_styled(
+                            &mut pixmap, &text, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, text_clip, resolved.opacity,
+                        );
+                    }
                     if self.focused == Some(id) && !disabled {
                         fill(
                             &mut pixmap,

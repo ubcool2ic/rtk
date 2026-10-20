@@ -26,6 +26,9 @@ use crate::widgets::{
 use crate::{Opt, RtkError, WidgetId};
 
 
+/// Active IME composition: target widget, preedit text and byte cursor range.
+pub(crate) type ImePreedit = (WidgetId, String, Option<(usize, usize)>);
+
 mod style;
 mod window;
 mod tree;
@@ -41,6 +44,7 @@ mod notebook;
 mod progress;
 mod tooltip;
 mod theme;
+mod ime;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -195,6 +199,8 @@ pub struct Tk {
     pub(crate) system_theme: Option<crate::theme::SystemTheme>,
     /// When following the system theme, the `(light, dark)` theme pair to use.
     pub(crate) follow_system: Option<(Theme, Theme)>,
+    /// Active IME composition: `(widget, text, byte cursor range)`.
+    pub(crate) ime_preedit: Option<ImePreedit>,
 }
 
 impl Default for Tk {
@@ -260,6 +266,7 @@ impl Tk {
             base_danger: None,
             system_theme: None,
             follow_system: None,
+            ime_preedit: None,
         }
     }
 

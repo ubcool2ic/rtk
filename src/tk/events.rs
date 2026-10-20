@@ -597,6 +597,7 @@ impl Tk {
         self.hovered = None;
         self.drag_active = None;
         self.scrollbar_drag = None;
+        self.ime_preedit = None;
         self.dirty = true;
     }
 
