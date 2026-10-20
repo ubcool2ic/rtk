@@ -54,6 +54,19 @@ pub(crate) type ModalAccept = Box<dyn FnMut(&mut Tk)>;
 /// Callback run when the text of an Entry inside a modal dialog changes.
 pub(crate) type ModalEntryChanged = Box<dyn FnMut(&mut Tk, WidgetId, &str)>;
 
+/// Saved state of one modal dialog frame, used to restore an outer dialog
+/// after a nested (inner) dialog closes.
+pub(crate) struct ModalFrame {
+    /// Root scrim widget of the saved dialog.
+    pub(crate) modal: Option<WidgetId>,
+    /// Cancel (Escape) handler of the saved dialog.
+    pub(crate) cancel: Option<ModalCancel>,
+    /// Accept (Enter) handler of the saved dialog.
+    pub(crate) accept: Option<ModalAccept>,
+    /// Entry-changed handler of the saved dialog.
+    pub(crate) entry_changed: Option<ModalEntryChanged>,
+}
+
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
 
@@ -171,6 +184,8 @@ pub struct Tk {
     pub(crate) modal_cancel: Option<ModalCancel>,
     pub(crate) modal_accept: Option<ModalAccept>,
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
+    /// Stack of saved outer modal frames (innermost last) for nested dialogs.
+    pub(crate) modal_stack: Vec<ModalFrame>,
 }
 
 impl Default for Tk {
@@ -226,6 +241,7 @@ impl Tk {
             modal_cancel: None,
             modal_accept: None,
             modal_entry_changed: None,
+            modal_stack: Vec::new(),
         }
     }
 
