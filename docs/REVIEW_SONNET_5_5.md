@@ -1149,3 +1149,10 @@ The two tests look correct and deterministic. They use simulated time through `s
 - [low] [bug] `f3_canvas_add_many_items_is_fast` uses a wall-clock bound (line 65). The 10 s limit is loose enough against flakiness for 20k trivial inserts, and it still catches quadratic behaviour. -> not fixed (acceptable as is)
 - [low] [bug] `f3_canvas_delete_then_add_reuses_slot` does not directly observe slot reuse (lines 70-81). It checks only the item counts, because the id semantics are not visible from this chunk. -> not fixed (no safe stronger assertion without knowing the id scheme)
 
+### tests/tk_review_regressions_2.rs lines 1-152
+- [severity low] [docs] The module doc gives `ask_directory(tk, start_dir, cb)`, but the test calls it with title, start dir and callback (line 13) -> fixed
+- [severity low] [bug] `Opt` is imported only to be used by a dummy `let _ = Opt::Text(...)` that silences the unused-import warning (lines 15, 150) -> fixed (removed both)
+- [severity medium] [bug] The F6 temp directory is cleaned up only on the success path, so any failed assertion leaks `rtk_f6_<pid>` in the temp dir (lines 121-149) -> fixed (RAII guard)
+- [severity low] [bug] The F6 final loop `while dialog::is_open { close }` would spin forever if `close` ever failed to pop (line 146) -> not fixed (that would itself be a real bug in the stack, so the hang exposes it)
+- [severity low] [bug] The F6 assertion accepts either navigation or completion, so it is looser than the test name suggests (line 145) -> not fixed (either outcome is valid Enter behaviour, and I can't tell from this chunk which one the dialog implements)
+

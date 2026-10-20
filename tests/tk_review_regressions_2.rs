@@ -10,11 +10,21 @@
 //!
 //! Assumed (truncated in the API index) signatures: `Combobox::new(tk, parent, Vec<String>,
 //! Var<i64>)`, `Text::new(tk, parent, usize, usize)`, `dialog::ask_yes_no(tk, title, msg, cb)`
-//! and `dialog::ask_directory(tk, start_dir, cb)`.
+//! and `dialog::ask_directory(tk, title, start_dir, cb)`.
 
-use rtk::{dialog, Canvas, Combobox, Frame, Key, Opt, PackOpts, Text, Tk};
+use rtk::{dialog, Canvas, Combobox, Frame, Key, PackOpts, Text, Tk};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+/// Removes the wrapped directory tree on drop, even when a test assertion panics.
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    /// Best-effort recursive removal of the guarded directory.
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 /// Pass-1 F6: clicking an open combobox closes it instead of re-opening it.
 #[test]
@@ -118,7 +128,8 @@ fn pass3_f5_nested_dialogs_keep_modal_stack() {
 /// Pass-3 F6: the directory chooser lists sub-directories and Enter acts on a selection.
 #[test]
 fn pass3_f6_ask_directory_navigates_with_enter() {
-    let base = std::env::temp_dir().join(format!("rtk_f6_{}", std::process::id()));
+    let guard = TempDirGuard(std::env::temp_dir().join(format!("rtk_f6_{}", std::process::id())));
+    let base = guard.0.clone();
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(base.join("childdir")).unwrap();
     let mut tk = Tk::new();
@@ -146,6 +157,5 @@ fn pass3_f6_ask_directory_navigates_with_enter() {
     while dialog::is_open(&tk) {
         dialog::close(&mut tk);
     }
-    let _ = std::fs::remove_dir_all(&base);
-    let _ = Opt::Text(String::new());
+    drop(guard);
 }
