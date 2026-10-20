@@ -5,6 +5,9 @@
 //! snapshotted into owned locals up front so the immutable borrow of the widget
 //! node ends before `tk.text_engine` is borrowed mutably for text drawing.
 
+/// Snapshot of one menu row for drawing: (label, accelerator, enabled, is_check_item, checked).
+type MenuRow = (Option<String>, Option<String>, bool, bool, bool);
+
 use tiny_skia::{Paint, PathBuilder, Pixmap, Transform};
 
 use crate::layout::Rect;
@@ -143,6 +146,143 @@ impl TreeSnapshot {
             top,
             visible_rows,
         })
+    }
+}
+
+/// Draws all open menus (menubar dropdowns, popups, submenus) as an overlay.
+pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
+    if tk.menus.open.is_empty() {
+        return;
+    }
+    let levels = tk.menus.open.len();
+    let (surface, border, sel_bg, sel_fg, muted) = tk.menu_colors();
+    let style = tk.resolved_style(tk.root()).unwrap_or_default();
+    let font_size = style.font_size;
+    let ih = crate::tk::menu::item_height(font_size);
+    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32 / scale, pixmap.height() as f32 / scale);
+
+    for level in 0..levels {
+        let Some(rect) = tk.menu_panel_rect(level) else { continue };
+        let Some(open) = tk.menus.open.get(level).copied() else { continue };
+        let menu = open.menu;
+        let highlight = open.highlight;
+        let items: Vec<MenuRow> = tk
+            .menus
+            .get(menu)
+            .map(|m| {
+                m.items
+                    .iter()
+                    .map(|item| match item {
+                        crate::tk::menu::MenuItem::Command { label, accel, enabled } => {
+                            (Some(label.clone()), accel.clone(), *enabled, false, false)
+                        }
+                        crate::tk::menu::MenuItem::Check { label, var } => {
+                            let checked = var.get(tk).unwrap_or(false);
+                            (Some(label.clone()), None, true, true, checked)
+                        }
+                        crate::tk::menu::MenuItem::Submenu { label, .. } => {
+                            (Some(label.clone()), None, true, false, false)
+                        }
+                        crate::tk::menu::MenuItem::Separator => (None, None, false, false, false),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Panel background.
+        fill(pixmap, rect.scaled(scale), full_clip, surface);
+        // 1px border.
+        fill(pixmap, Rect::new(rect.x, rect.y, rect.width, 1.0).scaled(scale), full_clip, border);
+        fill(pixmap, Rect::new(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0).scaled(scale), full_clip, border);
+        fill(pixmap, Rect::new(rect.x, rect.y, 1.0, rect.height).scaled(scale), full_clip, border);
+        fill(pixmap, Rect::new(rect.x + rect.width - 1.0, rect.y, 1.0, rect.height).scaled(scale), full_clip, border);
+
+        for (idx, (label, accel, enabled, is_check, checked)) in items.iter().enumerate() {
+            let iy = rect.y + 4.0 + idx as f32 * ih;
+            let row = Rect::new(rect.x + 1.0, iy, rect.width - 2.0, ih);
+            let Some(label) = label else {
+                // Separator: 1px line in the middle.
+                let sy = iy + ih / 2.0;
+                fill(pixmap, Rect::new(rect.x + 6.0, sy, rect.width - 12.0, 1.0).scaled(scale), full_clip, border);
+                continue;
+            };
+            let is_hl = highlight == Some(idx) && *enabled;
+            if is_hl {
+                fill(pixmap, row.scaled(scale), full_clip, sel_bg);
+            }
+            let fg = if !*enabled {
+                muted
+            } else if is_hl {
+                sel_fg
+            } else {
+                style.fg
+            };
+            // Check mark for checked items.
+            if *is_check && *checked {
+                let cx = (rect.x + 10.0) * scale;
+                let cy = (iy + ih / 2.0) * scale;
+                let mut pb = PathBuilder::new();
+                pb.move_to(cx - 4.0 * scale, cy);
+                pb.line_to(cx - 1.0 * scale, cy + 3.0 * scale);
+                pb.line_to(cx + 4.0 * scale, cy - 3.0 * scale);
+                if let Some(path) = pb.finish() {
+                    let mut paint = Paint::default();
+                    paint.set_color_rgba8(fg.r, fg.g, fg.b, fg.a);
+                    paint.anti_alias = true;
+                    let stroke = tiny_skia::Stroke { width: 1.5 * scale, ..tiny_skia::Stroke::default() };
+                    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                }
+            }
+            let origin = ((rect.x + 24.0) * scale, (iy + (ih - font_size * 1.3) / 2.0) * scale);
+            tk.text_engine.draw_styled(
+                pixmap,
+                label,
+                (font_size * scale, fg),
+                style.font_family.as_deref(),
+                400,
+                style.italic,
+                origin,
+                full_clip.intersection(row.scaled(scale)),
+                style.opacity,
+            );
+            if let Some(accel) = accel {
+                let aw = tk.measure_with(accel, &style).width;
+                let ax = rect.x + rect.width - 12.0 - aw;
+                let aorigin = (ax * scale, (iy + (ih - font_size * 1.3) / 2.0) * scale);
+                tk.text_engine.draw_styled(
+                    pixmap,
+                    accel,
+                    (font_size * scale, muted),
+                    style.font_family.as_deref(),
+                    400,
+                    style.italic,
+                    aorigin,
+                    full_clip.intersection(row.scaled(scale)),
+                    style.opacity,
+                );
+            }
+            // Submenu arrow.
+            let is_sub = tk
+                .menus
+                .get(menu)
+                .and_then(|m| m.items.get(idx))
+                .is_some_and(|i| matches!(i, crate::tk::menu::MenuItem::Submenu { .. }));
+            if is_sub {
+                let cx = (rect.x + rect.width - 10.0) * scale;
+                let cy = (iy + ih / 2.0) * scale;
+                let mut pb = PathBuilder::new();
+                pb.move_to(cx - 2.0 * scale, cy - 4.0 * scale);
+                pb.line_to(cx + 3.0 * scale, cy);
+                pb.line_to(cx - 2.0 * scale, cy + 4.0 * scale);
+                if let Some(path) = pb.finish() {
+                    let mut paint = Paint::default();
+                    paint.set_color_rgba8(fg.r, fg.g, fg.b, fg.a);
+                    paint.anti_alias = true;
+                    let stroke = tiny_skia::Stroke { width: 1.5 * scale, ..tiny_skia::Stroke::default() };
+                    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                }
+            }
+        }
     }
 }
 

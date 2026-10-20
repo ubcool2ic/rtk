@@ -106,7 +106,8 @@ impl Tk {
     }
 
     /// Logical-pixel text size using the resolved font family, weight and slant.
-    pub(crate) fn measure_with(&mut self, text: &str, style: &ResolvedStyle) -> Size {
+    #[doc(hidden)]
+    pub fn measure_with(&mut self, text: &str, style: &ResolvedStyle) -> Size {
         let scale = self.scale_factor;
         let size = self.text_engine.measure_styled(
             text,
@@ -238,6 +239,14 @@ impl Tk {
                         specified.unwrap_or(200.0) + pad_w,
                         height_rows as f32 * row_h + 2.0 + pad_h,
                     )
+                }
+                Kind::Menubar => {
+                    let titles = self.node(id).map(|n| n.menubar_titles.clone()).unwrap_or_default();
+                    let mut w = 0.0_f32;
+                    for (title, _) in &titles {
+                        w += self.measure_with(title, &resolved).width + 24.0;
+                    }
+                    Size::new(w.max(specified.unwrap_or(0.0)) + pad_w, resolved.font_size * 1.8 + 8.0 + pad_h)
                 }
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;

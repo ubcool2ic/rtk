@@ -22,6 +22,7 @@ pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
 pub use timer::TimerId;
 pub use tk::{Key, ScrollUnit, Tk, TkProxy};
+pub use tk::menu::{MenuId, MenuItem, Menubar};
 pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Combobox, Command,

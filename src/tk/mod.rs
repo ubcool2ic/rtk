@@ -42,6 +42,7 @@ mod progress;
 mod tooltip;
 mod table;
 mod treeview;
+pub mod menu;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -190,6 +191,8 @@ pub struct Tk {
     pub(crate) modal_entry_changed: Option<ModalEntryChanged>,
     /// Stack of saved outer modal frames (innermost last) for nested dialogs.
     pub(crate) modal_stack: Vec<ModalFrame>,
+    /// Menu state (menus, open stack, context bindings).
+    pub(crate) menus: menu::MenuState,
 }
 
 impl Default for Tk {
@@ -246,6 +249,7 @@ impl Tk {
             modal_accept: None,
             modal_entry_changed: None,
             modal_stack: Vec::new(),
+            menus: menu::MenuState::default(),
         }
     }
 

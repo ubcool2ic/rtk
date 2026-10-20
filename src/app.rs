@@ -297,6 +297,10 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     self.tk.sim_mouse_up();
                 }
             }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => {
+                let (x, y) = self.tk.pointer;
+                self.tk.sim_right_click(x, y);
+            }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 let key = match &event.logical_key {

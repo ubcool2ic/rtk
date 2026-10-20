@@ -10,7 +10,7 @@ use crate::style::{ImageId, StyleSpec, TransitionState};
 use crate::{RtkError, Tk, Var};
 
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WidgetId {
     /// Slot index in the widget arena.
     pub index: u32,
@@ -485,6 +485,7 @@ pub(crate) enum Kind {
     Notebook,
     Table,
     TreeView,
+    Menubar,
 }
 
 impl Kind {
@@ -617,6 +618,8 @@ pub(crate) struct WidgetNode {
     // TreeView
     pub tree: Option<Box<crate::tk::TreeState>>,
     pub tree_height_rows: usize,
+    // Menubar
+    pub menubar_titles: Vec<(String, crate::tk::menu::MenuId)>,
 }
 
 impl WidgetNode {
@@ -697,6 +700,7 @@ impl WidgetNode {
             table_height_rows: 5,
             tree: None,
             tree_height_rows: 5,
+            menubar_titles: Vec::new(),
         }
     }
 }

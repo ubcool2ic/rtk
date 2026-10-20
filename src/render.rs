@@ -529,6 +529,30 @@ impl Tk {
                         clip, resolved.opacity,
                     );
                 }
+                Kind::Menubar => {
+                    let titles = node.menubar_titles.clone();
+                    let mut cur_x = logical.x;
+                    let active = self.menus.active_bar == Some(id);
+                    let open_menu = self.menus.open.first().map(|o| o.menu);
+                    let sel_bg = self.style_engine.tokens().palette.select_bg;
+                    for (title, menu) in titles.iter() {
+                        let tw = self.measure_with(title, &resolved).width + 24.0;
+                        let tab = Rect::new(cur_x, logical.y, tw, logical.height);
+                        if active && open_menu == Some(*menu) {
+                            fill(&mut pixmap, tab.scaled(scale), clip, sel_bg);
+                        }
+                        let origin = (
+                            (cur_x + 12.0) * scale,
+                            (logical.y + (logical.height - resolved.font_size * 1.3) / 2.0) * scale,
+                        );
+                        self.text_engine.draw_styled(
+                            &mut pixmap, title, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, clip.intersection(tab.scaled(scale)), resolved.opacity,
+                        );
+                        cur_x += tw;
+                    }
+                }
                 Kind::Table => {
                     data::draw_table(self, &mut pixmap, id, logical, logical_clip, scale, &resolved);
                 }
@@ -1083,6 +1107,8 @@ impl Tk {
                 }
             }
         }
+
+        data::draw_menu_overlay(self, &mut pixmap, scale);
 
         if self.tooltip_visible {
             if let Some(text) = self.active_tooltip() {

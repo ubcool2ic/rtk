@@ -53,6 +53,9 @@ impl Tk {
         self.ensure_layout();
         let moved = (self.pointer.0 - x).abs() > 2.0 || (self.pointer.1 - y).abs() > 2.0;
         self.pointer = (x, y);
+        if self.menu_pointer_move(x, y) {
+            return;
+        }
         if let Some(pid) = self.pressed {
             if let Some(rx) = self.node(pid).filter(|n| n.kind == Kind::Table).map(|n| n.rect.x) {
                 self.table_mouse_move(pid, x - rx);
@@ -113,6 +116,13 @@ impl Tk {
         self.tooltip_visible = false;
         self.hover_timer_ms = 0;
         let (x, y) = self.pointer;
+        if self.menu_click(x, y) {
+            return;
+        }
+        if let Some((bar, index)) = self.menubar_hit(x, y) {
+            self.menubar_open(bar, index);
+            return;
+        }
         // Combobox closed by this very click; must not be re-opened below.
         let mut just_closed: Option<WidgetId> = None;
 
@@ -461,6 +471,9 @@ impl Tk {
     #[doc(hidden)]
     pub fn sim_key(&mut self, key: Key) {
         self.ensure_layout();
+        if self.menu_key(key) {
+            return;
+        }
         if key == Key::Escape {
             if let Some(combo_id) = self.open_combobox.take() {
                 if let Some(node) = self.node_mut(combo_id) {
