@@ -938,3 +938,16 @@ I found nothing in lines 1-131 that needs a fix.
 - [severity low] [docs] `sparkline_has_one_series` (lines 98-106) says the series is named `value` but only checks the count. -> not fixed. I can't see a public series-name accessor to assert against, so I won't invent one.
 - [severity low] [bug] The `OKABE_ITO` import from `rtk::chart` (line 3) depends on `chart` re-exporting it. -> not fixed. It may compile fine, but I can't verify it from the given reference. `rtk::OKABE_ITO` is the root re-export if it doesn't.
 
+### tests/m012_dnd.rs lines 1-161
+- none
+
+I found nothing in lines 1–161 that needs fixing, and I made no edits. I could only see the test file and `lib.rs`, not the `dnd` or `Tk` implementation, so the expected return values below are taken on trust.
+
+- **Flakiness:** none. Every test builds its own `Tk` and uses `sim_*` calls, so there are no timers, threads or real windows.
+- **Panics in helpers:** none. The `expect` calls in `nested_frames` and `centre` only fire if layout or construction is broken, which is what a test should surface.
+- **Expectations:** each test checks something meaningful, including both drop paths, unbinding from inside a callback, and a destroyed widget.
+- **Weak spots (low severity, not fixed):**
+  - Line 131 is redundant with line 130 and harmless.
+  - The hover test uses `contains` plus a final-entry check rather than an exact sequence. Tightening it would assume how often the implementation fires `Enter`, which I can't confirm, so I left it.
+- **Docs:** every function, helper and test has a `///` comment.
+

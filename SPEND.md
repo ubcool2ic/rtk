@@ -260,3 +260,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_toast.rs:1-130 | 4447 (0 cached) | 2152 (1243 reasoning) | 0.0304 | 5.0601 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_tree.rs:1-249 | 7178 (0 cached) | 2989 (1800 reasoning) | 0.0442 | 5.1043 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_charts.rs:1-150 | 5138 (0 cached) | 1805 (968 reasoning) | 0.0283 | 5.1327 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_dnd.rs:1-161 | 5169 (0 cached) | 974 (605 reasoning) | 0.0201 | 5.1528 |
