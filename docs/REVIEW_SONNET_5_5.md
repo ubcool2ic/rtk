@@ -760,3 +760,8 @@ I found nothing to fix in this chunk. I could only check it against `lib.rs`, so
 - **Error handling:** The `.expect(...)` calls sit inside the example's builder helpers, which return `WidgetId` rather than `Result`. That is a style choice, not a panic on a path where users supply input, so I left it.
 - **Accelerator labels (lines 17, 22):** `with_accel("Ctrl+O")` and `with_accel("Ctrl+Q")` may be display-only labels rather than bound shortcuts. I couldn't confirm this from the reference, so I left it.
 
+### examples/gallery_progress_inputs.rs lines 1-210
+- [severity low] [bug] The demo timer rewrites `progress_var` and the ring every 500 ms but never updates the slider. Dragging the slider is overwritten half a second later, and the slider no longer matches the bar and ring, contradicting "wires the sliders to the progress widgets" (lines 190-196) -> fixed (the timer now also sets `slider_var`)
+- [severity low] [docs] The page stacks about 1000 px of widgets in a 900 px window with plain `pack`, so the bottom of the page (canvas and its scrollbar) can be clipped on `main` (line 205) -> not fixed (changing the layout or window size is a restyle of working code, and the 1.0 gallery embeds the page in its own container)
+- [severity low] [bug] The canvas rectangles capture `accent` once at build time, so they keep the old color when the theme buttons are used (lines 179-183) -> not fixed (canvas items are static draws and there is no theme-change hook in the visible API)
+
