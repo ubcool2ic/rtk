@@ -326,3 +326,15 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
 - **Unverified (radiobutton text, line 222):** the Radiobutton branch reads `n.text` directly, while the generic branch uses `widget_text`. If `widget_text` resolves a bound text variable, a Radiobutton's size would ignore it. I can't see `widget_text` from this chunk, so I left it alone rather than risk an empty-string regression.
 - **Unverified (zero window size):** `initial_size` returns `window_size` unclamped. A zero size is only a problem if the setter doesn't already reject it, and I can't see the setter.
 
+### src/tk/table.rs lines 339-445
+- [medium] [bug] `table_scroll`: `state.top as i64 + delta` can overflow when `lines` is huge or infinite, because `delta` saturates to `i64::MAX`. This panics in debug builds and wraps in release. (line 411) -> fixed (`saturating_add`)
+- [low] [bug] `table_key`: with no selection, or a selected row hidden from the display, `cur_display` defaulted to 0. Down/PageDown then skipped the first row and selected row 1. (lines 425-437) -> fixed (with no current selection, Down/PageDown/Up/PageUp now select the first row)
+- [info] Selection after sort: the selection is stored as a model index and resolved through `display_of`/`model_at` (lines 380, 427, 438). It therefore follows the row identity, not the display position. The sort itself (`table_sort_by`) is outside this chunk, so I could not check it. -> no change needed here
+- [low] [bug] `table_mouse_down` clicks beyond the last row do nothing, which is fine. `row_h` of zero would give an infinite quotient, but `as usize` saturates and `model_at` returns `None`, so there is no panic. -> not fixed (harmless)
+
+### src/tk/table.rs lines 1-338
+- [low] [docs] `table_clear` doc claims it clears the sort, but the code keeps it (and the header indicator stays) (line 181) -> fixed (doc now matches the code)
+- [medium] [bug] `table_clear` silently reset the selection without firing the on_select callback, so listeners kept a stale selection (line 182) -> fixed
+- [medium] [bug] `table_set_rows` cleared an out-of-range selection without firing the on_select callback (line 154) -> fixed
+- [none] Selection after sort: `selected` holds a model row index, and sorting only permutes `order`, so the selection follows row identity. `table_insert_row` also shifts the model index correctly. Verified, no change needed.
+

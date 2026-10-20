@@ -151,13 +151,18 @@ impl Tk {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows = rows;
         state.rebuild_order();
+        let mut cleared = false;
         if let Some(sel) = state.selected {
             if sel >= state.rows.len() {
                 state.selected = None;
+                cleared = true;
             }
         }
         self.table_clamp_top(id);
         self.dirty = true;
+        if cleared {
+            self.dispatch_table_select(id, None);
+        }
         true
     }
 
@@ -178,14 +183,17 @@ impl Tk {
         true
     }
 
-    /// Removes every row and clears the selection and sort.
+    /// Removes every row and clears the selection (the active sort is kept).
     pub fn table_clear(&mut self, id: WidgetId) -> bool {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows.clear();
         state.order.clear();
-        state.selected = None;
+        let had_selection = state.selected.take().is_some();
         state.top = 0;
         self.dirty = true;
+        if had_selection {
+            self.dispatch_table_select(id, None);
+        }
         true
     }
 
@@ -408,7 +416,7 @@ impl Tk {
     pub(crate) fn table_scroll(&mut self, id: WidgetId, lines: f32) {
         let Some(state) = self.table_state_mut(id) else { return };
         let delta = lines.round() as i64;
-        let new_top = (state.top as i64 + delta).max(0) as usize;
+        let new_top = (state.top as i64).saturating_add(delta).max(0) as usize;
         state.top = new_top;
         self.table_clamp_top(id);
         self.dirty = true;
@@ -422,15 +430,12 @@ impl Tk {
             return false;
         }
         let visible = self.table_visible_rows(id).max(1);
-        let cur_display = state
-            .selected
-            .and_then(|m| state.display_of(m))
-            .unwrap_or(0);
+        let cur = state.selected.and_then(|m| state.display_of(m));
         let new_display = match key {
-            Key::Up => cur_display.saturating_sub(1),
-            Key::Down => (cur_display + 1).min(total - 1),
-            Key::PageUp => cur_display.saturating_sub(visible),
-            Key::PageDown => (cur_display + visible).min(total - 1),
+            Key::Up => cur.map_or(0, |c| c.saturating_sub(1)),
+            Key::Down => cur.map_or(0, |c| (c + 1).min(total - 1)),
+            Key::PageUp => cur.map_or(0, |c| c.saturating_sub(visible)),
+            Key::PageDown => cur.map_or(0, |c| c.saturating_add(visible).min(total - 1)),
             Key::Home => 0,
             Key::End => total - 1,
             _ => return false,
