@@ -808,6 +808,30 @@ impl StyleEngine {
             });
         }
 
+        // TSwitch & TProgressRing (v0.10 inputs): transparent backgrounds so the
+        // surrounding surface shows through in every theme. Without these the
+        // widgets fell back to the default light-grey box, which was unreadable
+        // in Dark and HighContrast.
+        for (class, transition) in [("TSwitch", 120), ("TProgressRing", 0)] {
+            self.styles.insert(class.into(), StyleSpec {
+                bg: Some(Color::rgba(0, 0, 0, 0)),
+                fg: Some(p.fg),
+                border_color: Some(p.border),
+                border_width: Some(0.0),
+                radius: Some(r.sm),
+                padding: Some(Edges::symmetrical(3.0, 4.0)),
+                margin: Some(Edges::default()),
+                shadow: Some(None),
+                gradient: Some(None),
+                opacity: Some(1.0),
+                font_family: Some(ff.clone()),
+                font_size: Some(ts.body),
+                font_weight: Some(400),
+                italic: Some(false),
+                transition_ms: Some(transition),
+            });
+        }
+
         // TScale
         self.styles.insert("TScale".into(), StyleSpec {
             bg: Some(p.border),
@@ -938,6 +962,7 @@ impl StyleEngine {
         for class in [
             "TButton", "TLabel", "TEntry", "TCheckbutton", "TRadiobutton", "TScale",
             "TListbox", "TSpinbox", "TProgressbar", "TText", "TCombobox", "TNotebook",
+            "TSwitch", "TProgressRing",
         ] {
             self.state_maps
                 .entry((class.into(), State::DISABLED.bits()))

@@ -12,6 +12,8 @@ use crate::tk::cursor_boundary;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk, Var};
 
+mod inputs;
+
 /// Shaping-cache key: text, size bits, family, weight, italic.
 type TextKey = (String, u32, Option<String>, u16, bool);
 
@@ -143,6 +145,24 @@ impl TextEngine {
         self.measure_styled(text, size, None, 400, false)
     }
 
+    /// Draws styled text into `pixmap` at `origin` (device px), clipped to `clip`.
+    /// Exposed to the child `inputs` module for ring/switch/progress labels.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_styled_pub(
+        &mut self,
+        pixmap: &mut Pixmap,
+        text: &str,
+        appearance: (f32, Color),
+        family: Option<&str>,
+        weight: u16,
+        italic: bool,
+        origin: (f32, f32),
+        clip: Rect,
+        opacity: f32,
+    ) {
+        self.draw_styled(pixmap, text, appearance, family, weight, italic, origin, clip, opacity);
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn draw_styled(
         &mut self,
@@ -203,7 +223,7 @@ fn blend_pixel(data: &mut [u8], index: usize, color: cosmic_text::Color) {
     pixel[3] = (alpha + u32::from(pixel[3]) * inverse / 255).min(255) as u8;
 }
 
-fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
+pub(super) fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
     let rect = rect.intersection(clip);
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
@@ -216,7 +236,7 @@ fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
     }
 }
 
-fn outline(pixmap: &mut Pixmap, rect: Rect, clip: Rect, width: f32, colors: (Color, Color)) {
+pub(super) fn outline(pixmap: &mut Pixmap, rect: Rect, clip: Rect, width: f32, colors: (Color, Color)) {
     let width = width.min(rect.width / 2.0).min(rect.height / 2.0);
     let (top, bottom) = colors;
     fill(pixmap, Rect::new(rect.x, rect.y, rect.width, width), clip, top);
@@ -444,27 +464,13 @@ impl Tk {
                     fill(&mut pixmap, thumb_rect.scaled(scale), clip, thumb_color);
                 }
                 Kind::ProgressBar => {
-                    let inner = logical.inset(2.0, 2.0);
-                    if node.progress_indeterminate {
-                        let block_w = (inner.width * 0.3).max(10.0);
-                        let travel = inner.width + block_w;
-                        let x = inner.x - block_w + travel * node.progress_phase;
-                        let r = Rect::new(x, inner.y, block_w, inner.height).intersection(inner);
-                        if r.width > 0.0 {
-                            fill(&mut pixmap, r.scaled(scale), clip, self.style_engine.tokens().palette.accent);
-                        }
-                    } else {
-                        let frac = if let Some(v64) = node.progress_f64 {
-                            v64.get(self).unwrap_or(0.0).clamp(0.0, 1.0) as f32
-                        } else {
-                            (node.scale.and_then(|v| v.get(self)).unwrap_or(0).clamp(0, 100) as f32) / 100.0
-                        };
-                        let filled_w = inner.width * frac;
-                        if filled_w > 0.0 {
-                            let fill_rect = Rect::new(inner.x, inner.y, filled_w, inner.height).scaled(scale);
-                            fill(&mut pixmap, fill_rect, clip, resolved.fg);
-                        }
-                    }
+                    inputs::draw_progress_bar(self, &mut pixmap, id, logical, clip, scale, &resolved);
+                }
+                Kind::ProgressRing => {
+                    inputs::draw_ring(self, &mut pixmap, id, logical, clip, scale, &resolved);
+                }
+                Kind::Switch => {
+                    inputs::draw_switch(self, &mut pixmap, id, logical, clip, scale, &resolved);
                 }
                 Kind::Text => {
                     let inner = logical.inset(4.0, 4.0);

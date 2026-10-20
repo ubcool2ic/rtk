@@ -351,7 +351,7 @@ impl Tk {
             return;
         }
         let (kind, check) = (node.kind, node.check);
-        if kind == Kind::Checkbutton {
+        if kind == Kind::Checkbutton || kind == Kind::Switch {
             if let Some(var) = check {
                 if let Some(value) = var.get(self) {
                     var.set(self, !value);
@@ -362,7 +362,7 @@ impl Tk {
                 var.set(self, node.radio_value);
             }
         }
-        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton) {
+        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch) {
             self.run_command(id);
         }
     }
@@ -534,7 +534,7 @@ impl Tk {
                     self.dirty = true;
                 }
             }
-            Kind::Button | Kind::Checkbutton | Kind::Radiobutton if matches!(key, Key::Enter | Key::Space) => {
+            Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch if matches!(key, Key::Enter | Key::Space) => {
                 self.activate(id);
             }
             Kind::Scale if matches!(key, Key::Left | Key::Right) => {

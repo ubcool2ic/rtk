@@ -205,6 +205,7 @@ pub struct Combobox;
 /// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
 
+
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
     /// Creates an empty container frame under `parent`.
@@ -448,6 +449,8 @@ pub(crate) enum Kind {
     Text,
     Combobox,
     Notebook,
+    ProgressRing,
+    Switch,
 }
 
 impl Kind {
@@ -463,13 +466,19 @@ impl Kind {
                 | Self::Spinbox
                 | Self::Text
                 | Self::Combobox
+                | Self::Switch
         )
     }
 
     pub fn has_command(self) -> bool {
         matches!(
             self,
-            Self::Button | Self::Checkbutton | Self::Scale | Self::Listbox | Self::Radiobutton
+            Self::Button
+                | Self::Checkbutton
+                | Self::Scale
+                | Self::Listbox
+                | Self::Radiobutton
+                | Self::Switch
         )
     }
 }
@@ -572,6 +581,8 @@ pub(crate) struct WidgetNode {
     pub image: Option<ImageId>,
     pub compound: Compound,
     pub transition: Option<TransitionState>,
+    /// Milestone 0.10 input-widget state (ProgressRing, Switch, ProgressBar polish).
+    pub inputs: Option<Box<crate::tk::inputs_state::InputsState>>,
 }
 
 impl WidgetNode {
@@ -648,6 +659,7 @@ impl WidgetNode {
             image: None,
             compound: Compound::Left,
             transition: None,
+            inputs: None,
         }
     }
 }

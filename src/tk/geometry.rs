@@ -206,7 +206,7 @@ impl Tk {
                     let m = self.measure_with(&text, &resolved);
                     Size::new(specified.unwrap_or(m.width + 50.0).max(70.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
-                Kind::ProgressBar => Size::new(node_snap.progress_length + pad_w, 20.0 + pad_h),
+                Kind::ProgressBar => self.progress_requested(id, &resolved),
                 Kind::Text => {
                     let (cols, rows) = self.node(id).map(|n| n.text_dimensions).unwrap_or((40, 10));
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
@@ -220,6 +220,8 @@ impl Tk {
                     let m = self.measure_with(&cur_str, &resolved);
                     Size::new(specified.unwrap_or(m.width + 48.0).max(80.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
+                Kind::ProgressRing => self.ring_requested(id, &resolved),
+                Kind::Switch => self.switch_requested(id, &resolved),
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;

@@ -20,6 +20,8 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Text => "TText",
         Kind::Combobox => "TCombobox",
         Kind::Notebook => "TNotebook",
+        Kind::ProgressRing => "TProgressRing",
+        Kind::Switch => "TSwitch",
     }
 }
 
@@ -28,6 +30,8 @@ pub(crate) struct NodeSnapshot {
     pub(crate) scale: Option<crate::Var<i64>>,
     pub(crate) range: (i64, i64),
     pub(crate) canvas_size: (f32, f32),
+    /// Legacy sizing value retained for shared snapshot construction.
+    #[allow(dead_code)]
     pub(crate) progress_length: f32,
     pub(crate) list_height: usize,
     pub(crate) parent: Option<WidgetId>,
@@ -329,13 +333,53 @@ impl Tk {
                 }
             }
         }
+
+        // Milestone 0.10 input-widget animations (ring spinner, switch knob,
+        // smooth progress easing). Collected first so we can call &mut self
+        // helpers without holding a borrow of `self.nodes`.
+        let mut anim_ids: Vec<(WidgetId, Kind)> = Vec::new();
+        for (index, slot) in self.nodes.iter().enumerate() {
+            let Some(node) = &slot.node else { continue };
+            if !node.visible {
+                continue;
+            }
+            if matches!(node.kind, Kind::ProgressRing | Kind::Switch | Kind::ProgressBar) {
+                anim_ids.push((WidgetId { index: index as u32, gen: slot.gen }, node.kind));
+            }
+        }
+        for (id, kind) in anim_ids {
+            match kind {
+                Kind::ProgressRing => { self.ring_advance(id, ms); }
+                Kind::Switch => { self.switch_advance(id, ms); }
+                Kind::ProgressBar => { self.progress_advance(id, ms); }
+                _ => {}
+            }
+        }
     }
 
-    /// True while any style transition or indeterminate progress bar needs frames.
+    /// True while any style transition, indeterminate progress bar, ring
+    /// spinner, switch knob, or smooth progress easing needs frames.
     pub fn is_animating(&self) -> bool {
-        self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
+        let base = self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
             n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
-        })
+        });
+        if base {
+            return true;
+        }
+        for (index, slot) in self.nodes.iter().enumerate() {
+            let Some(node) = &slot.node else { continue };
+            if !node.visible {
+                continue;
+            }
+            let id = WidgetId { index: index as u32, gen: slot.gen };
+            match node.kind {
+                Kind::ProgressRing if self.ring_is_animating(id) => return true,
+                Kind::Switch if self.switch_is_animating(id) => return true,
+                Kind::ProgressBar if self.progress_is_animating(id) => return true,
+                _ => {}
+            }
+        }
+        false
     }
 
 
