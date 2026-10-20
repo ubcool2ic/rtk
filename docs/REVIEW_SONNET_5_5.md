@@ -384,3 +384,12 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
 - [low] [bug] Pixel-mode wheel deltas on Listbox, Text, Table and TreeView are divided by the row height and rounded, so deltas under half a row are lost. This needs a per-widget accumulator and is a design change. (lines 44, 59) -> not fixed (out of scope for a minimal pre-1.0 edit)
 - [low] [api] The `yview*`, `xview*` and `*_scroll` names deliberately mirror tkinter, so I left them unchanged. -> not fixed (intentional)
 
+### src/timer.rs lines 1-318
+- none
+
+I found nothing in lines 1-318 that needs a fix:
+- **Timer queue:** the `saturating_add` calls and the `p.max(1)` clamp on the period prevent overflow and a zero-period spin.
+- **Reentrancy:** a repeating timer's callback is taken out of the list while it runs, and its slot is looked up again by id afterwards. Self-cancel, scheduling from inside a callback, and nested advance calls are all safe.
+- **Runaway timers:** the 10,000-callback cap bounds `after(0)` self-rescheduling loops.
+- **API and docs:** the public items follow tkinter naming, `TimerId` is a struct rather than an enum so `#[non_exhaustive]` does not apply, and every public fn has a `///` doc comment.
+
