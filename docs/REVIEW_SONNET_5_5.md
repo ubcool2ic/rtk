@@ -1124,3 +1124,18 @@ I could not check the signatures of `Scrollbar::horizontal`, `scrollarea_content
 
 I found no other problems in this chunk. The other tests have meaningful assertions, and they do not depend on timing or on the platform.
 
+### tests/styling.rs lines 350-487
+- none
+
+### tests/styling.rs lines 1-349
+- none
+
+I found nothing in lines 1-349 that needs fixing.
+
+- **Imports:** all of them are used.
+- **Helpers:** none can panic. The corner-pixel index at line 342 stays in bounds because the render size and `geometry` size are both 160×100.
+- **Assertions:** each test checks something specific, and none is weaker than it should be.
+- **Timing:** the transition test uses simulated time through `sim_advance_time`, so it is deterministic and not flaky.
+
+I did not run the tests. The assertions that depend on rendering details I could not see are the `sim_advance_time(60)` boundary at line 189, the `box-shadow` parsing at line 242, and the corner-pixel position at line 340.
+
