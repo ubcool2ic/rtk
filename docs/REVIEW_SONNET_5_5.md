@@ -627,3 +627,9 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 - `DndState` is `pub(crate)`, so it adds nothing to the public API.
 - Whether state is cleared on widget destroy depends on `tk/dnd.rs`, which is outside this chunk. The struct supplies the fields (`drop`, `hover`, `target`) that cleanup would have to handle.
 
+### src/tk/tooltip.rs lines 1-37
+- [low] [bug] `active_tooltip` returns `Some("")` when a tooltip is set to an empty string, so an empty tooltip bubble could be shown (line 31) -> fixed (empty text is now treated as no tooltip).
+- [low] [api] `tooltip` (line 12) is a bare noun and does not follow the `<widget>_<verb>` pattern; `tooltip_set` would fit better -> not fixed. Renaming a public method would break callers outside this chunk, and it is a deliberate API decision rather than a local fix.
+- [low] [bug] `tooltip` and `tooltip_remove` change what is displayed without requesting a redraw or damage (lines 14, 23) -> not fixed. The redraw/invalidation mechanism is not visible in this chunk, so I can't safely call it. If the tooltip text changes or is removed while shown, the caller should invalidate.
+- [low] [docs] The `bool` return values (false when the widget id is not live) are undocumented (lines 11, 18) -> fixed.
+
