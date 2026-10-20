@@ -20,6 +20,8 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Text => "TText",
         Kind::Combobox => "TCombobox",
         Kind::Notebook => "TNotebook",
+        Kind::Chart => "TChart",
+        Kind::Image => "TImage",
     }
 }
 

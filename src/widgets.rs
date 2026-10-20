@@ -204,6 +204,12 @@ pub struct Text;
 pub struct Combobox;
 /// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
+/// Constructor namespace for line/area/bar charts.
+pub struct Chart;
+/// Constructor namespace for inline sparklines.
+pub struct Sparkline;
+/// Constructor namespace for image widgets (PNG/RGBA/SVG).
+pub struct Image;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -431,6 +437,53 @@ impl Notebook {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Chart {
+    /// Creates a chart of the given kind with the requested logical size.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        w: f32,
+        h: f32,
+        kind: crate::chart::ChartKind,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let state = crate::chart::ChartState { kind, ..Default::default() };
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Sparkline {
+    /// Creates a sparkline with a single series named `value`.
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let mut state = crate::chart::ChartState { sparkline: true, legend: false, ..Default::default() };
+            state.series.push(crate::chart::SeriesData::new("value".to_string()));
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Image {
+    /// Creates an image widget with the requested logical size (negative/NaN → 0).
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Image, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -448,6 +501,8 @@ pub(crate) enum Kind {
     Text,
     Combobox,
     Notebook,
+    Chart,
+    Image,
 }
 
 impl Kind {
@@ -564,6 +619,10 @@ pub(crate) struct WidgetNode {
     pub tooltip: Option<String>,
     // Monospace
     pub monospace: bool,
+    // Chart
+    pub chart: Option<Box<crate::chart::ChartState>>,
+    // Image widget
+    pub image_data: Option<Box<crate::image::ImageData>>,
     // Advanced styling layer fields
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
@@ -661,6 +720,8 @@ impl WidgetNode {
             notebook_changed_running: false,
             tooltip: None,
             monospace: false,
+            chart: None,
+            image_data: None,
             named_style: None,
             style_override: None,
             disabled: false,

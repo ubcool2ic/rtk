@@ -200,7 +200,7 @@ impl Tk {
                     let measured = self.measure_with(&text, &resolved);
                     Size::new(specified.unwrap_or(measured.width) + 32.0 + pad_w + image_extra_w, measured.height.max(16.0) + 8.0 + pad_h)
                 }
-                Kind::Canvas => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
+                Kind::Canvas | Kind::Chart | Kind::Image => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
                 Kind::Spinbox => {
                     let text = format!("{}", node_snap.scale.and_then(|v| v.get(self)).unwrap_or(node_snap.range.0));
                     let m = self.measure_with(&text, &resolved);
