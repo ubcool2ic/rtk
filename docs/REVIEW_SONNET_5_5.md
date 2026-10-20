@@ -1054,3 +1054,6 @@ I found no bugs in this chunk. Nothing here looks flaky or wrongly expected, and
 - **Weak assertion in the invalid-text test:** `dspin_invalid_text_reverts` only checks `dspin_get`. I considered also asserting `dspin_text == "2.00"`, but I can't confirm the widget reformats the text after a revert, so I left it unchanged rather than risk a wrong expectation.
 - **Golden names:** `{scale}` formats `1.0_f64` as `1`, so the names come out as `dspin_light_1x` and `dspin_light_2x`, which are stable and valid.
 
+### tests/m0_10_switch.rs lines 1-131
+- none
+
