@@ -20,3 +20,10 @@
 | 2026-10-20 | openai/gpt-6.1-sol | 09-0-clippy r1 [Sol fix] | 7243 (0 cached) | 1808 (98 reasoning) | 0.0362 | 0.0848 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-0-clippy-examples r0 | 3058 (512 cached) | 235 (0 reasoning) | 0.0003 | 0.0130 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-0-clippy: 3 aborted calls (runaway reasoning, killed before usage was reported; reasoning now disabled for build calls) | — | — | ~0.30 (est.) | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a0 | 39485 (0 cached) | 603 (0 reasoning) | 0.0031 | 0.0161 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a1 | 40568 (39680 cached) | 607 (0 reasoning) | 0.0007 | 0.0168 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a2 | 41538 (40704 cached) | 613 (0 reasoning) | 0.0007 | 0.0175 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a0 | 39485 (39168 cached) | 551 (0 reasoning) | 0.0006 | 0.0181 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a1 | 40201 (39680 cached) | 569 (0 reasoning) | 0.0006 | 0.0187 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-1-split-plan a2 | 40964 (40448 cached) | 579 (0 reasoning) | 0.0006 | 0.0194 |
+| 2026-10-20 | (hand glue, no model) | 09-1 split: applied DeepSeek's JSON line-range plan mechanically; renamed child module `layout`→`geometry` (name clash), re-exported 6 free helpers from `tk/mod.rs`, made `NodeSnapshot` fields `pub(crate)`, reattached doc comments to their items | — | — | 0 | — |
