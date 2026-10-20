@@ -618,3 +618,12 @@ This chunk contains only three public enums and a `pub(crate)` state struct, so 
 - [severity low] [bug] `clipboard_get` returned `Some("")` when the OS clipboard held empty text, while the in-memory path returns `None` for empty, so the two paths disagreed (lines 56-59) -> fixed
 - [severity low] [api] None of the public methods carry `#[non_exhaustive]`, naming, or docs problems. `clipboard_clear`, `clipboard_append` and `clipboard_get` follow the tkinter-style naming pattern and all have `///` docs -> not fixed (nothing to fix)
 
+### src/dnd.rs lines 1-43
+- none
+
+The chunk has only type definitions and a struct, and I found nothing to fix in it.
+- `DropPhase` is `#[non_exhaustive]` and has rustdoc on every variant.
+- Both callback type aliases and every `DndState` field are documented.
+- `DndState` is `pub(crate)`, so it adds nothing to the public API.
+- Whether state is cleared on widget destroy depends on `tk/dnd.rs`, which is outside this chunk. The struct supplies the fields (`drop`, `hover`, `target`) that cleanup would have to handle.
+
