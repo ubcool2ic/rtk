@@ -635,3 +635,5 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 
 - RECOVERED: src/widgets.rs 1-339 edits re-applied (they include `#[non_exhaustive]` on a public enum). DeepSeek added the wildcard arm that examples/gallery.rs then needed (recover-widgets). Green.
 
+- RECOVERED: src/tk/a11y.rs 1-297 edits re-applied. Checks are green with no extra calls, so the earlier test failure came from the concurrent PR #8 merge or flakiness, not from these edits.
+

@@ -288,6 +288,12 @@ impl Tk {
     /// Returns true (and resets the baseline) if the accessibility tree has
     /// changed since the last call.
     pub fn a11y_tree_changed(&mut self) -> bool {
+        // Drop label overrides belonging to destroyed widgets so the map cannot grow unboundedly.
+        if !self.a11y_labels.is_empty() {
+            let mut labels = std::mem::take(&mut self.a11y_labels);
+            labels.retain(|id, _| self.node(*id).is_some());
+            self.a11y_labels = labels;
+        }
         let current = self.accessibility_tree();
         let changed = self.a11y_last_tree.as_ref() != Some(&current);
         if changed {
