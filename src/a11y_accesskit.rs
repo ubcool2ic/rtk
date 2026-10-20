@@ -38,7 +38,9 @@ pub(crate) fn tree_update(tk: &Tk, scale: f64) -> TreeUpdate {
             node.set_min_numeric_value(min);
             node.set_max_numeric_value(max);
         }
-        if let Some(toggled) = a11y.toggled {
+        if a11y.mixed {
+            node.set_toggled(Toggled::Mixed);
+        } else if let Some(toggled) = a11y.toggled {
             node.set_toggled(if toggled { Toggled::True } else { Toggled::False });
         }
         if a11y.disabled {
@@ -184,6 +186,37 @@ mod tests {
         assert!(roles.contains(&Role::CheckBox));
         assert!(roles.contains(&Role::Slider));
         assert!(roles.contains(&Role::ProgressIndicator));
+    }
+
+    /// Checks that a tri-state check box reports `Toggled::Mixed` and then
+    /// `Toggled::True` through the AccessKit tree update.
+    #[test]
+    fn tree_update_reports_tristate_checkbox() {
+        let mut tk = Tk::new();
+        let root = tk.root();
+        let frame = Frame::new(&mut tk, root).unwrap();
+        let var = tk.bool_var(false);
+        let check = Checkbutton::new(&mut tk, frame, "On", var).unwrap();
+        tk.pack(frame, crate::PackOpts::default());
+        tk.pack(check, crate::PackOpts::default());
+        tk.sim_resize(640, 480);
+        assert!(tk.checkbutton_set_tristate(check, true));
+        assert!(tk.checkbutton_set_state(check, crate::CheckState::Mixed));
+        let update = tree_update(&tk, 1.0);
+        let node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == NodeId(check.a11y_key()))
+            .map(|(_, node)| node);
+        assert_eq!(node.and_then(Node::toggled), Some(Toggled::Mixed));
+        assert!(tk.checkbutton_set_state(check, crate::CheckState::Checked));
+        let update = tree_update(&tk, 1.0);
+        let node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == NodeId(check.a11y_key()))
+            .map(|(_, node)| node);
+        assert_eq!(node.and_then(Node::toggled), Some(Toggled::True));
     }
 
     /// Checks that action requests map to the expected toolkit action.

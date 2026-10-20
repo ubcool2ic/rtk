@@ -11,8 +11,8 @@
 //! the 1.0 gallery can embed it as a single page.
 
 use rtk::{
-    Button, Canvas, DoubleSpinbox, Label, Opt, Orient, PackOpts, ProgressBar, ProgressRing, RingMode,
-    ScrollArea, Scrollbar, Slider, Switch, Tk, WidgetId,
+    Button, Canvas, CheckState, Checkbutton, DoubleSpinbox, Label, Opt, Orient, PackOpts,
+    ProgressBar, ProgressRing, RingMode, ScrollArea, Scrollbar, Slider, Switch, Tk, WidgetId,
 };
 
 /// Builds the "Progress & inputs" page under `parent`.
@@ -115,6 +115,47 @@ fn build_page(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn std::error::E
     tk.pack(count, PackOpts::default());
     tk.dspin_set_decimals(count, 0);
     tk.dspin_set_step(count, 1.0);
+
+    // --- Tri-state checkbox -----------------------------------------------
+    let select_all_var = tk.bool_var(false);
+    let select_all = Checkbutton::new(tk, parent, "Select all", select_all_var)?;
+    tk.checkbutton_set_tristate(select_all, true);
+    tk.pack(select_all, PackOpts::default());
+    let child_a_var = tk.bool_var(false);
+    let child_a = Checkbutton::new(tk, parent, "  Option A", child_a_var)?;
+    tk.pack(child_a, PackOpts::default());
+    let child_b_var = tk.bool_var(false);
+    let child_b = Checkbutton::new(tk, parent, "  Option B", child_b_var)?;
+    tk.pack(child_b, PackOpts::default());
+    tk.set_command(child_a, move |tk| {
+        let a = child_a_var.get(tk).unwrap_or(false);
+        let b = child_b_var.get(tk).unwrap_or(false);
+        let state = if a && b {
+            CheckState::Checked
+        } else if !a && !b {
+            CheckState::Unchecked
+        } else {
+            CheckState::Mixed
+        };
+        tk.checkbutton_set_state(select_all, state);
+    });
+    tk.set_command(child_b, move |tk| {
+        let a = child_a_var.get(tk).unwrap_or(false);
+        let b = child_b_var.get(tk).unwrap_or(false);
+        let state = if a && b {
+            CheckState::Checked
+        } else if !a && !b {
+            CheckState::Unchecked
+        } else {
+            CheckState::Mixed
+        };
+        tk.checkbutton_set_state(select_all, state);
+    });
+    tk.set_command(select_all, move |tk| {
+        let on = select_all_var.get(tk).unwrap_or(false);
+        child_a_var.set(tk, on);
+        child_b_var.set(tk, on);
+    });
 
     // --- ScrollArea with 20 labelled rows ---------------------------------
     let area = ScrollArea::new(tk, parent, 360.0, 160.0)?;
