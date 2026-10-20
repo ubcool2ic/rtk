@@ -267,3 +267,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_tray.rs:1-146 | 4847 (0 cached) | 1789 (1028 reasoning) | 0.0276 | 5.2446 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_a11y.rs:1-122 | 4799 (0 cached) | 701 (689 reasoning) | 0.0166 | 5.2612 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_damage.rs:1-164 | 5382 (0 cached) | 1353 (921 reasoning) | 0.0243 | 5.2855 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_hidpi.rs:1-330 | 7813 (0 cached) | 1993 (1479 reasoning) | 0.0356 | 5.3211 |
