@@ -1119,3 +1119,8 @@ I could not check the signatures of `Scrollbar::horizontal`, `scrollarea_content
 ### tests/scrolling.rs lines 1-123
 - none
 
+### tests/shortcuts.rs lines 1-137
+- [severity low] [bug] `shift_tab_traverses_backwards` (lines 130-136) creates no widgets, so it only asserts that focus stays `None`. It would pass even if Shift+Tab were not handled at all, and it does not check backward traversal. -> not fixed (a meaningful test needs widget-construction and focus APIs that are not visible in this chunk, and guessing their signatures risks a test that does not compile)
+
+I found no other problems in this chunk. The other tests have meaningful assertions, and they do not depend on timing or on the platform.
+

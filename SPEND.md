@@ -287,3 +287,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/review_fable.rs:1-17 | 2462 (0 cached) | 1071 (694 reasoning) | 0.0156 | 5.7174 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/scrollarea_width.rs:1-58 | 3196 (0 cached) | 299 (0 reasoning) | 0.0094 | 5.7268 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/scrolling.rs:1-123 | 5096 (0 cached) | 1460 (1448 reasoning) | 0.0248 | 5.7516 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/shortcuts.rs:1-137 | 4918 (0 cached) | 1057 (865 reasoning) | 0.0204 | 5.7720 |
