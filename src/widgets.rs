@@ -222,6 +222,12 @@ pub struct Text;
 pub struct Combobox;
 /// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
+/// Constructor namespace for line/area/bar charts.
+pub struct Chart;
+/// Constructor namespace for inline sparklines.
+pub struct Sparkline;
+/// Constructor namespace for image widgets (PNG/RGBA/SVG).
+pub struct Image;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -449,6 +455,53 @@ impl Notebook {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Chart {
+    /// Creates a chart of the given kind with the requested logical size.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        w: f32,
+        h: f32,
+        kind: crate::chart::ChartKind,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let state = crate::chart::ChartState { kind, ..Default::default() };
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Sparkline {
+    /// Creates a sparkline with a single series named `value`.
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let mut state = crate::chart::ChartState { sparkline: true, legend: false, ..Default::default() };
+            state.series.push(crate::chart::SeriesData::new("value".to_string()));
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Image {
+    /// Creates an image widget with the requested logical size (negative/NaN → 0).
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Image, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -466,6 +519,8 @@ pub(crate) enum Kind {
     Text,
     Combobox,
     Notebook,
+    Chart,
+    Image,
 }
 
 impl Kind {
@@ -582,6 +637,10 @@ pub(crate) struct WidgetNode {
     pub tooltip: Option<String>,
     // Monospace
     pub monospace: bool,
+    // Chart
+    pub chart: Option<Box<crate::chart::ChartState>>,
+    // Image widget
+    pub image_data: Option<Box<crate::image::ImageData>>,
     // Advanced styling layer fields
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
@@ -590,6 +649,26 @@ pub(crate) struct WidgetNode {
     pub image: Option<ImageId>,
     pub compound: Compound,
     pub transition: Option<TransitionState>,
+    // Selection (Entry/Text): anchor byte index; selection = anchor..cursor.
+    pub selection_anchor: Option<usize>,
+    // Undo/redo history for Entry/Text.
+    pub undo_stack: Vec<EditSnapshot>,
+    pub redo_stack: Vec<EditSnapshot>,
+    /// Time (ms) of the last coalescable edit, for typing coalescing.
+    pub last_edit_ms: u64,
+    /// True when the last edit was a single-character insertion (coalescable).
+    pub last_edit_typing: bool,
+}
+
+/// A snapshot of editable text state for undo/redo.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditSnapshot {
+    /// The full text at the time of the snapshot.
+    pub text: String,
+    /// Cursor byte offset.
+    pub cursor: usize,
+    /// Selection anchor byte offset, if any.
+    pub anchor: Option<usize>,
 }
 
 impl WidgetNode {
@@ -659,6 +738,8 @@ impl WidgetNode {
             notebook_changed_running: false,
             tooltip: None,
             monospace: false,
+            chart: None,
+            image_data: None,
             named_style: None,
             style_override: None,
             disabled: false,
@@ -666,6 +747,11 @@ impl WidgetNode {
             image: None,
             compound: Compound::Left,
             transition: None,
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            last_edit_ms: 0,
+            last_edit_typing: false,
         }
     }
 }

@@ -187,6 +187,17 @@ impl TextEngine {
     }
 }
 
+/// Returns `(bg, fg)` for a text selection, dimming the highlight when the
+/// widget is not focused.
+fn selection_colors(palette: &crate::style::Palette, focused: bool) -> (Color, Color) {
+    if focused {
+        (palette.selection_bg, palette.selection_fg)
+    } else {
+        let dim = crate::style::blend(palette.selection_bg, palette.field_bg, 0.5);
+        (dim, palette.fg)
+    }
+}
+
 /// Source-over blend of a straight-alpha colour onto a premultiplied RGBA8 pixel.
 fn blend_pixel(data: &mut [u8], index: usize, color: cosmic_text::Color) {
     let alpha = u32::from(color.a());
@@ -512,6 +523,35 @@ impl Tk {
                     };
                     let lines: Vec<&str> = display.split('\n').collect();
                     let text_clip = clip.intersection(inner.scaled(scale));
+                    let selection = self.selection_of(id);
+                    let focused = self.focused == Some(id);
+                    let (sel_bg, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
+
+                    // Byte offset of the start of each line.
+                    let mut line_starts = Vec::with_capacity(lines.len());
+                    let mut acc = 0usize;
+                    for line in &lines {
+                        line_starts.push(acc);
+                        acc += line.len() + 1;
+                    }
+
+                    // Selection highlight per visible line.
+                    if let Some((sel_start, sel_end)) = selection {
+                        for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
+                            let line_start = line_starts[i];
+                            let line_end = line_start + line.len();
+                            let seg_start = sel_start.max(line_start);
+                            let seg_end = sel_end.min(line_end);
+                            if seg_start >= seg_end {
+                                continue;
+                            }
+                            let x0 = self.measure_with(&line[..seg_start - line_start], &resolved).width;
+                            let x1 = self.measure_with(&line[..seg_end - line_start], &resolved).width;
+                            let row_y = inner.y + (i - start_row) as f32 * line_h;
+                            let sel_rect = Rect::new(inner.x + x0, row_y + 2.0, (x1 - x0).max(1.0), line_h - 2.0);
+                            fill(pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
+                        }
+                    }
 
                     for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
                         let row_y = inner.y + (i - start_row) as f32 * line_h;
@@ -535,6 +575,28 @@ impl Tk {
                                 pixmap,
                                 Rect::new(inner.x + col_w, row_y + 2.0 + resolved.font_size * 1.3, preedit_w.max(1.0), 1.0).scaled(scale),
                                 text_clip, draw_fg,
+                            );
+                        }
+                    }
+
+                    // Redraw selected glyphs in the selection foreground.
+                    if let Some((sel_start, sel_end)) = selection {
+                        for (i, line) in lines.iter().enumerate().skip(start_row).take(vis_rows) {
+                            let line_start = line_starts[i];
+                            let line_end = line_start + line.len();
+                            let seg_start = sel_start.max(line_start);
+                            let seg_end = sel_end.min(line_end);
+                            if seg_start >= seg_end {
+                                continue;
+                            }
+                            let x0 = self.measure_with(&line[..seg_start - line_start], &resolved).width;
+                            let row_y = inner.y + (i - start_row) as f32 * line_h;
+                            let seg_text = &line[seg_start - line_start..seg_end - line_start];
+                            self.text_engine.draw_styled(
+                                pixmap, seg_text, (resolved.font_size * scale, sel_fg),
+                                resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                                ((inner.x + x0) * scale, (row_y + 2.0) * scale),
+                                text_clip, resolved.opacity,
                             );
                         }
                     }
@@ -663,11 +725,39 @@ impl Tk {
                             text_clip, draw_fg,
                         );
                     } else {
+                        // Selection highlight behind the glyphs.
+                        let selection = self.selection_of(id);
+                        if let Some((sel_start, sel_end)) = selection {
+                            let focused = self.focused == Some(id);
+                            let (sel_bg, _) = selection_colors(&self.style_engine.tokens().palette, focused);
+                            let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                            let x1 = self.measure_with(text.get(..sel_end).unwrap_or_default(), &resolved).width;
+                            let sel_rect = Rect::new(
+                                inner.x - scroll + x0,
+                                inner.y,
+                                (x1 - x0).max(1.0),
+                                inner.height,
+                            );
+                            fill(pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
+                        }
                         self.text_engine.draw_styled(
                             pixmap, &text, (resolved.font_size * scale, draw_fg),
                             resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                             origin, text_clip, resolved.opacity,
                         );
+                        // Redraw the selected glyphs in the selection foreground.
+                        if let Some((sel_start, sel_end)) = selection {
+                            let focused = self.focused == Some(id);
+                            let (_, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
+                            let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                            let sel_text = text.get(sel_start..sel_end).unwrap_or_default();
+                            self.text_engine.draw_styled(
+                                pixmap, sel_text, (resolved.font_size * scale, sel_fg),
+                                resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                                ((inner.x - scroll + x0) * scale, origin.1),
+                                text_clip, resolved.opacity,
+                            );
+                        }
                     }
                     if self.focused == Some(id) && !disabled {
                         fill(
@@ -801,20 +891,53 @@ impl Tk {
                         origin, clip, resolved.opacity,
                     );
                 }
-                Kind::Canvas => {
+                Kind::Canvas | Kind::Chart | Kind::Image => {
                     let w = rect.width.round() as u32;
                     let h = rect.height.round() as u32;
                     if w > 0 && h > 0 {
                         if let Some(mut sub) = Pixmap::new(w, h) {
-                            sub.fill(tiny_skia::Color::from_rgba8(draw_bg.r, draw_bg.g, draw_bg.b, draw_bg.a));
-                            let mut items = node.canvas_items.clone();
-                            items.sort_by_key(|slot| slot.seq);
-                            let (vx, vy) = node.view;
-                            for slot in items {
-                                let Some(mut item) = slot.item else { continue };
-                                if vx != 0.0 || vy != 0.0 {
-                                    item.translate(-vx, -vy);
+                            let sub_bg = if kind == Kind::Chart {
+                                self.style_engine.tokens().palette.surface
+                            } else if kind == Kind::Image {
+                                self.style_engine.tokens().palette.bg
+                            } else {
+                                draw_bg
+                            };
+                            sub.fill(tiny_skia::Color::from_rgba8(sub_bg.r, sub_bg.g, sub_bg.b, sub_bg.a));
+                            let mut draw_list: Vec<CanvasItemKind> = if kind == Kind::Chart {
+                                match node.chart.as_deref() {
+                                    Some(state) => crate::chart::build_items(
+                                        state,
+                                        logical.width,
+                                        logical.height,
+                                        &self.style_engine.tokens().palette,
+                                        resolved.font_size,
+                                    ),
+                                    None => Vec::new(),
                                 }
+                            } else if kind == Kind::Image {
+                                match node.image_data.as_deref() {
+                                    Some(data) => crate::image::build_items(
+                                        data,
+                                        logical.width,
+                                        logical.height,
+                                        scale,
+                                    ),
+                                    None => Vec::new(),
+                                }
+                            } else {
+                                let mut items = node.canvas_items.clone();
+                                items.sort_by_key(|slot| slot.seq);
+                                let (vx, vy) = node.view;
+                                items.into_iter().filter_map(|slot| {
+                                    let mut item = slot.item?;
+                                    if vx != 0.0 || vy != 0.0 {
+                                        item.translate(-vx, -vy);
+                                    }
+                                    Some(item)
+                                }).collect()
+                            };
+                            for item in draw_list.drain(..) {
                                 match item {
                                     CanvasItemKind::Rect { x0, y0, x1, y1, color } => {
                                         let min_x = x0.min(x1) * scale;

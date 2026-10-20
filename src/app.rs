@@ -20,6 +20,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
 
+use crate::shortcut::Modifiers;
 use crate::tk::RtkUserEvent;
 use crate::theme::SystemTheme;
 use crate::{FrameDamage, Key, Tk};
@@ -527,9 +528,17 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     self.schedule(event_loop);
                     return;
                 }
+                let mods = Modifiers {
+                    ctrl: self.modifiers.control_key(),
+                    shift: self.modifiers.shift_key(),
+                    alt: self.modifiers.alt_key(),
+                    meta: self.modifiers.super_key(),
+                };
+                let shortcut_modifier = mods.ctrl || mods.alt || mods.meta;
                 let key = match &event.logical_key {
                     WinitKey::Named(NamedKey::Backspace) => Some(Key::Backspace),
                     WinitKey::Named(NamedKey::Delete) => Some(Key::Delete),
+                    WinitKey::Named(NamedKey::Insert) => Some(Key::Insert),
                     WinitKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
                     WinitKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
                     WinitKey::Named(NamedKey::ArrowUp) => Some(Key::Up),
@@ -546,7 +555,34 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     WinitKey::Named(NamedKey::Enter) => Some(Key::Enter),
                     WinitKey::Named(NamedKey::Space) => Some(Key::Space),
                     WinitKey::Named(NamedKey::Escape) => Some(Key::Escape),
+                    WinitKey::Named(NamedKey::F1) => Some(Key::F(1)),
+                    WinitKey::Named(NamedKey::F2) => Some(Key::F(2)),
+                    WinitKey::Named(NamedKey::F3) => Some(Key::F(3)),
+                    WinitKey::Named(NamedKey::F4) => Some(Key::F(4)),
+                    WinitKey::Named(NamedKey::F5) => Some(Key::F(5)),
+                    WinitKey::Named(NamedKey::F6) => Some(Key::F(6)),
+                    WinitKey::Named(NamedKey::F7) => Some(Key::F(7)),
+                    WinitKey::Named(NamedKey::F8) => Some(Key::F(8)),
+                    WinitKey::Named(NamedKey::F9) => Some(Key::F(9)),
+                    WinitKey::Named(NamedKey::F10) => Some(Key::F(10)),
+                    WinitKey::Named(NamedKey::F11) => Some(Key::F(11)),
+                    WinitKey::Named(NamedKey::F12) => Some(Key::F(12)),
+                    WinitKey::Named(NamedKey::F13) => Some(Key::F(13)),
+                    WinitKey::Named(NamedKey::F14) => Some(Key::F(14)),
+                    WinitKey::Named(NamedKey::F15) => Some(Key::F(15)),
+                    WinitKey::Named(NamedKey::F16) => Some(Key::F(16)),
+                    WinitKey::Named(NamedKey::F17) => Some(Key::F(17)),
+                    WinitKey::Named(NamedKey::F18) => Some(Key::F(18)),
+                    WinitKey::Named(NamedKey::F19) => Some(Key::F(19)),
+                    WinitKey::Named(NamedKey::F20) => Some(Key::F(20)),
+                    WinitKey::Named(NamedKey::F21) => Some(Key::F(21)),
+                    WinitKey::Named(NamedKey::F22) => Some(Key::F(22)),
+                    WinitKey::Named(NamedKey::F23) => Some(Key::F(23)),
+                    WinitKey::Named(NamedKey::F24) => Some(Key::F(24)),
                     WinitKey::Character(text) if text.as_str() == " " => Some(Key::Space),
+                    WinitKey::Character(text) if shortcut_modifier => {
+                        text.chars().next().map(|c| Key::Char(c.to_ascii_lowercase()))
+                    }
                     _ => None,
                 };
                 if accepts_key_input(
@@ -555,9 +591,35 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     self.modifiers.super_key(),
                 ) {
                     if let Some(key) = key {
-                        self.tk.sim_key(key);
+                        self.tk.sim_key_with(key, mods);
                     } else if let Some(text) = event.text {
                         self.tk.sim_text(&text);
+                    }
+                }
+            }
+            WindowEvent::HoveredFile(path) => {
+                let (x, y) = self.tk.pointer;
+                self.tk.sim_file_hover(x, y, path);
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.tk.sim_file_hover_cancel();
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::DroppedFile(path) => {
+                let (x, y) = self.tk.pointer;
+                self.tk.sim_file_drop(x, y, &[path]);
+                if self.tk.dirty {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
                     }
                 }
             }

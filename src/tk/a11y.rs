@@ -28,7 +28,7 @@ impl Tk {
             Kind::Combobox => A11yRole::ComboBox,
             Kind::Notebook => A11yRole::TabList,
             Kind::Scrollbar => A11yRole::ScrollBar,
-            Kind::Canvas => A11yRole::Canvas,
+            Kind::Canvas | Kind::Chart | Kind::Image => A11yRole::Canvas,
         }
     }
 
