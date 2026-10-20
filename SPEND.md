@@ -164,3 +164,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/canvas.rs:1-255 | 7834 (0 cached) | 3109 (1988 reasoning) | 0.0468 | 2.5972 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/damage.rs:1-251 | 6456 (0 cached) | 3121 (1918 reasoning) | 0.0441 | 2.6413 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/scroll_area.rs:1-240 | 6563 (0 cached) | 2177 (1637 reasoning) | 0.0349 | 2.6762 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/testing.rs:1-232 | 5900 (0 cached) | 998 (593 reasoning) | 0.0218 | 2.6980 |

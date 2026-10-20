@@ -457,3 +457,16 @@ I found nothing in lines 1-318 that needs a fix:
 - [severity low] [docs] `scrollarea_vbar_width` doc says a hidden bar reserves 0 width, but the code does no visibility check (line 202). The hidden-state field is not visible in this chunk, so I cannot add the check without guessing a field name -> not fixed (needs the visibility field from the other module).
 - [severity low] [bug] A scrollbar's `scroll_target` can outlive its destroyed area. The destroy path is outside this chunk, and `scrollarea_vbar_width` already verifies that the target is a live ScrollArea, so it stays safe here -> not fixed (outside chunk).
 
+### src/testing.rs lines 1-232
+- none
+
+I found nothing that needs fixing in this chunk.
+
+- **`compare_pixmaps`:** it indexes each image by its own stride and clamps to the overlapping region, so differing sizes cannot cause an out-of-bounds slice.
+- **`build_diff_image`:** it indexes both images with `actual`'s stride, which is safe because `assert_golden` panics on any size mismatch before calling it.
+- **Missing golden file:** `assert_golden` writes the golden and returns instead of failing. This is documented, so I left it.
+- **`GoldenOpts` (not fixed):** it is a public struct with public fields and no `#[non_exhaustive]`. Adding the attribute would break struct-literal construction in downstream tests, and the requirement covers enums only.
+- **Stale artifacts (not fixed):** `.actual.png` and `.diff.png` files from an earlier failure are not deleted when a later run passes or blesses. This is cosmetic, so I did not change it.
+- **Unused `name` parameter (not fixed):** `write_png` takes `name` only to discard it. It is harmless and in a private function, so I left it.
+- **Docs:** every function has a `///` comment.
+
