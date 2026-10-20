@@ -10,7 +10,7 @@ five built-in themes) on top of the unchanged basic API.
 >
 > ```toml
 > [dependencies]
-> rtk = { git = "https://github.com/rtk-rs/rtk", tag = "v1.0.0" }
+> rtk = { git = "https://github.com/ubcool2ic/rtk", tag = "v1.0.0" }
 > ```
 
 ## Documentation
