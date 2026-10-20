@@ -35,3 +35,17 @@ Model `anthropic/claude-sonnet-5.5`, reasoning budget 16k tokens (never xhigh/ma
 - [severity low] [bug] `fill_circle` allocates a full-pixmap `Mask` on every call. This is only a performance cost and is correct, so I left it (line 291) -> not fixed (no correctness impact; a refactor is out of scope)
 - [severity low] [bug] `outline` draws the corner pixels twice, so a translucent outline colour double-blends there (lines 262-273) -> not fixed (cosmetic and only for translucent colours; changing the geometry risks pixel-test regressions)
 
+### (re-run with golden re-bless allowed) src/render.rs lines 1003-1352
+- [severity medium] [bug] Combobox dropdown height used `f32::clamp(item_h, 240.0)`, which panics when `item_h > 240.0` (font_size above about 178 px, or a NaN) (line 1317) -> fixed
+- [severity medium] [bug] Combobox dropdown drew every row, even when the list was taller than the 240 px popup. Rows and highlights spilled below the popup box over other widgets (lines 1328-1331) -> fixed (stop drawing at the popup's bottom edge)
+- [severity low] [bug] Compound-button images (Left, Top and ImageOnly) are drawn at their raw pixel size but laid out as if that size were logical, so they look wrong when `scale != 1`. They are also drawn without a clip mask or opacity (lines 1203-1270) -> not fixed (the intended image-scaling semantics aren't visible in this chunk, and a fix would change pixel output broadly)
+- [severity low] [bug] The canvas clip path allocates a full-pixmap `Mask` for every canvas on every frame (line 1142) -> not fixed (a performance cost only, not a correctness bug)
+
+### (re-run with golden re-bless allowed) src/render.rs lines 303-652
+- [severity high] [bug] Text widget: while an IME preedit is active, `line_starts` is computed from `display` (text plus preedit), but the selection offsets are byte offsets into `full_text`. The mismatch can slice `line[..]` off a UTF-8 boundary and panic, and otherwise highlights the wrong range. The selection is now ignored while composing (line 549) -> fixed
+- [severity high] [bug] Text caret: `full_text[..cur]` used `text_cursor.min(len)`, which is not guaranteed to be a char boundary and can panic on multibyte text. The code already computed the floored `caret` for the preedit path; the caret now uses it (line 628) -> fixed
+- [severity medium] [bug] `render_to_pixmap` called `sim_resize(width, height)` before validating the size. A 0 or huge size left the toolkit resized to an invalid size even though the call returned `Err`. Validation now happens first (line 404) -> fixed
+- [severity medium] [bug] `render_styled_box` computes `int_clip` but only uses it for the early return. The shadow, background, gradient and border are never clipped to `clip`, so partially visible widgets in scroll or clipped parents can paint outside their clip. -> not fixed (needs a `tiny_skia::Mask`, and the API differs between tiny-skia versions; this needs a deliberate change that can be compiled and checked)
+- [severity low] [bug] Text caret is drawn at the pre-preedit column while a preedit is shown, so it overlaps the composition text. -> not fixed (cosmetic; needs a design decision)
+- [severity low] [bug] The gradient branch ignores `bg_override`, so transitions do not animate background colour on gradient widgets. -> not fixed (consistent with the current design)
+

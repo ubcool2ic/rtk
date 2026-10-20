@@ -401,11 +401,11 @@ impl Tk {
     /// Always performs a full render; the output is identical to the internal
     /// scene painter with no damage restriction.
     pub fn render_to_pixmap(&mut self, width: u32, height: u32) -> Result<Pixmap, RtkError> {
-        self.sim_resize(width, height);
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 16_777_216 {
             self.dirty = false;
             return Err(RtkError::InvalidImageSize);
         }
+        self.sim_resize(width, height);
         let mut pixmap = Pixmap::new(width, height).ok_or(RtkError::InvalidImageSize)?;
         self.paint_scene(&mut pixmap, None);
         self.dirty = false;
@@ -546,7 +546,8 @@ impl Tk {
                     };
                     let lines: Vec<&str> = display.split('\n').collect();
                     let text_clip = clip.intersection(inner.scaled(scale));
-                    let selection = self.selection_of(id);
+                    // Selection offsets are in `full_text` coordinates; ignore while a preedit shifts the layout.
+                    let selection = if preedit.is_some() { None } else { self.selection_of(id) };
                     let focused = self.focused == Some(id);
                     let (sel_bg, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
 
@@ -625,7 +626,7 @@ impl Tk {
                     }
 
                     if self.focused == Some(id) && !disabled {
-                        let cur = text_cursor.min(full_text.len());
+                        let cur = caret;
                         let cur_line = full_text[..cur].matches('\n').count();
                         if cur_line >= start_row && cur_line < start_row + vis_rows {
                             let line_start = full_text[..cur].rfind('\n').map_or(0, |p| p + 1);
@@ -1314,7 +1315,7 @@ impl Tk {
                 let _ = &cnode;
                 let resolved = self.resolved_style(combo_id).unwrap_or_default();
                 let item_h = (resolved.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (cnode.combo_values.len() as f32 * item_h).clamp(item_h, 240.0);
+                let drop_h = (cnode.combo_values.len() as f32 * item_h).min(240.0).max(item_h);
                 let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
                 let drop_clip = Rect::new(0.0, 0.0, width as f32, height as f32);
 
@@ -1327,6 +1328,10 @@ impl Tk {
 
                 for (idx, val) in cnode.combo_values.iter().enumerate() {
                     let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + idx as f32 * item_h, drop_rect.width - 2.0, item_h);
+                    if row_rect.y >= drop_rect.y + drop_rect.height - 1.0 {
+                        // Remaining rows would fall outside the popup box.
+                        break;
+                    }
                     let is_hovered = row_rect.contains(px, py);
                     let is_sel = idx as i64 == sel_idx;
 
