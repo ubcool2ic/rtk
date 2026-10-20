@@ -186,6 +186,15 @@ pub struct Tk {
     pub(crate) close_callback: Option<CloseCallback>,
     /// True when window properties (icon, size constraints) need re-applying.
     pub(crate) window_props_dirty: bool,
+    /// Whether the colourblind-safe palette override is active.
+    pub(crate) colorblind_safe: bool,
+    /// The theme's own `danger` colour, captured before the colourblind-safe
+    /// override replaced it, so turning the mode off can restore it.
+    pub(crate) base_danger: Option<Color>,
+    /// Last system light/dark preference reported by the window backend.
+    pub(crate) system_theme: Option<crate::theme::SystemTheme>,
+    /// When following the system theme, the `(light, dark)` theme pair to use.
+    pub(crate) follow_system: Option<(Theme, Theme)>,
 }
 
 impl Default for Tk {
@@ -247,6 +256,10 @@ impl Tk {
             window_resizable: (true, true),
             close_callback: None,
             window_props_dirty: false,
+            colorblind_safe: false,
+            base_danger: None,
+            system_theme: None,
+            follow_system: None,
         }
     }
 
@@ -349,8 +362,13 @@ impl Tk {
     }
 
     /// Replaces the design tokens without changing `theme()`.
+    ///
+    /// Fresh tokens carry the theme's own `danger` colour, so the captured
+    /// pre-colourblind danger is dropped and re-derived from the new tokens.
     pub fn set_tokens(&mut self, tokens: Tokens) {
         self.style_engine.set_tokens(tokens);
+        self.base_danger = None;
+        self.apply_colorblind_palette();
         self.dirty = true;
     }
 
@@ -372,6 +390,10 @@ impl Tk {
             Theme::ModernLight => Tokens::modern_light(),
         };
         self.style_engine.set_tokens(tokens);
+        // Fresh tokens carry the theme's own danger colour; drop the captured
+        // pre-colourblind value so it is re-derived, then re-apply the override.
+        self.base_danger = None;
+        self.apply_colorblind_palette();
 
         let is_dark = matches!(theme, Theme::Dark | Theme::ModernDark);
         let is_hc = theme == Theme::HighContrast;

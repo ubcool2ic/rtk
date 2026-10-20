@@ -9,9 +9,10 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{Icon, Window, WindowId};
+use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
 
 use crate::tk::RtkUserEvent;
+use crate::theme::SystemTheme;
 use crate::{Key, Tk};
 
 struct App {
@@ -82,6 +83,10 @@ impl App {
         self.tk.sim_scale_factor(window.scale_factor());
         let size = window.inner_size();
         self.tk.sim_resize(size.width, size.height);
+        // Report the OS light/dark preference so `follow_system_theme` can act.
+        if let Some(system) = self.window.as_ref().and_then(|w| w.theme()) {
+            self.tk.sim_system_theme(map_winit_theme(system));
+        }
         self.window = Some(window);
         self.occluded = false;
         // Apply size constraints (including single-axis pinning) immediately so
@@ -288,6 +293,12 @@ impl ApplicationHandler<RtkUserEvent> for App {
                 self.occluded = occluded;
                 self.tk.dirty = !occluded;
             }
+            WindowEvent::ThemeChanged(theme) => {
+                self.tk.sim_system_theme(map_winit_theme(theme));
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = f64::from(self.tk.scale_factor);
                 self.tk.sim_mouse_move((position.x / scale) as f32, (position.y / scale) as f32);
@@ -371,6 +382,14 @@ impl ApplicationHandler<RtkUserEvent> for App {
 
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
+}
+
+/// Maps a winit window theme to the toolkit's [`SystemTheme`].
+fn map_winit_theme(theme: WinitTheme) -> SystemTheme {
+    match theme {
+        WinitTheme::Dark => SystemTheme::Dark,
+        WinitTheme::Light => SystemTheme::Light,
+    }
 }
 
 /// Builds a winit [`Icon`] from the toolkit's stored RGBA icon, if any.

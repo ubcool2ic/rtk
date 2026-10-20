@@ -21,7 +21,7 @@ pub use fonts::DefaultFont;
 pub use icons::Icon;
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
-pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, Typography, OKABE_ITO};
+pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, SystemTheme, Typography, OKABE_ITO};
 pub use timer::TimerId;
 pub use tk::{Key, ScrollUnit, Tk, TkProxy};
 pub use var::Var;

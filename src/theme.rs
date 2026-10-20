@@ -202,6 +202,20 @@ impl ColorRole {
     ];
 }
 
+/// The operating system's light/dark appearance preference.
+///
+/// Reported by the window backend via [`crate::Tk::sim_system_theme`] and used
+/// by [`crate::Tk::follow_system_theme`] to pick between a light and a dark
+/// [`Theme`].
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SystemTheme {
+    /// The system prefers a light appearance.
+    Light,
+    /// The system prefers a dark appearance.
+    Dark,
+}
+
 /// Okabe-Ito colourblind-safe categorical palette (8 colours).
 pub const OKABE_ITO: [Color; 8] = [
     Color::rgb(0, 0, 0),
