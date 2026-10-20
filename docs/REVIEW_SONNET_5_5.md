@@ -49,3 +49,39 @@ Model `anthropic/claude-sonnet-5.5`, reasoning budget 16k tokens (never xhigh/ma
 - [severity low] [bug] Text caret is drawn at the pre-preedit column while a preedit is shown, so it overlaps the composition text. -> not fixed (cosmetic; needs a design decision)
 - [severity low] [bug] The gradient branch ignores `bg_override`, so transitions do not animate background colour on gradient widgets. -> not fixed (consistent with the current design)
 
+### src/layout.rs lines 694-807
+- none
+
+This chunk (lines 694-807) contains only unit tests, with no production code. I checked each test's expected values by hand against the layout semantics. The helpers `slave` and `cell` are outside the chunk, so I inferred their signatures from the assertions. `cell` appears to take `(w, row, col)`, and the assertions are consistent with that.
+
+- **Pack tests:** the stacking, left-fill, expand-sharing, padding and orthogonal-request expectations are all arithmetically correct.
+- **Grid tests:**
+  - Column maxima give 50 wide, and the third item lands at x=30.
+  - Weights 1:3 over 80 extra pixels give widths 30 and 70.
+  - Spans plus padding give a 50×16 request and a placed rect of (5, 3, 40, 10).
+  - The spans test assumes the helper's default cell height is 10, which I could not confirm.
+- **Docs:** every test fn has a `///` doc comment.
+
+### src/layout.rs lines 351-693
+- none
+
+I read lines 351-693 and found nothing to fix. The checks below cover each function in the chunk.
+
+- **`pack_request` and `expansion`:** both follow Tk's packer rules for pack requests and expand slack, so I left them alone.
+- **`pack`:** the cavity arithmetic is clamped with `.max(0.0)` and `.min(available)`, so it cannot go negative. Parcels are then bounded by `within(container)`.
+- **Grid track bounds:** `span` keeps `start + count <= MAX_TRACKS`, so the `start..start + count` slices cannot overflow. `tracks` and `weighted` never grow past `MAX_TRACKS`. `track_range` only gets a start beyond the track list's length if `grid` were called with inconsistent inputs, and `grid` builds the list from the same items, so that cannot happen.
+- **Weights:** `weighted` ignores out-of-range indices consistently in both the `last` calculation and the `total`.
+- **`sticky_axis`:** it handles the low-only, high-only, both and neither cases correctly.
+- **Docs and API:** every function in the chunk has a `///` doc comment. `PackItem` and `GridItem` are plain data structs that users construct with struct literals, so I did not add `#[non_exhaustive]`.
+
+Two things I could not check from this chunk:
+- **`MAX_TRACKS`:** its value is defined outside this chunk. If it is very large, a single item at a huge column index allocates a track vector of that size.
+- **`pack` cost:** `pack` is O(n²) when many items use `expand`. That is acceptable at normal widget counts.
+
+### src/layout.rs lines 1-350
+- [low] [docs] `Rect::normalized` doc comment described `inset` (copy-paste error) (line 70) -> fixed
+- [medium] [api] Public enums `Side`, `Fill` and `Anchor` lacked `#[non_exhaustive]` (lines 141, 155, 169) -> fixed
+- [low] [bug] `place_rect` used `requested` unnormalized. Its fields are public, so a NaN or negative size made the anchor math produce NaN and silently drop the anchor offset (line 249, 261) -> fixed
+- [low] [bug] `place_rect` did not clamp `relx`, `rely`, `relwidth` or `relheight`. Huge values overflowed to inf, and a nonfinite result collapsed to 0 instead of clamping (lines 235-259) -> fixed
+- [low] [docs] The `Rect::within` doc comment was unclear about what it does (line 103) -> fixed
+

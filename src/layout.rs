@@ -67,7 +67,7 @@ impl Rect {
         }
     }
 
-    /// Shrinks the rectangle by the given horizontal and vertical insets, clamped so it never inverts.
+    /// Returns the rectangle with nonfinite or out-of-range values normalized as in [`Rect::new`].
     fn normalized(self) -> Self {
         Self::new(self.x, self.y, self.width, self.height)
     }
