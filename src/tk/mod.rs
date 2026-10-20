@@ -40,10 +40,12 @@ mod combobox;
 mod notebook;
 mod progress;
 mod tooltip;
+mod table;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
 pub(crate) use style::{dark_default_colors, NodeSnapshot};
+pub(crate) use table::TableState;
 
 pub(crate) type PostedTask = Box<dyn FnOnce(&mut Tk) + Send + 'static>;
 pub(crate) type IdleTask = Box<dyn FnOnce(&mut Tk) + 'static>;

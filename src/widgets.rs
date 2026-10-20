@@ -204,6 +204,8 @@ pub struct Text;
 pub struct Combobox;
 /// Constructor namespace for tabbed containers (ttk `Notebook`).
 pub struct Notebook;
+/// Constructor namespace for virtualized, sortable data tables (ttk `Treeview`-like).
+pub struct Table;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -431,6 +433,24 @@ impl Notebook {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Table {
+    /// Creates a virtualized table with `columns` and `height_rows` visible rows.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        columns: &[&str],
+        height_rows: usize,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Table, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.table = Some(Box::new(crate::tk::TableState::new(columns)));
+            node.table_height_rows = height_rows.max(1);
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -448,6 +468,7 @@ pub(crate) enum Kind {
     Text,
     Combobox,
     Notebook,
+    Table,
 }
 
 impl Kind {
@@ -463,6 +484,7 @@ impl Kind {
                 | Self::Spinbox
                 | Self::Text
                 | Self::Combobox
+                | Self::Table
         )
     }
 
@@ -572,6 +594,9 @@ pub(crate) struct WidgetNode {
     pub image: Option<ImageId>,
     pub compound: Compound,
     pub transition: Option<TransitionState>,
+    // Table
+    pub table: Option<Box<crate::tk::TableState>>,
+    pub table_height_rows: usize,
 }
 
 impl WidgetNode {
@@ -648,6 +673,8 @@ impl WidgetNode {
             image: None,
             compound: Compound::Left,
             transition: None,
+            table: None,
+            table_height_rows: 5,
         }
     }
 }

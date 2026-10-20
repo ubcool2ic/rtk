@@ -9,6 +9,8 @@ use tiny_skia::{Color as SkColor, FilterQuality, GradientStop, LinearGradient, P
 use crate::layout::{Rect, Size};
 use crate::style::{build_rounded_rect_path, ResolvedStyle, State};
 use crate::tk::cursor_boundary;
+
+mod data;
 use crate::widgets::{CanvasItemKind, Kind, Theme};
 use crate::{Color, RtkError, Tk, Var};
 
@@ -526,6 +528,9 @@ impl Tk {
                         (arrow_rect.x + (arrow_rect.width - am.width * scale) / 2.0, arrow_rect.y + (arrow_rect.height - am.height * scale) / 2.0),
                         clip, resolved.opacity,
                     );
+                }
+                Kind::Table => {
+                    data::draw_table(self, &mut pixmap, id, logical, logical_clip, scale, &resolved);
                 }
                 Kind::Notebook => {
                     let strip_h = 32.0;

@@ -53,6 +53,11 @@ impl Tk {
         self.ensure_layout();
         let moved = (self.pointer.0 - x).abs() > 2.0 || (self.pointer.1 - y).abs() > 2.0;
         self.pointer = (x, y);
+        if let Some(pid) = self.pressed {
+            if let Some(rx) = self.node(pid).filter(|n| n.kind == Kind::Table).map(|n| n.rect.x) {
+                self.table_mouse_move(pid, x - rx);
+            }
+        }
         let hovered = self.hit_test(x, y);
         if self.hovered != hovered {
             self.hover_timer_ms = 0;
@@ -273,6 +278,11 @@ impl Tk {
                     }
                     self.open_combobox = if open { Some(id) } else { None };
                 }
+                Kind::Table => {
+                    let local_x = x - node.rect.x;
+                    let local_y = y - node.rect.y;
+                    self.table_mouse_down(id, local_x, local_y);
+                }
                 Kind::Notebook if y < node.rect.y + 32.0 => {
                     let mut cur_x = node.rect.x;
                     let pages = node.notebook_pages.clone();
@@ -308,6 +318,11 @@ impl Tk {
             }
         }
         self.scrollbar_drag = None;
+        if let Some(id) = self.pressed {
+            if self.node(id).is_some_and(|n| n.kind == Kind::Table) {
+                self.table_mouse_up(id);
+            }
+        }
         if let Some(id) = self.pressed.take() {
             let is_disabled = self.node(id).map(|n| n.disabled).unwrap_or(false);
             if hit == Some(id) && !is_disabled {
@@ -558,6 +573,9 @@ impl Tk {
                         self.listbox_select(id, new_sel);
                     }
                 }
+            }
+            Kind::Table => {
+                self.table_key(id, key);
             }
             Kind::Spinbox if matches!(key, Key::Up | Key::Down) => {
                 let (from, to) = node.range;

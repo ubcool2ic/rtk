@@ -827,6 +827,18 @@ impl StyleEngine {
             transition_ms: Some(120),
         });
 
+        // TTable
+        self.configure(
+            "TTable",
+            StyleSpec {
+                bg: Some(self.tokens().palette.field_bg),
+                border_color: Some(self.tokens().palette.border),
+                border_width: Some(1.0),
+                radius: Some(self.tokens().radius.sm),
+                ..StyleSpec::default()
+            },
+        );
+
         // TListbox
         self.styles.insert("TListbox".into(), StyleSpec {
             bg: Some(p.field_bg),

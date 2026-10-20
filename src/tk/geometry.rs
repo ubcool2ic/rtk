@@ -220,6 +220,17 @@ impl Tk {
                     let m = self.measure_with(&cur_str, &resolved);
                     Size::new(specified.unwrap_or(m.width + 48.0).max(80.0) + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
                 }
+                Kind::Table => {
+                    let row_h = (resolved.font_size * 1.6).round().max(8.0);
+                    let (width_sum, height_rows) = self
+                        .node(id)
+                        .and_then(|n| n.table.as_deref().map(|t| (t.widths.iter().sum::<f32>(), n.table_height_rows)))
+                        .unwrap_or((0.0, 5));
+                    Size::new(
+                        specified.unwrap_or(width_sum.max(120.0)) + pad_w,
+                        row_h + height_rows as f32 * row_h + 2.0 + pad_h,
+                    )
+                }
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;
