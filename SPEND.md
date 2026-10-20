@@ -43,3 +43,12 @@
 | 2026-10-20 | openai/gpt-6.1-sol | 09-4-shortcuts r3 [Sol fix] | 20899 (0 cached) | 3855 (1811 reasoning) | 0.0908 | 0.3199 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-4b-clippy r0 | 6832 (768 cached) | 388 (0 reasoning) | 0.0006 | 0.0454 |
 | 2026-10-20 | (hand glue, no model) | 09-4 shortcuts: after GPT-6.1 Sol's 2nd fix dropped `ShortcutId::from_raw`, changed one call site to the tuple constructor (`ShortcutId(id)`); Sol stopped on this item per rule, the rest was green | — | — | 0 | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5-edit r0 | 53985 (0 cached) | 60000 (0 reasoning) | 0.0338 | 0.0792 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5-edit r1 | 57952 (256 cached) | 793 (0 reasoning) | 0.0044 | 0.0836 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5-edit r2 [Sol fix] | 4884 (0 cached) | 255 (0 reasoning) | 0.0148 | 0.3347 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5-edit r3 [Sol fix] | 4862 (0 cached) | 935 (812 reasoning) | 0.0215 | 0.3562 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5b-edit-tests r0 | 38996 (0 cached) | 2996 (0 reasoning) | 0.0042 | 0.0879 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5b-edit-tests r1 | 40231 (35840 cached) | 3008 (0 reasoning) | 0.0021 | 0.0899 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5b-edit-tests r2 [Sol fix] | 6530 (0 cached) | 1117 (714 reasoning) | 0.0275 | 0.3837 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5b-edit-tests r3 [Sol fix] | 3768 (0 cached) | 422 (349 reasoning) | 0.0136 | 0.3973 |
+| 2026-10-20 | (no model) | 09-5: GPT-6.1 Sol stopped after 2 tries on the first test file (truncated DeepSeek output); DeepSeek rewrote the tests as a new scoped item. The last failure was a stale golden PNG written during an earlier round, so it was re-blessed and checked by eye (no code change) | — | — | 0 | — |

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0 (unreleased): work in progress on branch `rtk-1.0`
+
+### 0.9 Foundations
+- Clippy runs clean on the stable toolchain (1.99) with `-D warnings`.
+- `src/tk.rs` is split into `src/tk/` modules (mod, style, window, tree, geometry, events, scroll, entry, text, listbox, canvas, combobox, notebook, progress, tooltip, shortcuts, clipboard, edit). The API is unchanged.
+- `rtk::testing`: golden screenshot tests (`assert_golden`, `compare_pixmaps`, `golden_dir`, `RTK_BLESS=1`), with goldens for every widget in the Light, Dark and HighContrast themes at 1x and 2x.
+- Window API: `iconphoto_rgba`/`iconphoto_png`, `minsize`/`maxsize`/`resizable` (can be limited to one axis), and `protocol_close`, a close hook that can veto closing, plus `sim_close_request`.
+- Keyboard: `Modifiers`, and `Key::Char`/`F(n)`/`Insert` (`Key` is now `#[non_exhaustive]`). `Shortcut::parse`/`label` and `bind_shortcut`/`unbind_shortcut`/`sim_key_with`. Primary maps to Cmd on macOS and Ctrl elsewhere.
+- Editing: clipboard (`clipboard_get`/`append`/`clear`; OS clipboard through the default `clipboard` feature, which uses arboard). Text selection in Entry and Text by Shift+keys, mouse drag and Primary+A. Copy, cut and paste. Undo/redo with typing coalescing. New `selection_bg`/`selection_fg` palette tokens.
+- CI workflow for Windows, Linux and macOS plus MSRV, in `ci/rust.yml`. Move it to `.github/workflows/` to turn it on.
+
 ## 0.8.2
 - **Fix: garbled button labels on Windows.** `TButton`, `Ghost.TButton`, `Sidebar.TButton` and `Chip.*` used font weight 500. Windows' default sans-serif (Arial) has no 500 face, so the matcher picked an unrelated face and labels drew as boxes/symbols. These styles now use 400 (bold variants stay 700). A unit test checks that every built-in theme style and state map uses only 400 or 700.
 - **New: Enter-to-submit for Entry.** `Tk::entry_bind_submit(entry, |tk| ...)` runs a callback when Enter is pressed in a focused single-line Entry (tkinter `bind("<Return>")`). It's additive and non-breaking: Enter in an Entry with no callback stays a no-op, and Enter in an open dialog still accepts the dialog first. Tests: `tests/entry_submit.rs`.

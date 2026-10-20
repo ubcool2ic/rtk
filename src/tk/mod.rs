@@ -41,6 +41,8 @@ mod notebook;
 mod progress;
 mod tooltip;
 mod shortcuts;
+mod clipboard;
+mod edit;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -206,6 +208,11 @@ pub struct Tk {
     pub(crate) shortcuts: Vec<ShortcutBinding>,
     /// Next shortcut id to hand out.
     pub(crate) next_shortcut_id: u64,
+    /// In-memory clipboard contents (always available, headless-safe).
+    pub(crate) clipboard_text: String,
+    /// Lazily created OS clipboard handle (only when the real loop runs).
+    #[cfg(feature = "clipboard")]
+    pub(crate) os_clipboard: Option<arboard::Clipboard>,
 }
 
 impl Default for Tk {
@@ -270,6 +277,9 @@ impl Tk {
             mods: crate::shortcut::Modifiers::NONE,
             shortcuts: Vec::new(),
             next_shortcut_id: 1,
+            clipboard_text: String::new(),
+            #[cfg(feature = "clipboard")]
+            os_clipboard: None,
         }
     }
 

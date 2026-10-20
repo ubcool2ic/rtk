@@ -97,8 +97,57 @@ impl Tk {
         if let Some(id) = self.pressed {
             if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
                 self.drag_scale(id, x);
+            } else if self.node(id).is_some_and(|node| matches!(node.kind, Kind::Entry | Kind::Text) && !node.disabled) {
+                self.drag_text_selection(id, x, y);
             }
         }
+    }
+
+    /// Extends the selection of an Entry/Text while the pointer is dragged.
+    fn drag_text_selection(&mut self, id: WidgetId, x: f32, y: f32) {
+        let Some(node) = self.node(id) else { return };
+        let kind = node.kind;
+        let rect = node.rect;
+        let scroll_x = node.scroll_x;
+        let font = self.resolved_style(id).unwrap_or_default();
+        let text = node.text.clone();
+        let cursor = match kind {
+            Kind::Entry => {
+                let target = (x - rect.x - 6.0 + scroll_x).max(0.0);
+                let boundaries = clusters(&text);
+                let (mut low, mut high) = (0, boundaries.len());
+                while low < high {
+                    let mid = low + (high - low) / 2;
+                    let end = boundaries.get(mid).copied().unwrap_or(text.len());
+                    let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
+                    if width < target {
+                        low = mid + 1;
+                    } else {
+                        high = mid;
+                    }
+                }
+                let right = boundaries.get(low).copied().unwrap_or(text.len());
+                let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
+                let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
+                let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
+                if (rw - target).abs() < (lw - target).abs() { right } else { left }
+            }
+            Kind::Text => {
+                let line_h = (font.font_size * 1.3 + 4.0).max(16.0);
+                let row = node.text_scroll_row + ((y - rect.y - 4.0) / line_h).max(0.0) as usize;
+                let lines: Vec<&str> = text.split('\n').collect();
+                let target_line = row.min(lines.len().saturating_sub(1));
+                lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>()
+            }
+            _ => return,
+        };
+        if let Some(node) = self.node_mut(id) {
+            if node.selection_anchor.is_none() {
+                node.selection_anchor = Some(node.cursor);
+            }
+            node.cursor = cursor.min(node.text.len());
+        }
+        self.dirty = true;
     }
 
     /// Headless harness: presses the primary mouse button at the current pointer.
@@ -194,7 +243,15 @@ impl Tk {
                     let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
                     let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
                     let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                    let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
+                        if shift {
+                            if node.selection_anchor.is_none() {
+                                node.selection_anchor = Some(node.cursor);
+                            }
+                        } else {
+                            node.selection_anchor = Some(cursor);
+                        }
                         node.cursor = cursor;
                     }
                 }
@@ -262,7 +319,15 @@ impl Tk {
                     let lines: Vec<&str> = node.text.split('\n').collect();
                     let target_line = row.min(lines.len().saturating_sub(1));
                     let byte_offset = lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>();
+                    let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
+                        if shift {
+                            if node.selection_anchor.is_none() {
+                                node.selection_anchor = Some(node.cursor);
+                            }
+                        } else {
+                            node.selection_anchor = Some(byte_offset.min(node.text.len()));
+                        }
                         node.cursor = byte_offset.min(node.text.len());
                     }
                 }
@@ -515,6 +580,7 @@ impl Tk {
             }
             return;
         }
+        let extend = self.mods.shift;
         match node.kind {
             Kind::Entry => {
                 if key == Key::Space {
@@ -523,14 +589,14 @@ impl Tk {
                     // Submit callback from `entry_bind_submit` (no-op if none).
                     self.run_command(id);
                 } else {
-                    self.edit_entry(id, Some(key), "");
+                    self.edit_entry_ext(id, Some(key), "", extend);
                 }
             }
             Kind::Text => {
                 if key == Key::Space {
                     self.sim_text(" ");
                 } else {
-                    self.edit_text(id, Some(key), "");
+                    self.edit_text_ext(id, Some(key), "", extend);
                 }
             }
             Kind::Combobox => {

@@ -7,11 +7,16 @@ license = "MIT OR Apache-2.0"
 description = "A small tkinter-style GUI library with an arena-based Rust API"
 readme = "README.md"
 
+[features]
+default = ["clipboard"]
+clipboard = ["dep:arboard"]
+
 [dependencies]
 winit = "0.30"
 softbuffer = "0.4"
 tiny-skia = "0.11"
 cosmic-text = "0.12"
+arboard = { version = "3", optional = true, default-features = false }
 
 [profile.dev]
 debug = 0

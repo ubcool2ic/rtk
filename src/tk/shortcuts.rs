@@ -57,11 +57,11 @@ impl Tk {
         self.ensure_layout();
         self.mods = mods;
 
-        // (a) Text-editing chords are left for the focused Entry/Text widget.
+        // (a) Text-editing chords are handled by the focused Entry/Text widget.
         if self.is_text_editing_chord(key, mods) {
             if let Some(id) = self.focused {
                 if self.node(id).is_some_and(|n| matches!(n.kind, Kind::Entry | Kind::Text)) {
-                    self.sim_key_raw(key);
+                    self.handle_edit_chord(id, key, mods);
                     return;
                 }
             }
@@ -106,5 +106,40 @@ impl Tk {
             return false;
         }
         matches!(key, Key::Char('a' | 'c' | 'x' | 'v' | 'z' | 'y'))
+    }
+
+    /// Handles a text-editing chord (select-all, copy, cut, paste, undo, redo)
+    /// for the focused Entry/Text widget `id`.
+    fn handle_edit_chord(&mut self, id: WidgetId, key: Key, mods: Modifiers) {
+        let Some(node) = self.node(id) else { return };
+        let is_text = node.kind == Kind::Text;
+        let read_only = is_text && node.text_read_only;
+        match key {
+            Key::Char('a') => self.select_all(id),
+            Key::Char('c') => {
+                self.copy_selection(id);
+            }
+            Key::Char('x') => {
+                if !read_only {
+                    self.cut_selection(id);
+                }
+            }
+            Key::Char('v') => {
+                if !read_only {
+                    self.paste_clipboard(id);
+                }
+            }
+            Key::Char('z') => {
+                if mods.shift {
+                    self.edit_redo(id);
+                } else {
+                    self.edit_undo(id);
+                }
+            }
+            Key::Char('y') => {
+                self.edit_redo(id);
+            }
+            _ => {}
+        }
     }
 }

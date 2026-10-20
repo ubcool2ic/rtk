@@ -13,6 +13,11 @@ pub(crate) fn trim_lines(text: &mut String, max: usize) {
 
 impl Tk {
     pub(crate) fn edit_text(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
+        self.edit_text_ext(id, key, inserted, false);
+    }
+
+    /// Edits a Text widget, optionally extending the selection (Shift held).
+    pub(crate) fn edit_text_ext(&mut self, id: WidgetId, key: Option<Key>, inserted: &str, extend: bool) {
         let Some(node) = self.node(id) else { return };
         if node.kind != Kind::Text { return; }
         let read_only = node.text_read_only;
@@ -20,30 +25,62 @@ impl Tk {
         // The stored cursor may be stale after programmatic text changes; never slice mid-char.
         let mut cursor = floor_char_boundary(&text, node.cursor);
         let vis_rows = node.text_dimensions.1;
+        let selection = self.selection_of(id);
 
+        // Compute the target cursor for a movement key.
+        let mut moved = false;
         match key {
             Some(Key::Left) => {
-                if cursor > 0 {
-                    let mut prev = 0;
-                    for (i, _) in text.char_indices() {
-                        if i >= cursor { break; }
-                        prev = i;
-                    }
-                    cursor = prev;
+                if extend {
+                    let target = if cursor > 0 {
+                        text[..cursor].char_indices().last().map(|(i, _)| i).unwrap_or(0)
+                    } else { 0 };
+                    self.extend_selection_to(id, target);
+                    return;
                 }
+                if let Some((s, _)) = selection {
+                    self.move_cursor_to(id, s);
+                    return;
+                }
+                if cursor > 0 {
+                    cursor = text[..cursor].char_indices().last().map(|(i, _)| i).unwrap_or(0);
+                }
+                moved = true;
             }
             Some(Key::Right) => {
+                if extend {
+                    let target = if cursor < text.len() {
+                        text[cursor..].char_indices().nth(1).map(|(i, _)| cursor + i).unwrap_or(text.len())
+                    } else { text.len() };
+                    self.extend_selection_to(id, target);
+                    return;
+                }
+                if let Some((_, e)) = selection {
+                    self.move_cursor_to(id, e);
+                    return;
+                }
                 if cursor < text.len() {
                     cursor = text[cursor..].char_indices().nth(1).map(|(i, _)| cursor + i).unwrap_or(text.len());
                 }
+                moved = true;
             }
             Some(Key::Home) => {
                 let start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+                if extend {
+                    self.extend_selection_to(id, start);
+                    return;
+                }
                 cursor = start;
+                moved = true;
             }
             Some(Key::End) => {
                 let end = text[cursor..].find('\n').map_or(text.len(), |i| cursor + i);
+                if extend {
+                    self.extend_selection_to(id, end);
+                    return;
+                }
                 cursor = end;
+                moved = true;
             }
             Some(Key::Up) => {
                 let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
@@ -58,6 +95,11 @@ impl Tk {
                     }
                     cursor = new_c;
                 }
+                if extend {
+                    self.extend_selection_to(id, cursor);
+                    return;
+                }
+                moved = true;
             }
             Some(Key::Down) => {
                 let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
@@ -74,34 +116,65 @@ impl Tk {
                     }
                     cursor = new_c;
                 }
+                if extend {
+                    self.extend_selection_to(id, cursor);
+                    return;
+                }
+                moved = true;
             }
             Some(Key::Enter) if !read_only => {
+                if selection.is_some() {
+                    self.replace_selection_with(id, "\n", false);
+                    return;
+                }
+                self.push_undo(id, false);
                 text.insert(cursor, '\n');
                 cursor += 1;
             }
-            Some(Key::Backspace) if !read_only && cursor > 0 => {
-                let mut prev = 0;
-                for (i, _) in text.char_indices() {
-                    if i >= cursor { break; }
-                    prev = i;
+            Some(Key::Backspace) if !read_only => {
+                if selection.is_some() {
+                    self.delete_selection(id);
+                    return;
                 }
-                text.remove(prev);
-                cursor = prev;
+                if cursor > 0 {
+                    self.push_undo(id, false);
+                    let prev = text[..cursor].char_indices().last().map(|(i, _)| i).unwrap_or(0);
+                    text.remove(prev);
+                    cursor = prev;
+                }
             }
-            Some(Key::Delete) if !read_only && cursor < text.len() => {
-                text.remove(cursor);
+            Some(Key::Delete) if !read_only => {
+                if selection.is_some() {
+                    self.delete_selection(id);
+                    return;
+                }
+                if cursor < text.len() {
+                    self.push_undo(id, false);
+                    text.remove(cursor);
+                }
             }
             None if !read_only && !inserted.is_empty() => {
-                text.insert_str(cursor, inserted);
-                cursor += inserted.len();
+                let typing = inserted.chars().count() == 1;
+                self.replace_selection_with(id, inserted, typing);
+                return;
             }
             _ => {}
+        }
+
+        if moved {
+            if let Some(node) = self.node_mut(id) {
+                node.cursor = cursor;
+                node.selection_anchor = None;
+            }
+            self.dirty = true;
+            return;
         }
 
         let cur_line = text[..cursor].matches('\n').count();
         if let Some(node) = self.node_mut(id) {
             node.text = text;
             node.cursor = cursor;
+            node.selection_anchor = None;
             if cur_line < node.text_scroll_row {
                 node.text_scroll_row = cur_line;
             } else if cur_line >= node.text_scroll_row + vis_rows {
@@ -129,7 +202,9 @@ impl Tk {
         }
         node.text = s;
         node.cursor = node.text.len();
+        node.selection_anchor = None;
         self.dirty = true;
+        self.edit_reset(id);
         true
     }
 
