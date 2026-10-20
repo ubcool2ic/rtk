@@ -12,7 +12,7 @@ fn scale_with_extreme_range_stays_in_bounds() {
     let v = tk.int_var(0);
     let s = Scale::new(&mut tk, root, i64::MIN, i64::MAX, v).expect("scale");
     tk.pack(s, PackOpts { fill: rtk::Fill::X, ..PackOpts::default() });
-    let _ = tk.render_to_pixmap(300, 80);
+    assert!(tk.render_to_pixmap(300, 80).is_ok());
     let r = tk.widget_rect(s).expect("rect");
     tk.sim_click(r.x + r.width - 1.0, r.y + r.height / 2.0);
     for _ in 0..3 { tk.sim_key(Key::Right); }
@@ -75,7 +75,7 @@ fn press_leave_release_does_not_fire_and_does_not_stick() {
     tk.pack(b, PackOpts::default());
     let k = Rc::clone(&n);
     tk.set_command(b, move |_| k.set(k.get() + 1));
-    let _ = tk.render_to_pixmap(200, 80);
+    assert!(tk.render_to_pixmap(200, 80).is_ok());
     let r = tk.widget_rect(b).expect("rect");
     let (x, y) = (r.x + r.width / 2.0, r.y + r.height / 2.0);
     tk.sim_mouse_move(x, y);

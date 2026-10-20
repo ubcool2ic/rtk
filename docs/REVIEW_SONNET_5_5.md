@@ -1095,3 +1095,8 @@ I also checked the rest of the chunk and found no problems:
 - [severity low] [bug] The NaN scale-factor check (line 60) never verifies that the scale stayed at 2.0 after a rejected value. I did not fix this because the scale getter's name is not visible in the supplied reference, so any assertion would be a guess. -> not fixed (the getter API is not visible here)
 - No other problems found in lines 1-62. Each test has a doc comment, the helper-free tests cannot panic apart from their intended `expect` calls, and nothing depends on timing.
 
+### tests/review.rs lines 1-102
+- [severity low] [bug] The `render_to_pixmap` result is discarded with `let _ =` in the scale test (line 15), so a failed layout render is not reported at the point of failure -> fixed
+- [severity low] [bug] The same discarded `render_to_pixmap` result in the press-leave-release test (line 78) -> fixed
+- [severity low] [bug] The first test (line 21) asserts the value is exactly `i64::MIN` after a click 1px from the left edge plus 3 `Left` key presses. This relies on the click clamping to the minimum, which I could not confirm from this chunk, so it may be fragile -> not fixed (the assertion is correct, so I did not weaken it)
+
