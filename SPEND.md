@@ -242,3 +242,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/widgets.rs:1-31 | 2731 (0 cached) | 639 (341 reasoning) | 0.0119 | 4.5592 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/canvas_shapes.rs:1-56 | 3692 (0 cached) | 1842 (1261 reasoning) | 0.0258 | 4.5850 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/dialog_anchor.rs:1-194 | 5447 (0 cached) | 3315 (1868 reasoning) | 0.0440 | 4.6291 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/edit_selection.rs:1-291 | 7465 (0 cached) | 2331 (1386 reasoning) | 0.0382 | 4.6673 |

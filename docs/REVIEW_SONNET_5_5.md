@@ -840,3 +840,9 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [low] [bug] The "black overlay" check in `scrim_style_is_translucent_black` only compares absolute channel drops, which is weak but not wrong. -> not fixed (the assertion is correct, and tightening it would depend on the unknown theme background)
 - [low] [bug] `tk.modal` is accessed directly (lines 39 and 68), and `let mut tk` may trigger an `unused_mut` warning if `widget_rect` takes `&self`. -> not fixed (I can't see `Tk`'s field visibility or method signatures from here)
 
+### tests/edit_selection.rs lines 1-291
+- [severity low] [bug] `typing_coalesces` discards the return value of `edit_undo` (line 174), so the test would still pass if undo were a no-op and the text happened to be empty -> fixed
+- [severity low] [bug] `edit_reset_clears_history` never checks that the typed text was present before the reset, or that it survives afterwards (lines 249-251). `!edit_undo` alone would also hold if typing had never reached the Entry -> fixed
+- [severity low] [bug] `unicode_boundaries` is named for the combining mark but never checks that the selection includes it (lines 223-229). A selection of an empty or wrong range would still pass the boundary checks -> fixed
+- [severity low] [bug] No panics in the helpers, timing dependence, or wrong expectations found in the rest of the file. The `mouse_drag_selects` and golden tests have weak but valid assertions -> not fixed (valid as written; the exact selection offsets depend on font metrics and would be brittle)
+

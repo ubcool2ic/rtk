@@ -171,7 +171,7 @@ fn typing_coalesces() {
     tk.sim_text("b");
     tk.sim_text("c");
     assert_eq!(tk.entry_get(entry).as_deref(), Some("abc"));
-    tk.edit_undo(entry);
+    assert!(tk.edit_undo(entry));
     assert_eq!(tk.entry_get(entry).as_deref(), Some(""));
 }
 
@@ -227,6 +227,8 @@ fn unicode_boundaries() {
     assert!(sample.is_char_boundary(e));
     // The selected suffix must be a valid slice of the original text.
     assert_eq!(tk.entry_selected_text(entry).as_deref(), sample.get(s..e));
+    // The selection must include the trailing combining mark.
+    assert!(sample[s..e].ends_with('\u{0301}'));
 }
 
 /// Text selection API works across lines.
@@ -247,8 +249,10 @@ fn edit_reset_clears_history() {
     let (mut tk, entry) = entry_tk();
     focus(&mut tk, entry);
     tk.sim_text("a");
+    assert_eq!(tk.entry_get(entry).as_deref(), Some("a"));
     tk.edit_reset(entry);
     assert!(!tk.edit_undo(entry));
+    assert_eq!(tk.entry_get(entry).as_deref(), Some("a"));
 }
 
 /// Clipboard append accumulates text.
