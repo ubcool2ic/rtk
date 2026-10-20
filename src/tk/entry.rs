@@ -73,7 +73,6 @@ impl Tk {
             Some(Key::Left) => {
                 if extend {
                     self.extend_selection_to(id, previous);
-                    self.dirty = true;
                     return;
                 }
                 if let Some((s, _)) = selection {
@@ -85,7 +84,6 @@ impl Tk {
             Some(Key::Right) => {
                 if extend {
                     self.extend_selection_to(id, next);
-                    self.dirty = true;
                     return;
                 }
                 if let Some((_, e)) = selection {
@@ -97,7 +95,6 @@ impl Tk {
             Some(Key::Home) => {
                 if extend {
                     self.extend_selection_to(id, 0);
-                    self.dirty = true;
                     return;
                 }
                 cursor = 0;
@@ -105,7 +102,6 @@ impl Tk {
             Some(Key::End) => {
                 if extend {
                     self.extend_selection_to(id, text.len());
-                    self.dirty = true;
                     return;
                 }
                 cursor = text.len();
@@ -152,7 +148,8 @@ impl Tk {
             node.cursor = cursor;
             node.selection_anchor = None;
         }
-        self.dirty = true;
+        // Only the entry's own contents/caret changed; repaint just its area.
+        self.invalidate_widget(id);
     }
 
 }

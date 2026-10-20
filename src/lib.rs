@@ -1,6 +1,9 @@
 //! A small, software-rendered, tkinter-style GUI.
 
 mod app;
+pub mod a11y;
+#[cfg(feature = "accesskit")]
+mod a11y_accesskit;
 pub mod chart;
 pub mod colormap;
 pub mod dialog;
@@ -21,6 +24,7 @@ mod tk;
 mod var;
 mod widgets;
 
+pub use a11y::{A11yAction, A11yNode, A11yRole};
 pub use chart::ChartKind;
 pub use colormap::Colormap;
 pub use dialog::MessageKind;
@@ -31,9 +35,9 @@ pub use image::ImageFit;
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use shortcut::{Modifiers, Shortcut, ShortcutError, ShortcutId};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
-pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, Typography, OKABE_ITO};
+pub use theme::{ColorRole, Radii, SemanticColors, SemanticTokens, Spacing, SystemTheme, Typography, OKABE_ITO};
 pub use timer::TimerId;
-pub use tk::{Key, ScrollUnit, Tk, TkProxy};
+pub use tk::{FrameDamage, Key, ScrollUnit, Tk, TkProxy};
 pub use tk::inputs_state::{Orient, RingMode};
 pub use tk::ring::ProgressRing;
 pub use tk::switch::Switch;

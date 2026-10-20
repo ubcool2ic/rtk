@@ -49,7 +49,8 @@ impl Tk {
     pub fn selection_clear(&mut self, id: WidgetId) {
         if let Some(node) = self.node_mut(id) {
             node.selection_anchor = None;
-            self.dirty = true;
+            // Only this widget's selection highlight changed.
+            self.invalidate_widget(id);
         }
     }
 
@@ -70,7 +71,8 @@ impl Tk {
         node.cursor = prev.cursor.min(node.text.len());
         node.selection_anchor = prev.anchor.map(|a| a.min(node.text.len()));
         node.last_edit_typing = false;
-        self.dirty = true;
+        // Only this widget's contents/caret/selection changed.
+        self.invalidate_widget(id);
         self.sync_after_edit(id);
         true
     }
@@ -92,7 +94,8 @@ impl Tk {
         node.cursor = next.cursor.min(node.text.len());
         node.selection_anchor = next.anchor.map(|a| a.min(node.text.len()));
         node.last_edit_typing = false;
-        self.dirty = true;
+        // Only this widget's contents/caret/selection changed.
+        self.invalidate_widget(id);
         self.sync_after_edit(id);
         true
     }
@@ -132,7 +135,8 @@ impl Tk {
         let e = floor_char_boundary(&node.text, end.min(len));
         node.selection_anchor = Some(s);
         node.cursor = e;
-        self.dirty = true;
+        // Only this widget's selection/caret changed.
+        self.invalidate_widget(id);
     }
 
     /// Selects the entire text of `id`.
@@ -140,7 +144,8 @@ impl Tk {
         let Some(node) = self.node_mut(id) else { return };
         node.selection_anchor = Some(0);
         node.cursor = node.text.len();
-        self.dirty = true;
+        // Only this widget's selection/caret changed.
+        self.invalidate_widget(id);
     }
 
     /// Copies the current selection of `id` to the clipboard. Returns true if
@@ -203,7 +208,8 @@ impl Tk {
             node.cursor = start;
             node.selection_anchor = None;
         }
-        self.dirty = true;
+        // Only this widget's contents/caret/selection changed.
+        self.invalidate_widget(id);
         self.sync_after_edit(id);
         true
     }
@@ -227,7 +233,8 @@ impl Tk {
             node.cursor = start + value.len();
             node.selection_anchor = None;
         }
-        self.dirty = true;
+        // Only this widget's contents/caret/selection changed.
+        self.invalidate_widget(id);
         self.sync_after_edit(id);
     }
 
@@ -287,7 +294,8 @@ impl Tk {
             node.selection_anchor = Some(node.cursor);
         }
         node.cursor = new_cursor.min(node.text.len());
-        self.dirty = true;
+        // Only this widget's selection/caret changed.
+        self.invalidate_widget(id);
     }
 
     /// Moves the cursor of `id` to `new_cursor`, clearing any selection.
@@ -295,6 +303,7 @@ impl Tk {
         let Some(node) = self.node_mut(id) else { return };
         node.cursor = new_cursor.min(node.text.len());
         node.selection_anchor = None;
-        self.dirty = true;
+        // Only this widget's caret/selection changed.
+        self.invalidate_widget(id);
     }
 }

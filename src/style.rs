@@ -157,12 +157,14 @@ impl Tokens {
                 surface: Color::rgb(255, 255, 255),
                 surface2: Color::rgb(238, 238, 238),
                 fg: Color::rgb(30, 30, 30),
-                muted: Color::rgb(115, 115, 115),
+                // WCAG AA: darkened from (115,115,115) so muted/bg >= 4.5.
+                muted: Color::rgb(95, 95, 95),
                 accent: Color::rgb(0, 103, 192),
                 accent_fg: Color::WHITE,
                 border: Color::rgb(209, 209, 209),
                 focus: Color::rgb(0, 103, 192),
-                danger: Color::rgb(209, 52, 56),
+                // WCAG AA: darkened from (209,52,56) so danger/bg >= 4.5.
+                danger: Color::rgb(185, 28, 28),
                 field_bg: Color::rgb(255, 255, 255),
                 select_bg: Color::rgb(0, 103, 192),
                 select_fg: Color::WHITE,
@@ -220,7 +222,8 @@ impl Tokens {
                 surface: Color::rgb(238, 232, 244),
                 surface2: Color::rgb(226, 218, 236),
                 fg: Color::rgb(29, 27, 32),
-                muted: Color::rgb(121, 116, 126),
+                // WCAG AA: darkened from (121,116,126) so muted/surface >= 4.5.
+                muted: Color::rgb(100, 95, 105),
                 accent: Color::rgb(103, 80, 164),
                 accent_fg: Color::WHITE,
                 border: Color::rgb(202, 196, 208),
@@ -278,7 +281,9 @@ impl Tokens {
                 fg: Color::rgb(230, 232, 238),
                 muted: Color::rgb(154, 163, 178),
                 accent,
-                accent_fg: Color::WHITE,
+                // WCAG AA: a dark on-accent colour reaches >= 4.5 against the
+                // mid-tone accent; white only reaches ~3.2.
+                accent_fg: Color::rgb(15, 17, 21),
                 border: Color::rgb(42, 48, 64),
                 focus: accent,
                 danger: Color::rgb(248, 113, 113),
@@ -296,21 +301,26 @@ impl Tokens {
         }
     }
 
-    /// Modern light theme tokens (#F5F7FB bg, #FFFFFF surface, #4F8CFF accent).
+    /// Modern light theme tokens (#F5F7FB bg, #FFFFFF surface, #2563EB accent).
+    ///
+    /// The accent is a darker blue than [`Tokens::modern_dark`] so that it
+    /// reaches WCAG AA contrast against the light background.
     pub fn modern_light() -> Self {
-        let accent = Color::rgb(79, 140, 255);
+        let accent = Color::rgb(37, 99, 235);
         Self {
             palette: Palette {
                 bg: Color::rgb(245, 247, 251),
                 surface: Color::rgb(255, 255, 255),
                 surface2: Color::rgb(235, 239, 248),
                 fg: Color::rgb(27, 31, 42),
-                muted: Color::rgb(122, 132, 150),
+                // WCAG AA: darkened from (122,132,150) so muted/bg >= 4.5.
+                muted: Color::rgb(90, 100, 118),
                 accent,
                 accent_fg: Color::WHITE,
                 border: Color::rgb(226, 230, 239),
                 focus: accent,
-                danger: Color::rgb(220, 53, 69),
+                // WCAG AA: darkened from (220,53,69) so danger/bg >= 4.5.
+                danger: Color::rgb(185, 28, 28),
                 field_bg: Color::rgb(255, 255, 255),
                 select_bg: Color::rgba(accent.r, accent.g, accent.b, 64),
                 select_fg: Color::rgb(27, 31, 42),

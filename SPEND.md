@@ -55,3 +55,5 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot6, PR #2] 13-1-tokens r0 + r1 self-fix | 64314 | 5989 | 0.0075 | (BizyBot6 DeepSeek total 0.0075; Sol 0.00) |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 10-docs-a r0 | 36574 (0 cached) | 9703 (0 reasoning) | 0.0074 | 0.0974 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot5, PR #4] 0.12 charts, image/SVG, drag-and-drop, tray: all calls (itemized in PR #4) | — | — | 0.0448 | (BizyBot5 DeepSeek total 0.0448; Sol 0.00) |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet smoke | 17 (0 cached) | 4 (0 reasoning) | 0.0001 | 0.0001 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot6, PR #5] 0.13 themes, a11y, IME, HiDPI, damage redraw: 25 calls (itemized in PR #5) | — | — | 0.0943 | (BizyBot6 DeepSeek total 0.1018 incl. PR #2; Sol 0.00) |

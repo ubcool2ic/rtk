@@ -1,19 +1,106 @@
+//! Real window backend: winit event loop, softbuffer presentation (full or
+//! damage-rect), keyboard/mouse/IME translation, system theme and the optional
+//! AccessKit adapter. Everything else in rtk is backend-independent.
+
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "accesskit")]
+use std::collections::VecDeque;
+#[cfg(feature = "accesskit")]
+use std::sync::Mutex;
+
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{Icon, Window, WindowId};
+use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
 
 use crate::shortcut::Modifiers;
 use crate::tk::RtkUserEvent;
-use crate::{Key, Tk};
+use crate::theme::SystemTheme;
+use crate::{FrameDamage, Key, Tk};
+
+#[cfg(feature = "accesskit")]
+use crate::TkProxy;
+
+/// Shared state between the AccessKit adapter handlers and the main loop.
+///
+/// The handlers run on the platform accessibility thread and only record
+/// requests; the main loop drains them in [`App::pump_a11y`].
+#[cfg(feature = "accesskit")]
+struct A11yShared {
+    /// Whether the platform has activated the accessibility tree.
+    active: bool,
+    /// Whether the platform asked for the initial tree since the last pump.
+    initial_requested: bool,
+    /// Action requests queued by assistive technology.
+    actions: VecDeque<accesskit::ActionRequest>,
+}
+
+/// AccessKit activation handler: records activation and wakes the main loop.
+#[cfg(feature = "accesskit")]
+struct A11yActivation {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+    /// Proxy used to wake the event loop.
+    proxy: TkProxy,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::ActivationHandler for A11yActivation {
+    /// Marks the tree active, requests the initial tree and wakes the loop.
+    fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
+        {
+            let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.active = true;
+            shared.initial_requested = true;
+        }
+        self.proxy.post(|_| {});
+        None
+    }
+}
+
+/// AccessKit action handler: queues action requests and wakes the main loop.
+#[cfg(feature = "accesskit")]
+struct A11yActionHandler {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+    /// Proxy used to wake the event loop.
+    proxy: TkProxy,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::ActionHandler for A11yActionHandler {
+    /// Queues an action request and wakes the loop to process it.
+    fn do_action(&mut self, request: accesskit::ActionRequest) {
+        {
+            let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.actions.push_back(request);
+        }
+        self.proxy.post(|_| {});
+    }
+}
+
+/// AccessKit deactivation handler: marks the tree inactive.
+#[cfg(feature = "accesskit")]
+struct A11yDeactivation {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::DeactivationHandler for A11yDeactivation {
+    /// Marks the accessibility tree inactive.
+    fn deactivate_accessibility(&mut self) {
+        let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+        shared.active = false;
+    }
+}
 
 struct App {
     tk: Tk,
@@ -27,6 +114,14 @@ struct App {
     last_sheet_poll: Instant,
     first_frame_done: bool,
     last_draw: Instant,
+    /// Last value pushed to `Window::set_ime_allowed`, to avoid redundant calls.
+    ime_allowed: bool,
+    /// AccessKit adapter bridging the toolkit to platform accessibility APIs.
+    #[cfg(feature = "accesskit")]
+    a11y_adapter: Option<accesskit_winit::Adapter>,
+    /// Shared state between the AccessKit handlers and the main loop.
+    #[cfg(feature = "accesskit")]
+    a11y_shared: Arc<Mutex<A11yShared>>,
 }
 
 impl Tk {
@@ -53,6 +148,15 @@ impl Tk {
             last_sheet_poll: now,
             first_frame_done: false,
             last_draw: now,
+            ime_allowed: false,
+            #[cfg(feature = "accesskit")]
+            a11y_adapter: None,
+            #[cfg(feature = "accesskit")]
+            a11y_shared: Arc::new(Mutex::new(A11yShared {
+                active: false,
+                initial_requested: false,
+                actions: VecDeque::new(),
+            })),
         };
         event_loop.run_app(&mut app)?;
         match app.error {
@@ -79,10 +183,43 @@ impl App {
         }
         let (rw, rh) = self.tk.is_resizable();
         attributes = attributes.with_resizable(rw || rh);
+        // With AccessKit, create the window hidden so the adapter can attach
+        // before the platform first queries the accessibility tree.
+        #[cfg(feature = "accesskit")]
+        {
+            attributes = attributes.with_visible(false);
+        }
         let window = Arc::new(event_loop.create_window(attributes)?);
+        #[cfg(feature = "accesskit")]
+        {
+            let proxy = self.tk.proxy();
+            let activation = A11yActivation {
+                shared: self.a11y_shared.clone(),
+                proxy: proxy.clone(),
+            };
+            let action = A11yActionHandler {
+                shared: self.a11y_shared.clone(),
+                proxy,
+            };
+            let deactivation = A11yDeactivation {
+                shared: self.a11y_shared.clone(),
+            };
+            self.a11y_adapter = Some(accesskit_winit::Adapter::with_direct_handlers(
+                event_loop,
+                &window,
+                activation,
+                action,
+                deactivation,
+            ));
+            window.set_visible(true);
+        }
         self.tk.sim_scale_factor(window.scale_factor());
         let size = window.inner_size();
         self.tk.sim_resize(size.width, size.height);
+        // Report the OS light/dark preference so `follow_system_theme` can act.
+        if let Some(system) = self.window.as_ref().and_then(|w| w.theme()) {
+            self.tk.sim_system_theme(map_winit_theme(system));
+        }
         self.window = Some(window);
         self.occluded = false;
         // Apply size constraints (including single-axis pinning) immediately so
@@ -134,7 +271,7 @@ impl App {
             } else {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
             }
-        } else if self.tk.dirty && !self.occluded {
+        } else if self.tk.needs_redraw() && !self.occluded {
             // Animations measure time from when they start, not from the last one.
             self.last_frame = now;
             if now >= next_frame {
@@ -170,6 +307,7 @@ impl App {
         let Some(window) = self.window.clone() else { return Ok(()) };
         window.set_title(&self.tk.window_title);
         self.apply_window_props();
+        self.sync_ime(&window);
         let size = window.inner_size();
         if self.occluded || size.width == 0 || size.height == 0 {
             self.tk.dirty = false;
@@ -186,40 +324,78 @@ impl App {
         }
         if self.surface.is_none() {
             if let Some(context) = &self.context {
-                self.surface = Some(Surface::new(context, window)?);
+                self.surface = Some(Surface::new(context, window.clone())?);
             }
         }
         self.last_draw = Instant::now();
         let t_render = Instant::now();
-        let pixmap = self.tk.render_to_pixmap(size.width, size.height)?;
+        let damage = self.tk.render_frame(size.width, size.height)?;
         let render_time = t_render.elapsed();
+        if damage == FrameDamage::None {
+            return Ok(());
+        }
         let t_present = Instant::now();
         let Some(surface) = &mut self.surface else { return Ok(()) };
         surface.resize(width, height)?;
         let mut buffer = surface.buffer_mut()?;
-        for (pixel, rgba) in buffer.iter_mut().zip(pixmap.data().chunks_exact(4)) {
-            let [r, g, b, a] = rgba else { continue };
-            if *a == 255 {
-                // Opaque (the common case): premultiplied equals straight colour.
-                *pixel = (u32::from(*r) << 16) | (u32::from(*g) << 8) | u32::from(*b);
-                continue;
+        let Some(frame) = self.tk.frame() else { return Ok(()) };
+        let frame_data = frame.data();
+        let stride = size.width as usize;
+        let mut damaged_pixels = 0usize;
+        let partial_rects: Option<Vec<softbuffer::Rect>> = match &damage {
+            FrameDamage::Partial(rects) if buffer.age() == 1 => Some(
+                rects
+                    .iter()
+                    .filter_map(|r| {
+                        let w = NonZeroU32::new(r.width as u32)?;
+                        let h = NonZeroU32::new(r.height as u32)?;
+                        Some(softbuffer::Rect {
+                            x: r.x as u32,
+                            y: r.y as u32,
+                            width: w,
+                            height: h,
+                        })
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+        match &partial_rects {
+            Some(rects) => {
+                for rect in rects {
+                    let x0 = rect.x as usize;
+                    let y0 = rect.y as usize;
+                    let x1 = (rect.x + rect.width.get()) as usize;
+                    let y1 = (rect.y + rect.height.get()) as usize;
+                    for y in y0..y1 {
+                        let row = y * stride;
+                        for x in x0..x1 {
+                            let idx = (row + x) * 4;
+                            let Some(rgba) = frame_data.get(idx..idx + 4) else { continue };
+                            let Some(pixel) = buffer.get_mut(row + x) else { continue };
+                            *pixel = pack_pixel(rgba);
+                            damaged_pixels += 1;
+                        }
+                    }
+                }
+                buffer.present_with_damage(rects)?;
             }
-            let alpha = u32::from(*a);
-            let channel = |value: u8| {
-                (u32::from(value) * 255 + alpha / 2)
-                    .checked_div(alpha)
-                    .map_or(0, |v| v.min(255))
-            };
-            *pixel = (channel(*r) << 16) | (channel(*g) << 8) | channel(*b);
+            None => {
+                for (pixel, rgba) in buffer.iter_mut().zip(frame_data.chunks_exact(4)) {
+                    *pixel = pack_pixel(rgba);
+                }
+                damaged_pixels = stride * size.height as usize;
+                buffer.present()?;
+            }
         }
-        buffer.present()?;
         if std::env::var_os("RTK_STATS").is_some() {
             eprintln!(
-                "rtk: frame render {:.2} ms, convert+present {:.2} ms",
+                "rtk: frame render {:.2} ms, convert+present {:.2} ms, {damaged_pixels} damaged px",
                 render_time.as_secs_f64() * 1000.0,
                 t_present.elapsed().as_secs_f64() * 1000.0
             );
         }
+        self.sync_ime_cursor_area(&window);
         if !self.first_frame_done {
             self.first_frame_done = true;
             // Opt-in diagnostics used by docs/PERFORMANCE.md.
@@ -238,6 +414,8 @@ impl App {
 impl ApplicationHandler<RtkUserEvent> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: RtkUserEvent) {
         self.tk.process_posted();
+        #[cfg(feature = "accesskit")]
+        self.pump_a11y();
         self.schedule(event_loop);
     }
 
@@ -273,6 +451,10 @@ impl ApplicationHandler<RtkUserEvent> for App {
         if self.window.as_ref().map(|window| window.id()) != Some(window_id) {
             return;
         }
+        #[cfg(feature = "accesskit")]
+        if let (Some(adapter), Some(window)) = (&mut self.a11y_adapter, &self.window) {
+            adapter.process_event(window, &event);
+        }
         match event {
             WindowEvent::CloseRequested => {
                 self.tk.handle_close_request();
@@ -288,6 +470,12 @@ impl ApplicationHandler<RtkUserEvent> for App {
             WindowEvent::Occluded(occluded) => {
                 self.occluded = occluded;
                 self.tk.dirty = !occluded;
+            }
+            WindowEvent::ThemeChanged(theme) => {
+                self.tk.sim_system_theme(map_winit_theme(theme));
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = f64::from(self.tk.scale_factor);
@@ -315,7 +503,31 @@ impl ApplicationHandler<RtkUserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                self.tk.sim_ime_preedit(&text, cursor);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                self.tk.sim_ime_commit(&text);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(Ime::Disabled) => {
+                self.tk.sim_ime_preedit("", None);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                // While a composition is active the platform delivers composed
+                // text through `Ime::Commit`; ignore raw key text for that widget.
+                if self.tk.ime_preedit().is_some() {
+                    self.schedule(event_loop);
+                    return;
+                }
                 let mods = Modifiers {
                     ctrl: self.modifiers.control_key(),
                     shift: self.modifiers.shift_key(),
@@ -427,12 +639,38 @@ impl ApplicationHandler<RtkUserEvent> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.tk.process_posted();
+        #[cfg(feature = "accesskit")]
+        self.pump_a11y();
         self.schedule(event_loop);
     }
 }
 
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
+}
+
+/// Converts a premultiplied RGBA pixel to softbuffer's packed `0x00RRGGBB`.
+fn pack_pixel(rgba: &[u8]) -> u32 {
+    let [r, g, b, a] = [rgba[0], rgba[1], rgba[2], rgba[3]];
+    if a == 255 {
+        // Opaque (the common case): premultiplied equals straight colour.
+        return (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
+    }
+    let alpha = u32::from(a);
+    let channel = |value: u8| {
+        (u32::from(value) * 255 + alpha / 2)
+            .checked_div(alpha)
+            .map_or(0, |v| v.min(255))
+    };
+    (channel(r) << 16) | (channel(g) << 8) | channel(b)
+}
+
+/// Maps a winit window theme to the toolkit's [`SystemTheme`].
+fn map_winit_theme(theme: WinitTheme) -> SystemTheme {
+    match theme {
+        WinitTheme::Dark => SystemTheme::Dark,
+        WinitTheme::Light => SystemTheme::Light,
+    }
 }
 
 /// Builds a winit [`Icon`] from the toolkit's stored RGBA icon, if any.
@@ -442,6 +680,48 @@ fn build_icon(tk: &Tk) -> Option<Icon> {
 }
 
 impl App {
+    /// Drains queued AccessKit action requests into the toolkit and pushes a
+    /// fresh accessibility tree to the platform when it changed.
+    ///
+    /// Called from `user_event` and `about_to_wait`; a no-op without the
+    /// `accesskit` feature.
+    #[cfg(feature = "accesskit")]
+    fn pump_a11y(&mut self) {
+        let Some(adapter) = self.a11y_adapter.as_mut() else { return };
+        let (actions, initial_requested) = {
+            let mut shared = self.a11y_shared.lock().unwrap_or_else(|e| e.into_inner());
+            let actions: Vec<accesskit::ActionRequest> = shared.actions.drain(..).collect();
+            let initial = shared.initial_requested;
+            shared.initial_requested = false;
+            (actions, initial)
+        };
+        let mut redraw = false;
+        for request in &actions {
+            let Some((key, action, value)) = crate::a11y_accesskit::map_action(request) else {
+                continue;
+            };
+            let id = crate::a11y_accesskit::widget_from_key(key);
+            if self.tk.a11y_do_action(id, action, value.as_deref()) {
+                redraw = true;
+            }
+        }
+        if redraw {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+        let changed = initial_requested || self.tk.a11y_tree_changed();
+        if !changed {
+            return;
+        }
+        let scale = self
+            .window
+            .as_ref()
+            .map_or(1.0, |window| window.scale_factor());
+        let tk = &self.tk;
+        adapter.update_if_active(|| crate::a11y_accesskit::tree_update(tk, scale));
+    }
+
     /// Re-applies window properties (icon, size constraints, resizable) to the
     /// real window when the toolkit reports they changed.
     fn apply_window_props(&mut self) {
@@ -449,6 +729,30 @@ impl App {
             return;
         }
         self.sync_window_props();
+    }
+
+    /// Enables or disables IME input on the window when the toolkit's
+    /// [`Tk::ime_wanted`] state changes.
+    fn sync_ime(&mut self, window: &Window) {
+        let wanted = self.tk.ime_wanted();
+        if wanted != self.ime_allowed {
+            self.ime_allowed = wanted;
+            window.set_ime_allowed(wanted);
+        }
+    }
+
+    /// Positions the IME candidate window at the caret when composition is
+    /// wanted; otherwise leaves the platform default in place.
+    fn sync_ime_cursor_area(&mut self, window: &Window) {
+        if !self.tk.ime_wanted() {
+            return;
+        }
+        if let Some(area) = self.tk.ime_cursor_area() {
+            window.set_ime_cursor_area(
+                LogicalPosition::new(f64::from(area.x), f64::from(area.y)),
+                LogicalSize::new(f64::from(area.width.max(1.0)), f64::from(area.height.max(1.0))),
+            );
+        }
     }
 
     /// Pushes the toolkit's current window properties (icon, size constraints,

@@ -323,20 +323,28 @@ impl Tk {
             }
         }
 
-        for slot in &mut self.nodes {
+        let mut transitioning: Vec<WidgetId> = Vec::new();
+        let mut animating_bars: Vec<WidgetId> = Vec::new();
+        for (index, slot) in self.nodes.iter_mut().enumerate() {
             if let Some(node) = &mut slot.node {
                 if let Some(trans) = &mut node.transition {
                     let done = trans.advance(ms);
                     if done {
                         node.transition = None;
                     }
-                    self.dirty = true;
+                    transitioning.push(WidgetId { index: index as u32, gen: slot.gen });
                 }
                 if node.kind == Kind::ProgressBar && node.progress_indeterminate && node.visible {
                     node.progress_phase = (node.progress_phase + (ms as f32) / 1000.0) % 1.0;
-                    self.dirty = true;
+                    animating_bars.push(WidgetId { index: index as u32, gen: slot.gen });
                 }
             }
+        }
+        for id in transitioning {
+            self.invalidate_widget(id);
+        }
+        for id in animating_bars {
+            self.invalidate_widget(id);
         }
 
         // Milestone 0.10 input-widget animations (ring spinner, switch knob,
