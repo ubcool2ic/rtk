@@ -225,3 +225,21 @@ I found nothing in lines 675-888 that needs fixing. The chunk holds the tail of 
 - [low] [bug] `Scale::new` stores `from`/`to` unchecked and does not clamp the variable's current value. Consumers outside this chunk may assume `from <= to` (line 315) -> not fixed (handling lives outside this chunk, and tkinter allows reversed ranges)
 - NOTE: edits for src/widgets.rs:1-339 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror[E0004]: non-exhaustive patterns: `_` not covered\n  --> examples/gallery.rs:50:11\n   |\n50 |     match theme {\n   |           ^^^^^ pattern `_` not covered\n   |\nnote: `Theme` defined here\n  --> src/widgets.rs:78:1\n   |\n78 | pub enum Theme {\n   | ^^^^^^^^^^^^^^\n   = note: the match'
 
+### src/tk/events.rs lines 523-817
+- [severity low] [bug] Combobox Up/Down on a combobox with no values writes index 0 to its variable, which then points at a nonexistent item (lines 723-733) -> fixed
+- [severity low] [bug] `clear_input` leaves `open_combobox` set and the node's `combo_open` true, so a dropdown can stay open after input state is cleared (lines 805-814) -> fixed
+- [severity low] [bug] `modal_accept`/`modal_cancel` restore logic can re-install a stale handler if the callback closes the modal and opens a new one without handlers (lines 646-667) -> not fixed (needs a modal generation counter, which is a larger change than this chunk allows)
+- [severity low] [bug] `Spinbox` Up/Down sets the variable without running the widget's command, unlike `Scale` (lines 771-784) -> not fixed (cannot tell from this chunk whether Spinbox has a command; leaving as is)
+
+### src/tk/events.rs lines 188-522
+- [severity high] [bug] Horizontal scrollbar thumb width used `f32::clamp(16.0, bar_w)`, which panics when the scrollbar is narrower than 16px (min > max). A zero `total` also gave a NaN ratio. Now `.max(16.0).min(bar_w)`, which never panics and handles NaN (line 363) -> fixed
+- [severity high] [bug] Vertical scrollbar thumb height had the same `clamp(16.0, bar_h)` panic on short scrollbars (line 382) -> fixed
+- [severity low] [bug] Combobox dropdown height `clamp(item_h, 240.0)` panics if `item_h` exceeds 240 (font size above about 178) (line 212) -> fixed. This assumes the dropdown drawing code computes its height the same way; I could not check it.
+- [severity low] [bug] `run_command` leaves `command_running` set if the command panics (line 507) -> not fixed (the panic would propagate and the toolkit is not expected to survive it; a guard is out of scope for a minimal edit)
+- [severity low] [bug] Clicking in a multi-line `Text` always places the cursor at the start of the clicked line rather than at the clicked column (line 407) -> not fixed (behaviour limitation, not a crash or corruption, and fixing it needs new text-measurement code)
+
+### src/tk/events.rs lines 1-187
+- [severity high] [bug] The horizontal scrollbar drag calls `f32::clamp(16.0, bar_w)`, which panics when the bar is narrower than 16 px (`min > max`). That can happen with a tiny or collapsed scrollbar during a drag (line 103) -> fixed
+- [severity high] [bug] The vertical scrollbar drag has the same `clamp(16.0, bar_h)` panic when `bar_h < 16` (line 116) -> fixed
+- [severity low] [bug] `drag_text_selection` for `Kind::Text` always puts the cursor at the start of the dragged line and ignores the x column. This gives coarse selection but no panic or UTF-8 error, and a proper fix needs a per-line column hit-test, which is a larger change (lines 170-176) -> not fixed (behavioural limitation, not a crash; out of scope for minimal edits)
+

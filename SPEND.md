@@ -129,3 +129,6 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/widgets.rs:675-888 | 5301 (0 cached) | 929 (446 reasoning) | 0.0199 | 1.1905 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/widgets.rs:340-674 | 7034 (0 cached) | 1726 (831 reasoning) | 0.0313 | 1.2219 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/widgets.rs:1-339 | 8005 (0 cached) | 1879 (1035 reasoning) | 0.0348 | 1.2567 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/events.rs:523-817 | 6909 (0 cached) | 2748 (2068 reasoning) | 0.0413 | 1.2980 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/events.rs:188-522 | 7956 (0 cached) | 3021 (2175 reasoning) | 0.0461 | 1.3441 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/events.rs:1-187 | 5559 (0 cached) | 2101 (1545 reasoning) | 0.0321 | 1.3762 |

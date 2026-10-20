@@ -100,7 +100,7 @@ impl Tk {
                 let bar_w = self.node(scrollbar_id).map(|n| n.rect.width).unwrap_or(0.0);
                 if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
                     if let Some((total, visible, _)) = self.scroll_metrics_x(target_id) {
-                        let thumb_w = (bar_w * (visible / total)).clamp(16.0, bar_w);
+                        let thumb_w = (bar_w * (visible / total)).max(16.0).min(bar_w);
                         let avail = bar_w - thumb_w;
                         if avail > 0.0 {
                             let start = self.scrollbar_drag_start;
@@ -113,7 +113,7 @@ impl Tk {
                 let bar_h = self.node(scrollbar_id).map(|n| n.rect.height).unwrap_or(0.0);
                 if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
                     if let Some((total, visible, _)) = self.scroll_metrics(target_id) {
-                        let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                        let thumb_h = (bar_h * (visible / total)).max(16.0).min(bar_h);
                         let avail = bar_h - thumb_h;
                         if avail > 0.0 {
                             let start = self.scrollbar_drag_start;
@@ -209,7 +209,7 @@ impl Tk {
         if let Some(combo_id) = self.open_combobox {
             if let Some(cnode) = self.node(combo_id) {
                 let item_h = (cnode.style.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (cnode.combo_values.len() as f32 * item_h).clamp(item_h, 240.0);
+                let drop_h = (cnode.combo_values.len() as f32 * item_h).max(item_h).min(240.0);
                 let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
                 if drop_rect.contains(x, y) {
                     let idx = ((y - drop_rect.y) / item_h).floor() as usize;
@@ -360,7 +360,7 @@ impl Tk {
                         let bar_w = node.rect.width;
                         if let Some(target_id) = node.scroll_target {
                             if let Some((total, visible, pos)) = self.scroll_metrics_x(target_id) {
-                                let thumb_w = (bar_w * (visible / total)).clamp(16.0, bar_w);
+                                let thumb_w = (bar_w * (visible / total)).max(16.0).min(bar_w);
                                 let avail = bar_w - thumb_w;
                                 let max = total - visible;
                                 let thumb_x = if max > 0.0 { avail * (pos / max) } else { 0.0 };
@@ -379,7 +379,7 @@ impl Tk {
                         let bar_h = node.rect.height;
                         if let Some(target_id) = node.scroll_target {
                             if let Some((total, visible, pos)) = self.scroll_metrics(target_id) {
-                                let thumb_h = (bar_h * (visible / total)).clamp(16.0, bar_h);
+                                let thumb_h = (bar_h * (visible / total)).max(16.0).min(bar_h);
                                 let avail = bar_h - thumb_h;
                                 let max = total - visible;
                                 let thumb_y = if max > 0.0 { avail * (pos / max) } else { 0.0 };
@@ -721,7 +721,7 @@ impl Tk {
                 }
             }
             Kind::Combobox => {
-                if matches!(key, Key::Up | Key::Down) {
+                if matches!(key, Key::Up | Key::Down) && !node.combo_values.is_empty() {
                     let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                     let max_idx = node.combo_values.len().saturating_sub(1) as i64;
                     let new_val = if key == Key::Up { old.saturating_sub(1) } else { old.saturating_add(1) }.clamp(0, max_idx);
@@ -810,6 +810,11 @@ impl Tk {
         self.drag_active = None;
         self.scrollbar_drag = None;
         self.ime_preedit = None;
+        if let Some(combo_id) = self.open_combobox.take() {
+            if let Some(node) = self.node_mut(combo_id) {
+                node.combo_open = false;
+            }
+        }
         self.dirty = true;
     }
 
