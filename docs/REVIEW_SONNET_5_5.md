@@ -430,3 +430,11 @@ I found nothing in lines 1-318 that needs a fix:
 - [severity low] [bug] `parse_key` accepted malformed function-key names such as `F+1` and `F01`, because `u8::from_str` allows a leading `+` -> fixed. The function-key suffix now has to be 1–2 ASCII digits.
 - [severity low] [api] I found no other problems in lines 1-277. `ShortcutError` is already `#[non_exhaustive]`, every fn has a `///` doc, and the UTF-8 slicing of the macOS modifier symbols is safe because it advances by `len_utf8`. The literal-plus handling (`Ctrl++`, `+`) and the `Ctrl+` missing-key case behave correctly. -> not fixed (nothing to fix)
 
+### src/tk/text.rs lines 1-275
+- [medium] [bug] `trim_lines` with `max == 0` wipes all text, but `text_set_max_lines(0)` treats 0 as "no trimming", and later `text_set` / `text_insert_end` would clear everything (lines 7-13) -> fixed (0 now means unlimited)
+- [high] [bug] `text_clear` leaves `selection_anchor` set while the cursor goes to 0, so a stale anchor beyond the empty text could cause out-of-range slicing in selection consumers (lines 238-246) -> fixed (anchor cleared)
+- [high] [bug] `text_insert_end` trims from the front but leaves `selection_anchor` stale (possibly out of range or mid-char), and `text_scroll_row` can exceed the new line count (lines 220-235) -> fixed
+- [medium] [bug] `text_set_max_lines` trims leading bytes but only clamps the cursor, so it can land mid-char or on the wrong text. The anchor and scroll row are also left stale (lines 262-272) -> fixed (cursor shifted by removed bytes, anchor cleared, scroll clamped)
+- [low] [bug] `text_set` does not clamp `text_scroll_row`, so replacing the text with a shorter one can leave the view scrolled past the end (lines 203-216) -> fixed
+- [medium] [bug] Caret-only moves (Left/Right/Up/Down/Home/End) return before the scroll-follow logic, so the caret can leave the visible rows (lines 166-174) -> fixed (scroll adjusted on that path too)
+
