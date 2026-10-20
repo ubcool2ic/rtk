@@ -964,3 +964,9 @@ I found nothing in lines 1-75 that needs a fix, though I could only check the fi
 - **Assertions:** `assert_golden` does the pixel comparison and the setter calls are asserted, so the test does check something.
 - **Doc comment:** it says the line chart has a legend, but `build_scene` never enables one. I couldn't confirm whether the legend is on by default, so I left it alone.
 
+### tests/m012_golden_image.rs lines 1-89
+- [severity low] [bug] `Button` is imported unconditionally (line 4) but only used inside the `#[cfg(feature = "svg")]` block, which gives an unused-import warning when `svg` is off (and fails under `-D warnings`) -> fixed
+- [severity low] [bug] The SVG half of the scene is cfg-gated, but the golden PNGs were blessed with it. Without the `svg` feature the scene differs and the goldens would mismatch (lines 28-41) -> not fixed (I can't see whether `svg` is a default feature, and gating the whole test file would be a larger change)
+- [severity low] [bug] The scene is about 96+96+button height plus padding in a 320x240 logical window; I can't confirm from here that the button isn't clipped at 1x, and the goldens would encode that either way (line 50) -> not fixed (needs layout metrics not visible in this chunk)
+- Assertions are meaningful (`assert_golden` plus checked `image_set_*`/`config` return values). No timing dependence, and the helpers can't panic outside of `unwrap`s that signal real failures.
+

@@ -1,7 +1,9 @@
 //! Golden-image tests for the `Image` widget across themes and scale factors.
 
 use rtk::testing::{assert_golden, golden_dir, GoldenOpts};
-use rtk::{Button, Frame, Image, ImageFit, Opt, Tk};
+#[cfg(feature = "svg")]
+use rtk::{Button, Opt};
+use rtk::{Frame, Image, ImageFit, Tk};
 
 /// Builds the shared scene: checkerboard RGBA image, SVG icon image, and a
 /// button carrying a small SVG icon.
