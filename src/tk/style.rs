@@ -114,10 +114,9 @@ impl Tk {
         let Some((path, last_mtime)) = self.watched_stylesheet.clone() else { return false };
         if let Ok(meta) = fs::metadata(&path) {
             if let Ok(mtime) = meta.modified() {
-                if mtime > last_mtime {
+                if mtime != last_mtime {
                     self.watched_stylesheet = Some((path.clone(), mtime));
-                    let _ = self.load_stylesheet_file(&path);
-                    return true;
+                    return self.load_stylesheet_file(&path).is_ok();
                 }
             }
         }
@@ -145,16 +144,17 @@ impl Tk {
 
     /// Registers a raw RGBA buffer as an image, premultiplying color channels by alpha.
     pub fn register_image_rgba(&mut self, w: u32, h: u32, rgba: &[u8]) -> Option<ImageId> {
-        if w == 0 || h == 0 || rgba.len() != (w as usize) * (h as usize) * 4 {
+        let expected = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(4));
+        if w == 0 || h == 0 || expected != Some(rgba.len()) {
             return None;
         }
         let mut pixmap = Pixmap::new(w, h)?;
         let data = pixmap.data_mut();
         for (dst, src) in data.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
             let a = u32::from(src[3]);
-            dst[0] = (u32::from(src[0]) * a / 255) as u8;
-            dst[1] = (u32::from(src[1]) * a / 255) as u8;
-            dst[2] = (u32::from(src[2]) * a / 255) as u8;
+            dst[0] = ((u32::from(src[0]) * a + 127) / 255) as u8;
+            dst[1] = ((u32::from(src[1]) * a + 127) / 255) as u8;
+            dst[2] = ((u32::from(src[2]) * a + 127) / 255) as u8;
             dst[3] = src[3];
         }
         let id = ImageId(self.next_image_id);
@@ -425,6 +425,9 @@ impl Tk {
                     resolved.transition_ms,
                 ));
             }
+        } else if let Some(node) = self.node_mut(id) {
+            // Instant style change: drop any stale in-flight transition toward the old state.
+            node.transition = None;
         }
     }
 

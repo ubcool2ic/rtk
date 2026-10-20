@@ -338,3 +338,16 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
 - [medium] [bug] `table_set_rows` cleared an out-of-range selection without firing the on_select callback (line 154) -> fixed
 - [none] Selection after sort: `selected` holds a model row index, and sorting only permutes `order`, so the selection follows row identity. `table_insert_row` also shifts the model index correctly. Verified, no change needed.
 
+### src/tk/style.rs lines 314-432
+- [severity medium] [bug] `check_state_transition` leaves an in-flight transition running when the new state has `transition_ms == 0`. The widget keeps animating toward the previous state's colors and shows a stale style, and `is_animating` stays true until the old transition finishes (lines 415-428) -> fixed (the transition is now cleared in that case)
+- [severity low] [bug] `is_animating` and `sim_advance_time` test only the widget's own `visible` flag. If that flag is not already the effective visibility, an indeterminate bar inside a hidden ancestor would keep requesting frames. I can't tell from this chunk, and the fix would sit outside it (lines 341, 385) -> not fixed (outside this chunk)
+
+### src/tk/style.rs lines 1-313
+- [medium] [bug] `poll_stylesheet` only reloaded when `mtime > last_mtime`, so replacing the file with an older one (git checkout, `mv`, backup restore) was never picked up (line 117) -> fixed (now `!=`)
+- [low] [bug] `poll_stylesheet` returned true even when the reload failed (parse error or a read caught mid-write), contradicting its "Returns true when reloaded" doc (line 119-120) -> fixed (returns the load result; mtime is still recorded so a broken file is not re-parsed every poll)
+- [medium] [bug] `register_image_rgba` computed `w*h*4` unchecked. On 32-bit targets this can overflow and wrap to match a short buffer, which would then panic or mis-size the pixmap (line 148) -> fixed (checked multiplication)
+- [low] [bug] `register_image_rgba` premultiplied with truncating division, which systematically darkens semi-transparent pixels (lines 155-157) -> fixed (rounded division)
+- [low] [api] `load_stylesheet`, `watch_stylesheet`, `poll_stylesheet`, `load_image` and `register_image_rgba` are `verb_noun`, while `style_configure` and `style_map` follow the `<widget>_<verb>` pattern -> not fixed (renaming public API this late is out of scope for a minimal review; the doc comments are present)
+- [low] [bug] `watch_stylesheet` ignores the initial load error and still returns true (line 104) -> not fixed (the return value is documented as stat-only; changing it alters behaviour)
+- [low] [bug] `ImageId` allocation uses `saturating_add`, and no image unload exists in this chunk, so `images` grows without bound -> not fixed (an unload API would live outside this chunk)
+
