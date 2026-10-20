@@ -884,3 +884,7 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [bug] `compare_pixmaps_detects_changes` writes the fixed value 200 into the red byte (lines 134-135). If the background pixel at (32,32) already had that value, the pixmaps would be identical and the `count > 0` assertion would fail depending on theme colors. Changed to flip the existing byte with `^ 0xFF`, which guarantees a difference. -> fixed
 - [severity low] [docs] none; every fn has a `///` doc comment. Nothing else in lines 1-140 needed fixing: the golden names format as `widgets_light_1x` and `widgets_light_2x`, the scale cast is safe, and the `sim_scale_factor` result is asserted.
 
+### tests/ids.rs lines 1-88
+- [severity low] [bug] The `pack` results in `destroying_parent_removes_descendants_and_focus` (line 43) were ignored. A failed pack would only show up later as a confusing focus assertion, so the setup could silently fail. -> fixed, each `pack` call is now asserted.
+- Nothing else needed fixing in lines 1-88. The stale-ID, foreign-variable and incompatible-configuration assertions are meaningful and not timing-dependent. Every helper and test has a `///` doc comment.
+
