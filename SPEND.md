@@ -57,3 +57,8 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot5, PR #4] 0.12 charts, image/SVG, drag-and-drop, tray: all calls (itemized in PR #4) | — | — | 0.0448 | (BizyBot5 DeepSeek total 0.0448; Sol 0.00) |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet smoke | 17 (0 cached) | 4 (0 reasoning) | 0.0001 | 0.0001 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot6, PR #5] 0.13 themes, a11y, IME, HiDPI, damage redraw: 25 calls (itemized in PR #5) | — | — | 0.0943 | (BizyBot6 DeepSeek total 0.1018 incl. PR #2; Sol 0.00) |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 10-docs-b r0 | 18251 (0 cached) | 6535 (0 reasoning) | 0.0045 | 0.1019 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 10-docs-b r1 | 19604 (0 cached) | 28558 (1 reasoning) | 0.0157 | 0.1176 |
+| 2026-10-20 | openai/gpt-6.1-sol | 10-docs-b r2 [Sol fix] | 32683 (0 cached) | 785 (695 reasoning) | 0.0896 | 0.4868 |
+| 2026-10-20 | openai/gpt-6.1-sol | 10-docs-b r3 [Sol fix] | 32683 (0 cached) | 895 (459 reasoning) | 0.0907 | 0.5775 |
+| 2026-10-20 | (no model) | 10-docs-b: DeepSeek round 1 rewrote src/render.rs with a FILE block even though the file wasn't in its context, and the two Sol rounds couldn't repair it. I reverted render.rs by hand (git checkout); the style.rs docs-only additions were kept. Fixed the driver so it now rejects FILE blocks for existing files outside the context | — | — | 0 | — |

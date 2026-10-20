@@ -11,11 +11,17 @@ use crate::widgets::Color;
 pub struct State(pub(crate) u8);
 
 impl State {
+    /// The pointer is hovering over the widget.
     pub const HOVER: Self = Self(1 << 0);
+    /// The widget is being pressed (mouse button held down).
     pub const PRESSED: Self = Self(1 << 1);
+    /// The widget currently holds keyboard focus.
     pub const FOCUSED: Self = Self(1 << 2);
+    /// The widget is disabled and ignores input.
     pub const DISABLED: Self = Self(1 << 3);
+    /// The widget is in a checked/toggled state.
     pub const CHECKED: Self = Self(1 << 4);
+    /// The widget (or one of its items) is selected.
     pub const SELECTED: Self = Self(1 << 5);
 
     /// This set minus `other`.
@@ -23,26 +29,32 @@ impl State {
         Self(self.0 & !other.0)
     }
 
+    /// An empty state set with no flags set.
     pub const fn empty() -> Self {
         Self(0)
     }
 
+    /// Returns `true` if every flag in `other` is also set in `self`.
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
 
+    /// Returns the raw bit representation of this state set.
     pub const fn bits(self) -> u8 {
         self.0
     }
 
+    /// Builds a state set from raw bits, discarding any unknown high bits.
     pub const fn from_bits_truncate(bits: u8) -> Self {
         Self(bits & 0b0011_1111)
     }
 
+    /// Returns the union of `self` and `other`.
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
+    /// Returns `true` if `self` and `other` share at least one flag.
     pub const fn intersects(self, other: Self) -> bool {
         (self.0 & other.0) != 0
     }
@@ -61,23 +73,31 @@ impl std::ops::BitOrAssign for State {
     }
 }
 
+/// Per-side spacing values (padding or margin), in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Edges {
+    /// Top edge spacing.
     pub top: f32,
+    /// Right edge spacing.
     pub right: f32,
+    /// Bottom edge spacing.
     pub bottom: f32,
+    /// Left edge spacing.
     pub left: f32,
 }
 
 impl Edges {
+    /// Creates edges with the same value on all four sides.
     pub const fn all(v: f32) -> Self {
         Self { top: v, right: v, bottom: v, left: v }
     }
 
+    /// Creates edges with `vertical` on top/bottom and `horizontal` on left/right.
     pub const fn symmetrical(vertical: f32, horizontal: f32) -> Self {
         Self { top: vertical, right: horizontal, bottom: vertical, left: horizontal }
     }
 
+    /// Creates edges from explicit top, right, bottom and left values.
     pub const fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
         Self { top, right, bottom, left }
     }
@@ -89,35 +109,58 @@ impl Default for Edges {
     }
 }
 
+/// A drop-shadow specification for a widget.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shadow {
+    /// Horizontal offset in logical pixels.
     pub dx: f32,
+    /// Vertical offset in logical pixels.
     pub dy: f32,
+    /// Blur radius in logical pixels.
     pub blur: f32,
+    /// Shadow colour, including its alpha.
     pub color: Color,
 }
 
+/// A linear gradient background.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LinearGradient {
+    /// Gradient direction in degrees.
     pub angle_deg: f32,
+    /// Colour stops as `(position, color)` pairs, position in `[0, 1]`.
     pub stops: Vec<(f32, Color)>,
 }
 
+/// The named colour roles of a theme.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Palette {
+    /// Window/root background colour.
     pub bg: Color,
+    /// Primary surface colour for cards and panels.
     pub surface: Color,
+    /// Secondary surface colour for nested or alternate surfaces.
     pub surface2: Color,
+    /// Default foreground (text) colour.
     pub fg: Color,
+    /// Muted foreground colour for secondary text.
     pub muted: Color,
+    /// Accent colour used for highlights and primary actions.
     pub accent: Color,
+    /// Foreground colour drawn on top of `accent`.
     pub accent_fg: Color,
+    /// Border colour for outlines and separators.
     pub border: Color,
+    /// Colour used to indicate keyboard focus.
     pub focus: Color,
+    /// Colour used for destructive or error states.
     pub danger: Color,
+    /// Background colour of input fields.
     pub field_bg: Color,
+    /// Background colour of selected items.
     pub select_bg: Color,
+    /// Foreground colour of selected items.
     pub select_fg: Color,
+    /// Base colour for drop shadows.
     pub shadow: Color,
     /// Background of a text selection inside Entry/Text widgets.
     pub selection_bg: Color,
@@ -125,31 +168,47 @@ pub struct Palette {
     pub selection_fg: Color,
 }
 
+/// Corner-radius scale tokens.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Radius {
+    /// Small corner radius.
     pub sm: f32,
+    /// Medium corner radius.
     pub md: f32,
+    /// Large corner radius.
     pub lg: f32,
 }
 
+/// Font-size scale tokens, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TypeScale {
+    /// Small text size.
     pub small: f32,
+    /// Body text size.
     pub body: f32,
+    /// Title text size.
     pub title: f32,
+    /// Heading text size.
     pub heading: f32,
 }
 
+/// The complete set of design tokens for a theme.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tokens {
+    /// Colour palette.
     pub palette: Palette,
+    /// Spacing scale (five steps, in logical pixels).
     pub spacing: [f32; 5],
+    /// Corner-radius scale.
     pub radius: Radius,
+    /// Font-size scale.
     pub type_scale: TypeScale,
+    /// Optional font family override; `None` uses the bundled default.
     pub font_family: Option<String>,
 }
 
 impl Tokens {
+    /// Returns the default light theme tokens.
     pub fn light() -> Self {
         Self {
             palette: Palette {
@@ -179,6 +238,7 @@ impl Tokens {
         }
     }
 
+    /// Returns the default dark theme tokens.
     pub fn dark() -> Self {
         Self {
             palette: Palette {
@@ -206,6 +266,7 @@ impl Tokens {
         }
     }
 
+    /// Returns Fluent-inspired tokens: the light palette with tighter radii.
     pub fn fluent() -> Self {
         let mut t = Self::light();
         t.palette.accent = Color::rgb(0, 103, 192);
@@ -215,6 +276,7 @@ impl Tokens {
         t
     }
 
+    /// Returns Material-inspired tokens: a purple accent and larger radii.
     pub fn material() -> Self {
         Self {
             palette: Palette {
@@ -243,6 +305,7 @@ impl Tokens {
         }
     }
 
+    /// Returns high-contrast tokens: black background, white text, no radii.
     pub fn high_contrast() -> Self {
         Self {
             palette: Palette {
@@ -337,30 +400,48 @@ impl Tokens {
 }
 
 /// Sparse style specification with all-Option fields.
+/// Sparse style specification with all-Option fields.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSpec {
+    /// Background colour.
     pub bg: Option<Color>,
+    /// Foreground (text) colour.
     pub fg: Option<Color>,
+    /// Border colour.
     pub border_color: Option<Color>,
+    /// Border width in logical pixels.
     pub border_width: Option<f32>,
+    /// Corner radius in logical pixels.
     pub radius: Option<f32>,
+    /// Inner padding.
     pub padding: Option<Edges>,
+    /// Outer margin.
     pub margin: Option<Edges>,
+    /// Drop shadow; the outer `Option` means "set", the inner `None` clears it.
     pub shadow: Option<Option<Shadow>>,
+    /// Background gradient; the outer `Option` means "set", the inner `None` clears it.
     pub gradient: Option<Option<LinearGradient>>,
+    /// Opacity in `[0, 1]`.
     pub opacity: Option<f32>,
+    /// Font family; the outer `Option` means "set", the inner `None` clears it.
     pub font_family: Option<Option<String>>,
+    /// Font size in logical pixels.
     pub font_size: Option<f32>,
+    /// Font weight (100–900).
     pub font_weight: Option<u16>,
+    /// Whether the text is italic.
     pub italic: Option<bool>,
+    /// Transition duration in milliseconds.
     pub transition_ms: Option<u32>,
 }
 
 impl StyleSpec {
+    /// Creates an empty style specification with all fields unset.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Applies every set field of this spec onto a resolved style.
     pub fn merge_into(&self, target: &mut ResolvedStyle) {
         if let Some(c) = self.bg { target.bg = c; }
         if let Some(c) = self.fg { target.fg = c; }
@@ -381,22 +462,38 @@ impl StyleSpec {
 }
 
 /// Fully resolved concrete widget style.
+/// Fully resolved concrete widget style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedStyle {
+    /// Background colour.
     pub bg: Color,
+    /// Foreground (text) colour.
     pub fg: Color,
+    /// Border colour.
     pub border_color: Color,
+    /// Border width in logical pixels.
     pub border_width: f32,
+    /// Corner radius in logical pixels.
     pub radius: f32,
+    /// Inner padding.
     pub padding: Edges,
+    /// Outer margin.
     pub margin: Edges,
+    /// Optional drop shadow.
     pub shadow: Option<Shadow>,
+    /// Optional background gradient.
     pub gradient: Option<LinearGradient>,
+    /// Opacity in `[0, 1]`.
     pub opacity: f32,
+    /// Optional font family override.
     pub font_family: Option<String>,
+    /// Font size in logical pixels.
     pub font_size: f32,
+    /// Font weight (100–900).
     pub font_weight: u16,
+    /// Whether the text is italic.
     pub italic: bool,
+    /// Transition duration in milliseconds.
     pub transition_ms: u32,
 }
 
@@ -427,9 +524,12 @@ impl Default for ResolvedStyle {
 pub struct ImageId(pub(crate) u32);
 
 /// Error type when parsing a stylesheet.
+/// Error type when parsing a stylesheet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StyleError {
+    /// 1-based line number where the error occurred.
     pub line: usize,
+    /// Human-readable description of the error.
     pub message: String,
 }
 
@@ -457,6 +557,7 @@ impl Default for StyleEngine {
 }
 
 impl StyleEngine {
+    /// Creates a style engine seeded with the built-in styles for `tokens`.
     pub fn new(tokens: Tokens) -> Self {
         let mut engine = Self {
             tokens,
@@ -467,20 +568,24 @@ impl StyleEngine {
         engine
     }
 
+    /// Returns the active design tokens.
     pub fn tokens(&self) -> &Tokens {
         &self.tokens
     }
 
+    /// Replaces the design tokens and rebuilds the built-in theme styles.
     pub fn set_tokens(&mut self, tokens: Tokens) {
         self.tokens = tokens;
         self.rebuild_theme_defaults();
     }
 
+    /// Merges `spec` into the base style registered under `name`.
     pub fn configure(&mut self, name: impl Into<String>, spec: StyleSpec) {
         let existing = self.styles.entry(name.into()).or_default();
         merge_spec(existing, &spec);
     }
 
+    /// Merges `spec` into the style for `name` in the given interaction `state`.
     pub fn map(&mut self, name: impl Into<String>, state: State, spec: StyleSpec) {
         let name = name.into();
         let key = (name, state.bits());
@@ -492,6 +597,7 @@ impl StyleEngine {
         }
     }
 
+    /// Rebuilds all built-in widget styles from the current tokens.
     pub fn rebuild_theme_defaults(&mut self) {
         let p = self.tokens.palette;
         let r = self.tokens.radius;
@@ -976,10 +1082,12 @@ impl StyleEngine {
         }
     }
 
+    /// Returns the base style registered under `name`, if any.
     pub fn lookup(&self, name: &str) -> Option<&StyleSpec> {
         self.styles.get(name)
     }
 
+    /// Returns the style for `name` in the given interaction `state`, if any.
     pub fn lookup_state(&self, name: &str, state: State) -> Option<&StyleSpec> {
         self.state_maps.get(&(name.to_string(), state.bits()))
     }
@@ -1016,19 +1124,29 @@ pub fn blend(c1: Color, c2: Color, t: f32) -> Color {
 }
 
 /// Active transition tracking for smooth state changes.
+/// Active transition tracking for smooth state changes.
 #[derive(Clone, Debug)]
 pub struct TransitionState {
+    /// Starting background colour.
     pub from_bg: Color,
+    /// Target background colour.
     pub to_bg: Color,
+    /// Starting foreground colour.
     pub from_fg: Color,
+    /// Target foreground colour.
     pub to_fg: Color,
+    /// Starting border colour.
     pub from_border: Color,
+    /// Target border colour.
     pub to_border: Color,
+    /// Total transition duration in milliseconds.
     pub duration_ms: u32,
+    /// Elapsed time so far in milliseconds.
     pub elapsed_ms: u32,
 }
 
 impl TransitionState {
+    /// Creates a new transition between the given colours over `duration_ms`.
     pub fn new(
         from_bg: Color, to_bg: Color,
         from_fg: Color, to_fg: Color,
@@ -1044,15 +1162,18 @@ impl TransitionState {
         }
     }
 
+    /// Advances the transition by `ms` milliseconds; returns `true` when done.
     pub fn advance(&mut self, ms: u32) -> bool {
         self.elapsed_ms = (self.elapsed_ms + ms).min(self.duration_ms);
         self.is_done()
     }
 
+    /// Returns `true` if the transition has reached its full duration.
     pub fn is_done(&self) -> bool {
         self.elapsed_ms >= self.duration_ms
     }
 
+    /// Returns the eased progress in `[0, 1]`.
     pub fn progress(&self) -> f32 {
         if self.duration_ms == 0 {
             1.0
@@ -1061,14 +1182,17 @@ impl TransitionState {
         }
     }
 
+    /// Returns the interpolated background colour at the current progress.
     pub fn current_bg(&self) -> Color {
         blend(self.from_bg, self.to_bg, self.progress())
     }
 
+    /// Returns the interpolated foreground colour at the current progress.
     pub fn current_fg(&self) -> Color {
         blend(self.from_fg, self.to_fg, self.progress())
     }
 
+    /// Returns the interpolated border colour at the current progress.
     pub fn current_border(&self) -> Color {
         blend(self.from_border, self.to_border, self.progress())
     }
@@ -1078,6 +1202,7 @@ impl TransitionState {
 // Stylesheet Parser
 // ---------------------------------------------------------------------------
 
+/// Parser for the CSS-like stylesheet syntax accepted by [`StyleEngine`].
 pub struct StylesheetParser<'a> {
     input: &'a str,
     pos: usize,
@@ -1085,6 +1210,7 @@ pub struct StylesheetParser<'a> {
 }
 
 impl<'a> StylesheetParser<'a> {
+    /// Creates a parser over the given stylesheet source.
     pub fn new(input: &'a str) -> Self {
         Self { input, pos: 0, line: 1 }
     }
@@ -1116,6 +1242,7 @@ impl<'a> StylesheetParser<'a> {
         }
     }
 
+    /// Parses the whole stylesheet into `engine`, returning the rule count.
     pub fn parse(mut self, engine: &mut StyleEngine) -> Result<usize, StyleError> {
         let mut count = 0;
         loop {
@@ -1397,6 +1524,7 @@ fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
     Some(LinearGradient { angle_deg, stops })
 }
 
+/// Parses a CSS colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, or a named colour.
 pub fn parse_color(val: &str) -> Option<Color> {
     let s = val.trim();
     if let Some(hex) = s.strip_prefix('#') {
