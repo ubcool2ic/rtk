@@ -403,7 +403,6 @@ impl Tokens {
 }
 
 /// Sparse style specification with all-Option fields.
-/// Sparse style specification with all-Option fields.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSpec {
     /// Background colour.
@@ -449,22 +448,21 @@ impl StyleSpec {
         if let Some(c) = self.bg { target.bg = c; }
         if let Some(c) = self.fg { target.fg = c; }
         if let Some(c) = self.border_color { target.border_color = c; }
-        if let Some(v) = self.border_width { target.border_width = v; }
-        if let Some(v) = self.radius { target.radius = v; }
+        if let Some(v) = self.border_width { if v.is_finite() && v >= 0.0 { target.border_width = v; } }
+        if let Some(v) = self.radius { if v.is_finite() && v >= 0.0 { target.radius = v; } }
         if let Some(v) = self.padding { target.padding = v; }
         if let Some(v) = self.margin { target.margin = v; }
         if let Some(v) = &self.shadow { target.shadow = *v; }
         if let Some(v) = &self.gradient { target.gradient = v.clone(); }
-        if let Some(v) = self.opacity { target.opacity = v.clamp(0.0, 1.0); }
+        if let Some(v) = self.opacity { if !v.is_nan() { target.opacity = v.clamp(0.0, 1.0); } }
         if let Some(v) = &self.font_family { target.font_family = v.clone(); }
-        if let Some(v) = self.font_size { target.font_size = v; }
+        if let Some(v) = self.font_size { if v.is_finite() && v > 0.0 { target.font_size = v; } }
         if let Some(v) = self.font_weight { target.font_weight = v.clamp(100, 900); }
         if let Some(v) = self.italic { target.italic = v; }
         if let Some(v) = self.transition_ms { target.transition_ms = v; }
     }
 }
 
-/// Fully resolved concrete widget style.
 /// Fully resolved concrete widget style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedStyle {
@@ -527,7 +525,6 @@ impl Default for ResolvedStyle {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ImageId(pub(crate) u32);
 
-/// Error type when parsing a stylesheet.
 /// Error type when parsing a stylesheet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StyleError {
@@ -1220,6 +1217,22 @@ fn merge_spec(dst: &mut StyleSpec, src: &StyleSpec) {
 pub fn blend(c1: Color, c2: Color, t: f32) -> Color {
     let t = t.clamp(0.0, 1.0);
     let inv = 1.0 - t;
+    if c1.a != c2.a {
+        // Weight RGB by alpha so a transparent endpoint does not darken the result.
+        let w1 = c1.a as f32 * inv;
+        let w2 = c2.a as f32 * t;
+        let sum = w1 + w2;
+        if sum <= 0.0 {
+            return Color::rgba(0, 0, 0, 0);
+        }
+        let ch = |a: u8, b: u8| ((a as f32 * w1 + b as f32 * w2) / sum).round().clamp(0.0, 255.0) as u8;
+        return Color::rgba(
+            ch(c1.r, c2.r),
+            ch(c1.g, c2.g),
+            ch(c1.b, c2.b),
+            sum.round().clamp(0.0, 255.0) as u8,
+        );
+    }
     Color::rgba(
         (c1.r as f32 * inv + c2.r as f32 * t).round().clamp(0.0, 255.0) as u8,
         (c1.g as f32 * inv + c2.g as f32 * t).round().clamp(0.0, 255.0) as u8,
@@ -1228,7 +1241,6 @@ pub fn blend(c1: Color, c2: Color, t: f32) -> Color {
     )
 }
 
-/// Active transition tracking for smooth state changes.
 /// Active transition tracking for smooth state changes.
 #[derive(Clone, Debug)]
 pub struct TransitionState {
@@ -1269,7 +1281,7 @@ impl TransitionState {
 
     /// Advances the transition by `ms` milliseconds; returns `true` when done.
     pub fn advance(&mut self, ms: u32) -> bool {
-        self.elapsed_ms = (self.elapsed_ms + ms).min(self.duration_ms);
+        self.elapsed_ms = self.elapsed_ms.saturating_add(ms).min(self.duration_ms);
         self.is_done()
     }
 
@@ -1278,7 +1290,7 @@ impl TransitionState {
         self.elapsed_ms >= self.duration_ms
     }
 
-    /// Returns the eased progress in `[0, 1]`.
+    /// Returns the linear progress in `[0, 1]`.
     pub fn progress(&self) -> f32 {
         if self.duration_ms == 0 {
             1.0
@@ -1641,6 +1653,9 @@ fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
 pub fn parse_color(val: &str) -> Option<Color> {
     let s = val.trim();
     if let Some(hex) = s.strip_prefix('#') {
+        if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
         match hex.len() {
             3 => {
                 let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
@@ -1719,7 +1734,9 @@ pub fn build_rounded_rect_path(rect: Rect, radius: f32) -> Option<tiny_skia::Pat
 
 /// Parses a finite, non-negative CSS length such as `2`, `2.5` or `2px`.
 fn css_number(text: &str) -> Option<f32> {
-    let value = text.trim().trim_end_matches("px").parse::<f32>().ok()?;
+    let t = text.trim();
+    let t = t.strip_suffix("px").unwrap_or(t).trim();
+    let value = t.parse::<f32>().ok()?;
     (value.is_finite() && value >= 0.0).then_some(value)
 }
 

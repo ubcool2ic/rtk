@@ -85,3 +85,56 @@ Two things I could not check from this chunk:
 - [low] [bug] `place_rect` did not clamp `relx`, `rely`, `relwidth` or `relheight`. Huge values overflowed to inf, and a nonfinite result collapsed to 0 instead of clamping (lines 235-259) -> fixed
 - [low] [docs] The `Rect::within` doc comment was unclear about what it does (line 103) -> fixed
 
+### src/style.rs lines 1640-1766
+- [high] [bug] `parse_color` slices `hex` by byte offsets after matching on `hex.len()` (a byte length). Non-ASCII input such as `#é1` has length 3, so `&hex[0..1]` splits a UTF-8 character and panics. -> fixed (reject anything that is not all ASCII hex digits before slicing)
+- [low] [bug] `u8::from_str_radix` accepts a leading `+`, so `#+f+f+f` or `#+f` forms parsed as valid colours. -> fixed (same hex-digit check)
+- [low] [bug] `css_number` uses `trim_end_matches("px")`, which strips repeated suffixes (`2pxpx` parses as 2) and does not allow whitespace before the unit (`2 px` fails). -> fixed (strip the suffix once, then trim)
+- [low] [docs] `build_rounded_rect_path` and `css_number` have `///` docs. The path-builder curve geometry checked out, so nothing needed fixing there. -> not fixed (nothing to fix)
+
+### src/style.rs lines 1300-1639
+- [high] [bug] `parse_linear_gradient` slices `val[start+1..end]` without checking `end > start`. Input like `linear-gradient)(` panics on a user-supplied stylesheet (line 1606) -> fixed
+- [medium] [bug] `/*/` was treated as a complete comment, because `find("*/")` started at the `/*` itself and matched its own `*`. This swallows following rules (line 1328) -> fixed
+- [medium] [bug] `border: none` returned an error even though `none` is listed as an accepted keyword. It now sets the border width to 0 (line 1501) -> fixed
+- [medium] [bug] `parse_edges` silently dropped unparsable tokens, so `padding: 10px abc` became `10px` on all sides. It also accepted NaN and inf. It now rejects any bad token (line 1576) -> fixed
+- [medium] [bug] `border-width`, `border-radius`, `opacity`, `font-size` and the shadow numbers accepted NaN, inf and negative values, because `f32::from_str` parses `nan` and `inf`. Non-finite or zero font sizes can break layout and text shaping. These are now validated (lines 1513, 1517, 1535, 1543, 1591) -> fixed
+- [medium] [bug] `StylesheetParser::parse` applied rules to the engine as it went. A syntax error late in the sheet left it half-applied. Rules are now collected and applied only after the whole sheet parses (line 1368) -> fixed
+- [low] [bug] A bad gradient stop position such as `red abc` silently became 0.0 -> not fixed (lenient behaviour, not a crash)
+- [low] [bug] `rgb(a, b, c)` colours inside gradients or shadows are split on commas or whitespace and so are unsupported -> not fixed (feature limitation)
+- [low] [api] The argument order of `Edges::symmetrical(nums[0], nums[1])` against CSS's vertical-then-horizontal order can't be verified from this chunk -> not fixed (definition not visible)
+- NOTE: edits for src/style.rs:1300-1639 were REVERTED (checks failed or SEARCH mismatch): '[clippy failed]\nerror: stripping a prefix manually\n    --> src/style.rs:1328:36\n     |\n1328 |                 if let Some(end) = rest[2..].find("*/").map(|e| e + 2) {\n     |                                    ^^^^^^^^^\n     |\nnote: the prefix was tested here\n    --> src/style.rs:1327:13\n     |\n1327 '
+
+### src/style.rs lines 956-1299
+- [medium] [bug] `TransitionState::advance` computes `elapsed_ms + ms` in u32, which panics in debug builds and wraps in release (restarting the transition) on a huge `ms` (line 1272) -> fixed (saturating_add)
+- [medium] [bug] `blend` interpolates non-premultiplied RGB. A transition from or to a transparent colour such as `rgba(0,0,0,0)` passes through a dark fringe, because the transparent side's black RGB is weighted in (lines 1220-1229) -> fixed (alpha-weighted RGB when the alphas differ; unchanged for equal alphas)
+- [low] [docs] The `TransitionState` doc comment is duplicated (line 1231-1232) -> fixed
+- [low] [docs] `progress()` is documented as "eased" but the progress is linear (line 1281) -> fixed
+- [low] [bug] The disabled state maps use `entry().or_insert_with`. If the enclosing function does not clear `state_maps` before re-applying a theme, the old theme's disabled colour would persist after a theme switch (lines 1178-1185). The clearing happens outside this chunk, so I could not verify it -> not fixed (outside chunk)
+- [low] [bug] `lookup_state` allocates a `String` on every call because of the tuple key (line 1196) -> not fixed (changing the key type is a refactor beyond a minimal edit)
+
+- NOTE: the call for src/style.rs lines 606-955 hung upstream (no stream data for over 20 minutes; nothing billed in the ledger). It was killed, not retried at the same settings, and the range was split in half instead.
+
+### (re-run with golden re-bless allowed) src/style.rs lines 781-955
+- none
+
+### (re-run with golden re-bless allowed) src/style.rs lines 606-780
+- none
+
+I found no real bugs in lines 606-780. The code is a series of `StyleSpec` inserts with no indexing, arithmetic that could overflow, or string slicing. Every fn in the chunk keeps its `///` doc comment, and the chunk adds no public enums or naming that would break the `<widget>_<verb>` pattern.
+
+Four things look inconsistent, but I left them alone because I can't tell from this chunk whether they are intentional:
+- **Hardcoded radii:** `Card` (12.0) and `Sidebar.TButton` (8.0) don't use the radius tokens `r.*`, while `TButton` and `Ghost.TButton` use `r.md`. A theme with zero radii would still get rounded corners on those two styles.
+- **Hardcoded heading size:** `Heading` uses 22.0 instead of a `TypeScale` token.
+- **Missing pressed state:** `Sidebar.TButton` has hover and selected states but no pressed state, unlike `TButton`, `Accent.TButton` and `Ghost.TButton`.
+- **Selected-background alpha:** `selected_bg` uses a literal alpha of 51 (about 20%). This is fine as long as `Color` is non-premultiplied.
+
+### src/style.rs lines 339-605
+- [low] [docs] `StyleSpec` has its rustdoc line duplicated, so the rendered docs repeat the sentence (lines 405-406) -> fixed
+- [low] [docs] `ResolvedStyle` has its rustdoc line duplicated (lines 467-468) -> fixed
+- [low] [docs] `StyleError` has its rustdoc line duplicated (lines 530-531) -> fixed
+- [medium] [bug] `merge_into` copies `font_size`, `border_width` and `radius` unchecked. A NaN, zero or negative font size reaches cosmic-text metrics, and a negative radius or border width reaches tiny-skia path building, which can panic or produce degenerate output. `opacity.clamp` also passes NaN through. Invalid values are now ignored (lines 452-453, 458, 460) -> fixed
+- [low] [bug] `StyleEngine::map` has an unreachable `else { insert }` branch after `entry().or_default()`. It is harmless and works correctly, so I left it alone per the minimal-edit rule (lines 598-603) -> not fixed (working code)
+- [low] [api] The public enums in this chunk are fine. There are none here, and `State` is defined outside this chunk -> not fixed (out of chunk)
+
+### src/style.rs lines 1-338
+- none
+
