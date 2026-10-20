@@ -288,3 +288,11 @@ I reviewed only lines 693-698, which hold `Menubar::new`. It has a `///` doc com
 - [low] [api] `Tk::modal` is a `pub` field while every other state field is `pub(crate)`. External code can corrupt the modal invariants by writing to it, but changing the visibility could break external examples or tests I can't see (line 236) -> not fixed (cannot verify out-of-chunk uses; consider an accessor before 1.0)
 - [low] [bug] `TkProxy::post` queues tasks without bound if the event loop has exited or never started. The closure type is `FnOnce`, so there is no safe way to drop them early without a loop-lifecycle design change (line 131) -> not fixed (design change out of scope)
 
+### src/theme.rs lines 283-507
+- [low] [bug] `chart[0]` is forced to white whenever `high_contrast` is set, even if the tokens have a light background, which would make the first series invisible on white (line 351). Only `is_dark` should decide this: a dark high-contrast theme already has `is_dark` true, and a light one keeps the dark first colour. -> fixed
+- [low] [bug] `text_disabled` calls `blend` three times, once per channel (lines 290-295). The result is correct, so this is style only. -> not fixed (working code, no behavioural change)
+- [low] [docs] No other problems found in this chunk. Every fn has a `///` doc comment, and the `ColorRole` match is exhaustive over the roles listed. -> not fixed (nothing to fix)
+
+### src/theme.rs lines 1-282
+- none
+

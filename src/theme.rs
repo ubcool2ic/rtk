@@ -348,7 +348,7 @@ impl SemanticTokens {
         };
 
         let mut chart = OKABE_ITO;
-        if is_dark || high_contrast {
+        if is_dark {
             chart[0] = Color::rgb(255, 255, 255);
         }
 
