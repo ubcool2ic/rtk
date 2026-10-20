@@ -61,7 +61,7 @@ impl Tk {
                     self.set_scroll_pos(id, pos - lines.round());
                 }
             }
-            Kind::Slider => {
+            Kind::Slider if dy != 0.0 => {
                 let step = node.inputs.as_ref().map_or(0.0, |s| s.slider_step);
                 let (from, to) = node.range_f64;
                 let unit = if step > 0.0 { step } else { (to - from).abs() * 0.01 };
@@ -69,7 +69,7 @@ impl Tk {
                 let direction = if dy > 0.0 { 1.0 } else { -1.0 };
                 self.slider_user_set(id, current + direction * unit);
             }
-            Kind::DoubleSpinbox => {
+            Kind::DoubleSpinbox if dy != 0.0 => {
                 let direction = if dy > 0.0 { 1 } else { -1 };
                 self.dspin_step(id, direction);
             }
@@ -81,7 +81,7 @@ impl Tk {
                 let lines = if pixels { dy / 20.0 } else { dy };
                 self.tree_scroll(id, -lines * 3.0);
             }
-            Kind::Combobox if !node.combo_open => {
+            Kind::Combobox if !node.combo_open && dy != 0.0 => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;
                 let step = if dy > 0.0 { -1 } else { 1 };
@@ -180,6 +180,9 @@ impl Tk {
 
     /// Sets a canvas's view offset, clamped so it stays within the scroll region.
     pub(crate) fn canvas_set_view(&mut self, id: WidgetId, x: f32, y: f32) {
+        if x.is_nan() || y.is_nan() {
+            return;
+        }
         let Some(n) = self.node(id) else { return };
         let (rw, rh) = n.scrollregion.unwrap_or((n.rect.width, n.rect.height));
         let nx = x.clamp(0.0, (rw - n.rect.width).max(0.0));
@@ -219,7 +222,7 @@ impl Tk {
         ((pos / total).clamp(0.0, 1.0), ((pos + visible) / total).clamp(0.0, 1.0))
     }
 
-    /// tkinter `yview()`: visible fraction (first, last) of a Listbox, Text or Canvas.
+    /// tkinter `yview()`: visible fraction (first, last) of a Listbox, Text, Canvas or ScrollArea.
     pub fn yview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, true) }
     /// tkinter `xview()` for a Canvas.
     pub fn xview(&mut self, id: WidgetId) -> (f32, f32) { self.view_fractions(id, false) }
@@ -315,18 +318,24 @@ impl Tk {
         Some(if horizontal { Orient::Horizontal } else { Orient::Vertical })
     }
 
-    /// Links a vertical Scrollbar to a Listbox, scrollable Canvas, or Text widget.
-    pub fn link_scrollbar(&mut self, scrollbar: WidgetId, listbox: WidgetId) -> bool {
+    /// Links a Scrollbar to a Listbox, scrollable Canvas, Text or ScrollArea `target`.
+    /// Returns `false` if either id is invalid or of the wrong kind.
+    pub fn scrollbar_link(&mut self, scrollbar: WidgetId, target: WidgetId) -> bool {
         let is_sb = self.node(scrollbar).is_some_and(|n| n.kind == Kind::Scrollbar);
-        let is_lb = self.node(listbox).is_some_and(|n| matches!(n.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::ScrollArea));
+        let is_lb = self.node(target).is_some_and(|n| matches!(n.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::ScrollArea));
         if !is_sb || !is_lb {
             return false;
         }
         if let Some(node) = self.node_mut(scrollbar) {
-            node.scroll_target = Some(listbox);
+            node.scroll_target = Some(target);
         }
         self.dirty = true;
         true
+    }
+
+    /// Alias of [`Tk::scrollbar_link`], kept for compatibility with the older name.
+    pub fn link_scrollbar(&mut self, scrollbar: WidgetId, target: WidgetId) -> bool {
+        self.scrollbar_link(scrollbar, target)
     }
 
 }

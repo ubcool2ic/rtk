@@ -376,3 +376,11 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
   - **Eviction:** `toast_set_max` and the over-max eviction in `toast_with` drop the oldest toasts correctly. `toast_clear` resets the list.
   - **Clicks:** `toast_click` is index-aligned with the layout and only fades a toast out once.
 
+### src/tk/scroll.rs lines 1-333
+- [medium] [bug] A horizontal-only wheel event (`dy == 0`, e.g. `sim_wheel_shift` or a sideways touchpad swipe) over a Slider, DoubleSpinbox or closed Combobox was treated as "scroll down". It decremented the value or selection. (lines 64, 72, 84) -> fixed (these arms now require `dy != 0.0`)
+- [low] [bug] `canvas_set_view` with a NaN offset (e.g. `yview_moveto(id, NaN)`) stored NaN in `view`, because `clamp` passes NaN through, and then marked the widget dirty on every call. (line 182) -> fixed (NaN input is ignored)
+- [low] [api] `link_scrollbar` breaks the `<widget>_<verb>` pattern used by `scrollbar_orient`, and its parameter is misleadingly named `listbox`. (line 319) -> fixed (added `scrollbar_link(scrollbar, target)` as the primary name; `link_scrollbar` stays as a thin wrapper so existing callers keep compiling)
+- [low] [docs] The `yview` doc omits ScrollArea, which the method supports. (line 222) -> fixed
+- [low] [bug] Pixel-mode wheel deltas on Listbox, Text, Table and TreeView are divided by the row height and rounded, so deltas under half a row are lost. This needs a per-widget accumulator and is a design change. (lines 44, 59) -> not fixed (out of scope for a minimal pre-1.0 edit)
+- [low] [api] The `yview*`, `xview*` and `*_scroll` names deliberately mirror tkinter, so I left them unchanged. -> not fixed (intentional)
+
