@@ -567,3 +567,9 @@ I found nothing in lines 1-155 that needs an edit.
 - [severity low] [bug] The entry's position was lost when callbacks bound or unbound other shortcuts during dispatch, because the entry was reinserted by a stale index (line 90). -> fixed (the callback is now restored by id, and binding order is preserved)
 - [severity low] [bug] `next_shortcut_id` uses `wrapping_add` (line 21), so ids could collide after 2^32 or 2^64 binds. -> not fixed (practically unreachable, and the field type is defined outside this chunk)
 
+### src/tk/ring.rs lines 1-129
+- [medium] [bug] `ring_set_thickness` doc promises a clamp to `1.0..=diameter/2`, but the code only floors at 0. A huge or zero thickness is stored unclamped (line 92) -> fixed (clamps finite values to `1.0..=max(diameter/2, 1.0)`; non-finite values still store 0, and the doc now says so)
+- [medium] [bug] `ring_set` is documented to return false for dead variables but returns true, and sets dirty, even when the variable is dead (line 68) -> fixed (checks the variable is live first)
+- [low] [bug] An infinite `diameter` passed to `ProgressRing::new` is stored as-is and breaks layout (line 28) -> fixed (non-finite falls back to 48.0)
+- [low] [bug] `ring_advance` allocates an `InputsState` on every tick for non-spinner rings (line 111) -> not fixed (harmless, one allocation per ring, and the behaviour matches the other widgets)
+

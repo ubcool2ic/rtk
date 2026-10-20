@@ -25,7 +25,7 @@ impl ProgressRing {
         }
         let id = tk.add(Kind::ProgressRing, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
-            node.progress_length = diameter.max(16.0);
+            node.progress_length = if diameter.is_finite() { diameter.max(16.0) } else { 48.0 };
             node.progress_f64 = Some(var);
         }
         Ok(id)
@@ -64,6 +64,9 @@ impl Tk {
             return false;
         }
         let Some(var) = node.progress_f64 else { return false };
+        if var.get(self).is_none() {
+            return false;
+        }
         let value = if fraction.is_nan() { 0.0 } else { fraction.clamp(0.0, 1.0) };
         var.set(self, value);
         self.dirty = true;
@@ -86,10 +89,12 @@ impl Tk {
     }
 
     /// Sets the stroke thickness in logical px (clamped to `1.0..=diameter/2`).
-    /// Returns false for non-rings.
+    /// Non-finite values store 0. Returns false for non-rings.
     pub fn ring_set_thickness(&mut self, id: WidgetId, px: f32) -> bool {
+        let diameter = self.node(id).map(|n| n.progress_length).unwrap_or(48.0);
+        let max = (diameter / 2.0).max(1.0);
         let Some(state) = self.ring_state_mut(id) else { return false };
-        state.ring_thickness = if px.is_finite() { px.max(0.0) } else { 0.0 };
+        state.ring_thickness = if px.is_finite() { px.clamp(1.0, max) } else { 0.0 };
         self.dirty = true;
         true
     }
