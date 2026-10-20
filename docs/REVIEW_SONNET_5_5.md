@@ -1173,3 +1173,10 @@ The two tests look correct and deterministic. They use simulated time through `s
 - [severity low] [bug] `test_tooltips` relies on a tooltip delay between 200 ms and 550 ms of simulated time. This is deterministic because it uses `sim_advance_time`, not wall-clock time, so it is not flaky (lines 216-219) -> not fixed (no change needed)
 - [severity low] [docs] `test_notebook_and_geometry_forget` mixes notebook and `pack_forget` checks. The coverage is fine and the doc comment is accurate -> not fixed (no change needed)
 
+### tests/vars.rs lines 1-54
+- none
+
+I checked the file against the public API shown in `lib.rs` only, because the `Var` and `Tk` implementations were not in the chunk. I found no fault in the tests, but two points I could not confirm:
+- `equal_set_does_not_dirty` (lines 18-29) binds the variable to no widget. The `is_dirty()` assertion at line 28 therefore depends on `Var::set` marking the toolkit dirty even when no widget uses the variable. I did not change it, because I cannot see whether that is the intended behaviour.
+- `trace_that_sets_itself_terminates` (lines 31-42) expects the value 2. That is only right if a trace that fires while its own trace is already running is suppressed. I read the expectation as intentional and left it.
+
