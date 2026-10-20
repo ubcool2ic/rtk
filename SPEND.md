@@ -156,3 +156,9 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/timer.rs:1-318 | 6996 (0 cached) | 1964 (1692 reasoning) | 0.0336 | 2.2288 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tray.rs:1-317 | 7323 (0 cached) | 3331 (1783 reasoning) | 0.0480 | 2.2767 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/edit.rs:1-310 | 7268 (0 cached) | 3921 (2203 reasoning) | 0.0537 | 2.3305 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/a11y.rs:1-297 | 6835 (0 cached) | 2511 (1790 reasoning) | 0.0388 | 2.3692 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tree.rs:1-296 | 6721 (0 cached) | 2489 (1943 reasoning) | 0.0383 | 2.4076 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/double_spinbox.rs:1-287 | 7609 (0 cached) | 4194 (2641 reasoning) | 0.0572 | 2.4647 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/shortcut.rs:1-277 | 6054 (0 cached) | 1810 (1288 reasoning) | 0.0302 | 2.4949 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/text.rs:1-275 | 6442 (0 cached) | 4262 (2418 reasoning) | 0.0555 | 2.5504 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/canvas.rs:1-255 | 7834 (0 cached) | 3109 (1988 reasoning) | 0.0468 | 2.5972 |

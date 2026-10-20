@@ -407,3 +407,42 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [api] `selection_clear` breaks the `<widget>_<verb>` naming pattern, while the sibling methods are `edit_*`, `entry_*` and `text_*`. A rename would break callers outside this chunk -> not fixed (the call sites are not visible here)
 - [low] [bug] After an external text set, `last_edit_typing` is not reset, so the next typing may coalesce into a stale undo step. The setter lives outside this chunk -> not fixed
 
+### src/tk/a11y.rs lines 1-297
+- [medium] [bug] `a11y_labels` overrides are never removed when a widget is destroyed, so the map can grow without bound and keep stale entries (lines 86, 199). The destroy path is outside this chunk, so I mitigated it here by pruning entries for dead widgets in `a11y_tree_changed` (lines 288-295), which runs once per a11y poll. The proper fix is still to remove the entry in the widget destroy routine. -> fixed (mitigated)
+- [low] [api] `accessibility_tree` does not follow the `a11y_*` naming used by the neighbouring methods (line 44). Renaming it would break `a11y_accesskit.rs` and any callers outside this chunk. -> not fixed (public rename outside this chunk's scope)
+- [low] [bug] `A11yAction::Focus` and the Click/Toggle/Increment paths set `self.focused` directly, which may bypass focus-change handling such as blur callbacks and cursor reset (lines 226-272). The central focus setter is not visible in this chunk, so I could not verify this. -> not fixed (cannot verify)
+- [low] [api] `A11yAction`, `A11yRole` and `A11yNode` may need `#[non_exhaustive]`, but they are defined in `src/a11y.rs`, outside this chunk. -> not fixed (outside this chunk)
+- NOTE: edits for src/tk/a11y.rs:1-297 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
+
+### src/tk/tree.rs lines 1-296
+- [medium] [bug] `destroy` compared `id == self.root()` only after the slot generations had been bumped. If `root()` is built from the live generation of slot 0, the comparison fails and destroying the root never requests quit. The check is now computed before the teardown loop (line 101) -> fixed
+- [low] [bug] `config(Opt::Disabled(true))` leaves `hovered` and `pressed` pointing at the now-disabled widget (line 178) -> not fixed (the event code that reads those fields is outside this chunk, so I can't tell whether it is a real problem)
+- [low] [api] `set_command` and `set_selected` do not follow the `<widget>_<verb>` pattern (lines 207, 274) -> not fixed (renaming public API is a larger change than a minimal edit, and both are documented and consistent with each other)
+
+### src/tk/double_spinbox.rs lines 1-287
+- [medium] [bug] `dspin_type`/`dspin_backspace` seeded the edit buffer from the formatted text including the suffix. Typing after the seed gave e.g. "1.50 V5", which fails to parse and silently reverts on Enter. Backspace ate the suffix first. (lines 182-186, 204-208) -> fixed (seed now excludes the suffix)
+- [medium] [bug] Stepping with Up/Down/wheel left a stale edit buffer in place, so the display kept showing the old typed text instead of the new value. (line 149) -> fixed (`dspin_step` clears the buffer)
+- [medium] [bug] `dspin_set` documents returning false for dead variables but always returned true. It also left a stale edit buffer showing. (lines 96-106) -> fixed
+- [low] [bug] `dspin_round` overflowed to infinity for huge ranges (`clamped * 10^decimals`). It could also yield `-0.0`, which displays as "-0.00". (lines 126-129) -> fixed
+- [low] [bug] `dspin_user_set` never wrote the variable when its current value was NaN and the target equalled the lower bound, because `NaN.abs() > EPS` is false. (line 142) -> fixed
+
+### src/shortcut.rs lines 1-277
+- [severity low] [bug] `parse_key` accepted malformed function-key names such as `F+1` and `F01`, because `u8::from_str` allows a leading `+` -> fixed. The function-key suffix now has to be 1–2 ASCII digits.
+- [severity low] [api] I found no other problems in lines 1-277. `ShortcutError` is already `#[non_exhaustive]`, every fn has a `///` doc, and the UTF-8 slicing of the macOS modifier symbols is safe because it advances by `len_utf8`. The literal-plus handling (`Ctrl++`, `+`) and the `Ctrl+` missing-key case behave correctly. -> not fixed (nothing to fix)
+
+### src/tk/text.rs lines 1-275
+- [medium] [bug] `trim_lines` with `max == 0` wipes all text, but `text_set_max_lines(0)` treats 0 as "no trimming", and later `text_set` / `text_insert_end` would clear everything (lines 7-13) -> fixed (0 now means unlimited)
+- [high] [bug] `text_clear` leaves `selection_anchor` set while the cursor goes to 0, so a stale anchor beyond the empty text could cause out-of-range slicing in selection consumers (lines 238-246) -> fixed (anchor cleared)
+- [high] [bug] `text_insert_end` trims from the front but leaves `selection_anchor` stale (possibly out of range or mid-char), and `text_scroll_row` can exceed the new line count (lines 220-235) -> fixed
+- [medium] [bug] `text_set_max_lines` trims leading bytes but only clamps the cursor, so it can land mid-char or on the wrong text. The anchor and scroll row are also left stale (lines 262-272) -> fixed (cursor shifted by removed bytes, anchor cleared, scroll clamped)
+- [low] [bug] `text_set` does not clamp `text_scroll_row`, so replacing the text with a shorter one can leave the view scrolled past the end (lines 203-216) -> fixed
+- [medium] [bug] Caret-only moves (Left/Right/Up/Down/Home/End) return before the scroll-follow logic, so the caret can leave the visible rows (lines 166-174) -> fixed (scroll adjusted on that path too)
+
+### src/tk/canvas.rs lines 1-255
+- [medium] [bug] `canvas_create_image_rgba` computes `src_w * src_h * 4` in `usize` without overflow checks. Huge dimensions (e.g. `u32::MAX` squared) panic in debug builds and can wrap in release, or on 32-bit targets, so a mismatched buffer could pass validation (line 227) -> fixed (`checked_mul`)
+- [medium] [bug] `canvas_update_image` has the same unchecked size multiplication (line 235) -> fixed
+- [low] [bug] `text_size` passes the raw `size` to the text engine. NaN, zero or negative sizes are not sanitized, unlike `canvas_create_text_ex`, which clamps with `size.max(1.0)` (line 202) -> fixed (same clamp)
+- [low] [bug] `canvas_add_item` scans all slots twice per insert (`max` over `seq` and a free-slot search), so filling a canvas is O(n²) up to the 1M-item cap (lines 73-74) -> not fixed (a counter would need a new `Node` field outside this chunk; correct as is)
+- [low] [api] `text_size` and `canvas_items` (which returns a count) do not follow `<widget>_<verb>` naming exactly (lines 200, 207) -> not fixed (renaming public methods breaks callers outside this chunk; left for a deliberate API decision)
+- [low] [bug] Non-finite or huge `size`, `width` and coordinates in the `canvas_create_*` and `canvas_move` functions are stored unvalidated (lines 123-197) -> not fixed (the renderer is outside this chunk; tiny-skia rejects non-finite geometry)
+

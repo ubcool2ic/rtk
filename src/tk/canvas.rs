@@ -199,6 +199,7 @@ impl Tk {
     /// Measures text in logical pixels (width, height) for layout/centering on a Canvas.
     pub fn text_size(&mut self, text: &str, size: f32, weight: u16) -> (f32, f32) {
         let family = self.style_engine.tokens().font_family.clone();
+        let size = size.max(1.0);
         let s = self.text_engine.measure_styled(text, size, family.as_deref(), weight.clamp(100, 900), false);
         (s.width, s.height)
     }
@@ -224,7 +225,8 @@ impl Tk {
     /// Creates a raw RGBA image item scaled to `w` × `h` logical pixels.
     #[allow(clippy::too_many_arguments)]
     pub fn canvas_create_image_rgba(&mut self, id: WidgetId, x: f32, y: f32, w: f32, h: f32, src_w: u32, src_h: u32, rgba: &[u8], smooth: bool) -> Option<CanvasItem> {
-        if src_w == 0 || src_h == 0 || rgba.len() != (src_w as usize) * (src_h as usize) * 4 {
+        let expected = (src_w as usize).checked_mul(src_h as usize).and_then(|n| n.checked_mul(4));
+        if src_w == 0 || src_h == 0 || expected != Some(rgba.len()) {
             return None;
         }
         self.canvas_add_item(id, CanvasItemKind::Image { x, y, w, h, src_w, src_h, rgba: rgba.to_vec(), smooth })
@@ -232,7 +234,8 @@ impl Tk {
 
     /// Updates the RGBA pixel data for a canvas image item.
     pub fn canvas_update_image(&mut self, id: WidgetId, item: CanvasItem, src_w: u32, src_h: u32, rgba: &[u8]) -> bool {
-        if src_w == 0 || src_h == 0 || rgba.len() != (src_w as usize) * (src_h as usize) * 4 {
+        let expected = (src_w as usize).checked_mul(src_h as usize).and_then(|n| n.checked_mul(4));
+        if src_w == 0 || src_h == 0 || expected != Some(rgba.len()) {
             return false;
         }
         let Some(node) = self.node_mut(id) else { return false };
