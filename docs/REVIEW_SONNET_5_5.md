@@ -1156,3 +1156,8 @@ The two tests look correct and deterministic. They use simulated time through `s
 - [severity low] [bug] The F6 final loop `while dialog::is_open { close }` would spin forever if `close` ever failed to pop (line 146) -> not fixed (that would itself be a real bug in the stack, so the hang exposes it)
 - [severity low] [bug] The F6 assertion accepts either navigation or completion, so it is looser than the test name suggests (line 145) -> not fixed (either outcome is valid Enter behaviour, and I can't tell from this chunk which one the dialog implements)
 
+### tests/treeview_notebook.rs lines 1-80
+- [medium] [bug] The final assertion compares pixels against `palette.bg`, but the tree widget paints its own surface colour. A blank tree box therefore passes, and the test can't catch the regression it exists for (lines 62-78) -> fixed. It now takes the dominant colour inside the inset tree area as the tree background and requires a meaningful number of differing pixels (row text and selection) from the interior only.
+- [low] [bug] The test never checks that the page really became selected, because the `notebook_select` result is ignored (line 50) -> not fixed. The row-count and render assertions cover it indirectly, and I can't confirm the return type from here.
+- [low] [bug] A `u32` multiplication in the pixel index could overflow only for absurd sizes. The 400x300 pixmap is far below that, so no change (line 71) -> not fixed.
+
