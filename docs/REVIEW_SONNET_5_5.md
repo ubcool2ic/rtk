@@ -784,3 +784,10 @@ Two assumptions I could not verify:
 
 I found no other real API misuse or panic paths in this chunk. Every fallible constructor uses `?`, and the `--screenshot` argument parsing is bounds-checked.
 
+### examples/screenshot.rs lines 1-20
+- none
+
+I found nothing to fix in lines 1-20. Two points rest on assumptions, because only `lib.rs` was provided, not the `Tk` or `PackOpts` signatures:
+- **Argument handling:** `main` reads the output path with `args_os`, so non-UTF-8 paths work. It has a default, and every fallible call uses `?`, so there are no unwraps on user-facing paths.
+- **API use:** `PackOpts` is reused for two `tk.pack` calls, which compiles only if it is `Copy`. `save_png` is called with `&path` (a `&PathBuf`), which compiles only if its parameter accepts `&Path` or `AsRef<Path>`.
+

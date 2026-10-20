@@ -235,3 +235,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery_progress_inputs.rs:1-210 | 6430 (0 cached) | 2265 (1777 reasoning) | 0.0355 | 4.4519 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/hello.rs:1-21 | 2449 (0 cached) | 457 (187 reasoning) | 0.0095 | 4.4614 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/modern.rs:1-308 | 6905 (0 cached) | 1521 (1147 reasoning) | 0.0290 | 4.4904 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/screenshot.rs:1-20 | 2483 (0 cached) | 460 (221 reasoning) | 0.0096 | 4.5000 |
