@@ -103,7 +103,7 @@ impl TableSnapshot {
             columns: state.columns.clone(),
             widths: state.widths.clone(),
             sort: state.sort,
-            selected: state.selected,
+            selected: state.selected.and_then(|m| state.display_of(m)),
             top,
             rows_len,
             visible_rows,
@@ -379,7 +379,7 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
                 tk.text_engine.draw_styled(
                     pixmap,
                     accel,
-                    (font_size * scale, muted),
+                    (font_size * scale, if is_hl { fg } else { muted }),
                     style.font_family.as_deref(),
                     400,
                     style.italic,

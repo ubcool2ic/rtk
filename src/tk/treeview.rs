@@ -174,6 +174,7 @@ impl Tk {
 
     /// Clamps `top` so the view stays within the visible row count.
     pub(crate) fn tree_clamp_top(&mut self, id: WidgetId) {
+        self.ensure_layout();
         let visible = self.tree_visible_rows(id);
         let total = self.tree_state(id).map(|s| s.visible.len()).unwrap_or(0);
         let max_top = total.saturating_sub(visible.max(1));
@@ -385,6 +386,7 @@ impl Tk {
 
     /// Scrolls so node `key` is visible.
     pub fn tree_see(&mut self, id: WidgetId, key: usize) -> bool {
+        self.ensure_layout();
         let visible = self.tree_visible_rows(id).max(1);
         let Some(state) = self.tree_state_mut(id) else { return false };
         state.ensure_visible();

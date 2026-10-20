@@ -14,6 +14,7 @@ fn build_table(tk: &mut Tk, n: usize) -> rtk::WidgetId {
     table
 }
 
+/// Verifies row/column counts and cell accessors on a freshly built table.
 #[test]
 fn test_table_basic_rows_and_cells() {
     let mut tk = Tk::new();
@@ -25,6 +26,7 @@ fn test_table_basic_rows_and_cells() {
     assert!(tk.table_cell(table, 99, 0).is_none());
 }
 
+/// Verifies numeric and string sorting, descending order and clearing the sort.
 #[test]
 fn test_table_sort_numeric_and_string() {
     let mut tk = Tk::new();
@@ -60,6 +62,7 @@ fn test_table_sort_numeric_and_string() {
     assert_eq!(tk.table_display_to_model(table, 0), Some(0));
 }
 
+/// Verifies clicking a column header sorts ascending, then toggles descending.
 #[test]
 fn test_table_header_click_sorts() {
     let mut tk = Tk::new();
@@ -73,6 +76,7 @@ fn test_table_header_click_sorts() {
     assert_eq!(tk.table_sort_state(table), Some((0, false)));
 }
 
+/// Verifies row selection via mouse click and keyboard navigation keys.
 #[test]
 fn test_table_selection_click_and_keys() {
     let mut tk = Tk::new();
@@ -97,6 +101,7 @@ fn test_table_selection_click_and_keys() {
     assert!(tk.table_selection(table).unwrap() > 0);
 }
 
+/// Verifies the selection-change callback fires with the new selection.
 #[test]
 fn test_table_on_select_callback() {
     let mut tk = Tk::new();
@@ -111,6 +116,7 @@ fn test_table_on_select_callback() {
     assert_eq!(var.get(&tk), Some(-1));
 }
 
+/// Verifies wheel scrolling moves the view and clamps at both ends.
 #[test]
 fn test_table_wheel_scroll_bounds() {
     let mut tk = Tk::new();
@@ -134,6 +140,7 @@ fn test_table_wheel_scroll_bounds() {
     assert!(top < 100);
 }
 
+/// Verifies dragging a column edge resizes it and enforces the minimum width.
 #[test]
 fn test_table_column_resize_drag() {
     let mut tk = Tk::new();
@@ -153,6 +160,7 @@ fn test_table_column_resize_drag() {
     assert_eq!(tk.table_column_width(table, 0), Some(24.0));
 }
 
+/// Verifies inserting a row preserves the active sort order.
 #[test]
 fn test_table_insert_row_keeps_sort() {
     let mut tk = Tk::new();
@@ -173,6 +181,7 @@ fn test_table_insert_row_keeps_sort() {
     assert_eq!(vals, vec!["1", "3", "5", "9"]);
 }
 
+/// Verifies clearing removes all rows and resets the selection.
 #[test]
 fn test_table_clear() {
     let mut tk = Tk::new();
@@ -182,6 +191,7 @@ fn test_table_clear() {
     assert_eq!(tk.table_selection(table), None);
 }
 
+/// Verifies a sorted, selected table renders to a pixmap without error.
 #[test]
 fn test_table_renders() {
     let mut tk = Tk::new();
@@ -192,6 +202,7 @@ fn test_table_renders() {
     assert!(pm.is_ok());
 }
 
+/// Verifies 10,000-row sort and navigation complete within a time bound.
 #[test]
 fn test_table_10k_rows_performance() {
     let mut tk = Tk::new();
@@ -215,6 +226,7 @@ fn test_table_10k_rows_performance() {
     assert!(elapsed.as_secs_f64() < 2.0, "10k table ops took {elapsed:?}");
 }
 
+/// Verifies a table nested inside a frame renders and reports its rows.
 #[test]
 fn test_table_in_frame() {
     let mut tk = Tk::new();

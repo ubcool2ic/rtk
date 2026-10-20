@@ -839,6 +839,30 @@ impl StyleEngine {
             },
         );
 
+        // TTreeview
+        self.configure(
+            "TTreeview",
+            StyleSpec {
+                bg: Some(self.tokens().palette.field_bg),
+                border_color: Some(self.tokens().palette.border),
+                border_width: Some(1.0),
+                radius: Some(self.tokens().radius.sm),
+                ..StyleSpec::default()
+            },
+        );
+
+        // TMenubar
+        self.configure(
+            "TMenubar",
+            StyleSpec {
+                bg: Some(self.tokens().palette.surface),
+                fg: Some(self.tokens().palette.fg),
+                border_color: Some(self.tokens().palette.border),
+                border_width: Some(0.0),
+                ..StyleSpec::default()
+            },
+        );
+
         // TListbox
         self.styles.insert("TListbox".into(), StyleSpec {
             bg: Some(p.field_bg),

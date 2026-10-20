@@ -137,6 +137,7 @@ impl Tk {
 
     /// Clamps `top` so the view stays within the row count.
     pub(crate) fn table_clamp_top(&mut self, id: WidgetId) {
+        self.ensure_layout();
         let visible = self.table_visible_rows(id);
         let total = self.table_state(id).map(|s| s.order.len()).unwrap_or(0);
         let max_top = total.saturating_sub(visible.max(1));
@@ -293,8 +294,8 @@ impl Tk {
 
     /// Scrolls so model row `row` is visible.
     pub fn table_see(&mut self, id: WidgetId, row: usize) -> bool {
+        self.ensure_layout();
         let Some(state) = self.table_state(id) else { return false };
-        let _ = state;
         let Some(display) = state.display_of(row) else { return false };
         let visible = self.table_visible_rows(id).max(1);
         let top = state.top;
