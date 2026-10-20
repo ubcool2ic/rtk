@@ -836,20 +836,53 @@ impl Tk {
                         origin, clip, resolved.opacity,
                     );
                 }
-                Kind::Canvas => {
+                Kind::Canvas | Kind::Chart | Kind::Image => {
                     let w = rect.width.round() as u32;
                     let h = rect.height.round() as u32;
                     if w > 0 && h > 0 {
                         if let Some(mut sub) = Pixmap::new(w, h) {
-                            sub.fill(tiny_skia::Color::from_rgba8(draw_bg.r, draw_bg.g, draw_bg.b, draw_bg.a));
-                            let mut items = node.canvas_items.clone();
-                            items.sort_by_key(|slot| slot.seq);
-                            let (vx, vy) = node.view;
-                            for slot in items {
-                                let Some(mut item) = slot.item else { continue };
-                                if vx != 0.0 || vy != 0.0 {
-                                    item.translate(-vx, -vy);
+                            let sub_bg = if kind == Kind::Chart {
+                                self.style_engine.tokens().palette.surface
+                            } else if kind == Kind::Image {
+                                self.style_engine.tokens().palette.bg
+                            } else {
+                                draw_bg
+                            };
+                            sub.fill(tiny_skia::Color::from_rgba8(sub_bg.r, sub_bg.g, sub_bg.b, sub_bg.a));
+                            let mut draw_list: Vec<CanvasItemKind> = if kind == Kind::Chart {
+                                match node.chart.as_deref() {
+                                    Some(state) => crate::chart::build_items(
+                                        state,
+                                        logical.width,
+                                        logical.height,
+                                        &self.style_engine.tokens().palette,
+                                        resolved.font_size,
+                                    ),
+                                    None => Vec::new(),
                                 }
+                            } else if kind == Kind::Image {
+                                match node.image_data.as_deref() {
+                                    Some(data) => crate::image::build_items(
+                                        data,
+                                        logical.width,
+                                        logical.height,
+                                        scale,
+                                    ),
+                                    None => Vec::new(),
+                                }
+                            } else {
+                                let mut items = node.canvas_items.clone();
+                                items.sort_by_key(|slot| slot.seq);
+                                let (vx, vy) = node.view;
+                                items.into_iter().filter_map(|slot| {
+                                    let mut item = slot.item?;
+                                    if vx != 0.0 || vy != 0.0 {
+                                        item.translate(-vx, -vy);
+                                    }
+                                    Some(item)
+                                }).collect()
+                            };
+                            for item in draw_list.drain(..) {
                                 match item {
                                     CanvasItemKind::Rect { x0, y0, x1, y1, color } => {
                                         let min_x = x0.min(x1) * scale;

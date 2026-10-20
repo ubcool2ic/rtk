@@ -53,6 +53,9 @@ mod edit;
 mod theme;
 /// Scrollable viewport frame of widgets.
 pub(crate) mod scroll_area;
+mod chart;
+mod image;
+mod dnd;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -228,6 +231,7 @@ pub struct Tk {
     /// Lazily created OS clipboard handle (only when the real loop runs).
     #[cfg(feature = "clipboard")]
     pub(crate) os_clipboard: Option<arboard::Clipboard>,
+    pub(crate) dnd: crate::dnd::DndState,
 }
 
 impl Default for Tk {
@@ -296,6 +300,7 @@ impl Tk {
             clipboard_text: String::new(),
             #[cfg(feature = "clipboard")]
             os_clipboard: None,
+            dnd: crate::dnd::DndState::default(),
         }
     }
 
