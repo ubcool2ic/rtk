@@ -275,3 +275,16 @@ I reviewed only lines 693-698, which hold `Menubar::new`. It has a `///` doc com
 - [low] [bug] The `ensure_visible_robust` and `tree_visible_rows` requested-height fallbacks are band-aids, but the root cause is not in this chunk. Every mutator here (`tree_insert`, `tree_remove`, `tree_clear`, `tree_set_open`, `tree_expand_all`, `tree_collapse_all`) sets `state.dirty = true` after changing nodes. `rebuild_visible` clears `dirty` only when called, and `tree_insert` re-sets it afterwards, so no ordering here clears it before nodes exist. The remaining suspects are the layout and render code that calls `rebuild_visible` or builds `visible`, outside these lines. (lines 112-126, 186-198) -> not fixed (removing them blind could break callers elsewhere; the band-aids stay until the real cause is found in the other chunks).
 - [low] [bug] `push_visible` recurses once per tree level, so a pathologically deep tree could overflow the stack. (line 129) -> not fixed (unrealistic depth, and fixing it would be a refactor).
 
+### src/tk/mod.rs lines 306-577
+- [low] [docs] Doc comments are duplicated verbatim on `new`, `proxy`, `after_idle`, `process_posted`, `root`, `contains`, `theme`, `default_font`, `tokens`, `set_theme` and `set_accent`. Rustdoc would render each sentence twice, and `process_posted` would show its whole paragraph twice (lines 306-307, 384-385, 390-391, 396-405, 451-452, 471-472, 477-478, 483-486, 491-492, 508-511, 564-565) -> fixed
+- [low] [bug] `set_theme` returns early when the theme is unchanged. Calling `set_theme(current)` therefore cannot reset custom tokens installed through `set_tokens`, although the doc says it resets tokens (line 513). This looks deliberate, as it avoids a needless full restyle, so I left it -> not fixed (intentional early-out, behaviour change not warranted pre-1.0)
+- [low] [bug] `process_posted` takes whole queues into locals. If a task panics, the rest of that batch is dropped. Unwinding through the GUI loop is already fatal, so this is not worth extra machinery -> not fixed
+- [low] [bug] `is_descendant_of` returns true for `id == ancestor` even when the id is stale. It is crate-private and callers pass live ids, so I left it -> not fixed
+- [low] [api] The `Theme` enum is matched exhaustively in `set_theme`. Whether it carries `#[non_exhaustive]` cannot be checked from this chunk; it is defined in `widgets` -> not fixed (outside this chunk)
+
+### src/tk/mod.rs lines 1-305
+- [low] [docs] `TkProxy::post` has its doc line duplicated (lines 129-130) -> fixed
+- [medium] [api] Public enum `ScrollUnit` lacks `#[non_exhaustive]`, so adding a variant after 1.0 would be a breaking change (line 186) -> fixed
+- [low] [api] `Tk::modal` is a `pub` field while every other state field is `pub(crate)`. External code can corrupt the modal invariants by writing to it, but changing the visibility could break external examples or tests I can't see (line 236) -> not fixed (cannot verify out-of-chunk uses; consider an accessor before 1.0)
+- [low] [bug] `TkProxy::post` queues tasks without bound if the event loop has exited or never started. The closure type is `FnOnce`, so there is no safe way to drop them early without a loop-lifecycle design change (line 131) -> not fixed (design change out of scope)
+

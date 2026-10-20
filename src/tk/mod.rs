@@ -127,7 +127,6 @@ pub struct TkProxy {
 
 impl TkProxy {
     /// Queues a closure to execute on the main thread and wakes the event loop.
-    /// Queues a closure to execute on the main thread and wakes the event loop.
     pub fn post(&self, f: impl FnOnce(&mut Tk) + Send + 'static) {
         self.shared.queue.lock().unwrap_or_else(|e| e.into_inner()).push_back(Box::new(f));
         let waker = self.shared.waker.lock().unwrap_or_else(|e| e.into_inner());
@@ -183,6 +182,7 @@ pub enum Key {
 }
 
 /// Scroll step for `yview_scroll`/`xview_scroll`.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScrollUnit {
     /// One row (Listbox/Text) or a fixed wheel step of 48 logical px (Canvas).
@@ -304,7 +304,6 @@ impl Default for Tk {
 
 impl Tk {
     /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
-    /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
     pub fn new() -> Self {
         let _ = crate::app::START.get_or_init(std::time::Instant::now);
         let style_engine = StyleEngine::new(Tokens::light());
@@ -382,22 +381,15 @@ impl Tk {
     }
 
     /// Obtains a thread-safe proxy to post callbacks from background threads.
-    /// Obtains a thread-safe proxy to post callbacks from background threads.
     pub fn proxy(&self) -> TkProxy {
         TkProxy { shared: self.proxy_shared.clone() }
     }
 
     /// Queues a closure to run once on the main thread when idle or on next drain.
-    /// Queues a closure to run once on the main thread when idle or on next drain.
     pub fn after_idle(&mut self, f: impl FnOnce(&mut Tk) + 'static) {
         self.idle_queue.push_back(Box::new(f));
     }
 
-    /// Drains posted and idle tasks reentrantly, returning the number processed.
-    ///
-    /// Tasks queued while draining are run in the same call, up to a bounded
-    /// number of passes so a self-re-posting task cannot hang the main thread;
-    /// anything left over runs on the next call.
     /// Drains posted and idle tasks reentrantly, returning the number processed.
     ///
     /// Tasks queued while draining are run in the same call, up to a bounded
@@ -449,7 +441,6 @@ impl Tk {
     }
 
     /// Returns the root (toplevel) widget, which always exists.
-    /// Returns the root (toplevel) widget, which always exists.
     pub fn root(&self) -> WidgetId {
         WidgetId { index: 0, gen: 0 }
     }
@@ -469,12 +460,10 @@ impl Tk {
     }
 
     /// Returns true if `id` refers to a live widget (tkinter `winfo_exists`).
-    /// Returns true if `id` refers to a live widget (tkinter `winfo_exists`).
     pub fn contains(&self, id: WidgetId) -> bool {
         self.node(id).is_some()
     }
 
-    /// Returns the active theme.
     /// Returns the active theme.
     pub fn theme(&self) -> Theme {
         self.theme
@@ -482,13 +471,10 @@ impl Tk {
 
     /// Which font family became the default sans-serif: the bundled Noto Sans,
     /// or Arial / a platform sans if the bundled font could not be loaded.
-    /// Which font family became the default sans-serif: the bundled Noto Sans,
-    /// or Arial / a platform sans if the bundled font could not be loaded.
     pub fn default_font(&self) -> &crate::fonts::DefaultFont {
         self.text_engine.default_font()
     }
 
-    /// Returns the design tokens (palette, fonts, radii) of the active theme.
     /// Returns the design tokens (palette, fonts, radii) of the active theme.
     pub fn tokens(&self) -> &Tokens {
         self.style_engine.tokens()
@@ -505,8 +491,6 @@ impl Tk {
         self.dirty = true;
     }
 
-    /// Switches the theme, resetting tokens and the legacy per-widget colours
-    /// that were not explicitly overridden with `Opt::Bg`/`Opt::Fg`.
     /// Switches the theme, resetting tokens and the legacy per-widget colours
     /// that were not explicitly overridden with `Opt::Bg`/`Opt::Fg`.
     pub fn set_theme(&mut self, theme: Theme) {
@@ -561,7 +545,6 @@ impl Tk {
         }
     }
 
-    /// Sets the brand accent color and updates derived tokens and styles.
     /// Sets the brand accent color and updates derived tokens and styles.
     pub fn set_accent(&mut self, accent: Color) {
         let mut tokens = self.style_engine.tokens().clone();
