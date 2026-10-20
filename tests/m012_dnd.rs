@@ -126,7 +126,8 @@ fn drop_phase_fires_on_hover_callback() {
     let p = phases.clone();
     assert!(tk.bind_file_hover(inner, move |_tk, phase| p.borrow_mut().push(phase)));
     let (x, y) = centre(&mut tk, inner);
-    assert!(tk.sim_file_drop(x, y, &[PathBuf::from("/tmp/d.txt")]));
+    assert!(!tk.sim_file_drop(x, y, &[PathBuf::from("/tmp/d.txt")]));
+    assert_eq!(phases.borrow().last().copied(), Some(DropPhase::Drop));
     assert!(phases.borrow().contains(&DropPhase::Drop));
 }
 

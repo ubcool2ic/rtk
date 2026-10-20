@@ -194,3 +194,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dnd.rs:1-43 | 2839 (0 cached) | 200 (0 reasoning) | 0.0077 | 3.3327 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tooltip.rs:1-37 | 2559 (0 cached) | 1440 (671 reasoning) | 0.0195 | 3.3522 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-widgets r0 | 21291 (640 cached) | 118 (0 reasoning) | 0.0017 | 0.2221 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-dnd r0 | 7699 (3072 cached) | 520 (0 reasoning) | 0.0007 | 0.2228 |

@@ -19,6 +19,9 @@ impl Tk {
             return false;
         }
         let cb: FileDropCallback = Box::new(cb);
+        let mut live = std::mem::take(&mut self.dnd.drop);
+        live.retain(|(wid, _)| self.node(*wid).is_some());
+        self.dnd.drop = live;
         if let Some(slot) = self.dnd.drop.iter_mut().find(|(wid, _)| *wid == id) {
             slot.1 = Some(cb);
         } else {
@@ -46,12 +49,22 @@ impl Tk {
             return false;
         }
         let cb: FileHoverCallback = Box::new(cb);
+        let mut live = std::mem::take(&mut self.dnd.hover);
+        live.retain(|(wid, _)| self.node(*wid).is_some());
+        self.dnd.hover = live;
         if let Some(slot) = self.dnd.hover.iter_mut().find(|(wid, _)| *wid == id) {
             slot.1 = Some(cb);
         } else {
             self.dnd.hover.push((id, Some(cb)));
         }
         true
+    }
+
+    /// Removes the hover binding of `id`. Returns false if there was none.
+    pub fn unbind_file_hover(&mut self, id: WidgetId) -> bool {
+        let before = self.dnd.hover.len();
+        self.dnd.hover.retain(|(wid, _)| *wid != id);
+        self.dnd.hover.len() != before
     }
 
     /// Returns the deepest live, visible widget whose clip contains logical
@@ -77,30 +90,44 @@ impl Tk {
 
     /// Returns the nearest widget at logical `(x, y)` that has a drop binding,
     /// walking up from the deepest widget under the pointer to the root. Falls
-    /// back to the root when the root itself is bound.
+    /// back to the root when the root itself is bound. Respects the active modal.
     pub fn drop_target_at(&self, x: f32, y: f32) -> Option<WidgetId> {
+        self.binding_target_at(x, y, true)
+    }
+
+    /// Nearest bound widget at `(x, y)`; with `drop_only` only drop bindings
+    /// count, otherwise hover bindings count too. Never escapes an active modal.
+    fn binding_target_at(&self, x: f32, y: f32, drop_only: bool) -> Option<WidgetId> {
+        let modal = self.modal;
         let mut current = self.deepest_widget_at(x, y);
         while let Some(id) = current {
-            if self.node(id).is_some() && self.has_dnd_binding(id) {
+            if self.node(id).is_some() && self.has_dnd_binding(id, drop_only) {
                 return Some(id);
+            }
+            if modal == Some(id) {
+                return None;
             }
             current = self.node(id).and_then(|node| node.parent);
         }
-        let root = self.root();
-        if self.node(root).is_some() && self.has_dnd_binding(root) {
-            return Some(root);
+        if modal.is_none() {
+            let root = self.root();
+            if self.node(root).is_some() && self.has_dnd_binding(root, drop_only) {
+                return Some(root);
+            }
         }
         None
     }
 
-    /// Returns true when `id` has a file-drop or file-hover binding.
-    fn has_dnd_binding(&self, id: WidgetId) -> bool {
-        self.dnd.drop.iter().any(|(wid, _)| *wid == id) || self.dnd.hover.iter().any(|(wid, _)| *wid == id)
+    /// Returns true when `id` has a file-drop binding (or, if `drop_only` is
+    /// false, a file-hover binding).
+    fn has_dnd_binding(&self, id: WidgetId, drop_only: bool) -> bool {
+        self.dnd.drop.iter().any(|(wid, _)| *wid == id)
+            || (!drop_only && self.dnd.hover.iter().any(|(wid, _)| *wid == id))
     }
 
     /// Returns the widget currently under a file drag, if any (for highlight styling).
     pub fn file_hover_target(&self) -> Option<WidgetId> {
-        self.dnd.target
+        self.dnd.target.filter(|&id| self.node(id).is_some())
     }
 
     /// Returns the paths currently being dragged over the window.
@@ -118,7 +145,7 @@ impl Tk {
         if !self.dnd.hovered.contains(&path) {
             self.dnd.hovered.push(path);
         }
-        let new_target = self.drop_target_at(x, y);
+        let new_target = self.binding_target_at(x, y, false);
         if new_target == self.dnd.target {
             self.dirty = true;
             return;
@@ -152,14 +179,19 @@ impl Tk {
     #[doc(hidden)]
     pub fn sim_file_drop(&mut self, x: f32, y: f32, paths: &[PathBuf]) -> bool {
         self.ensure_layout();
-        let target = self.drop_target_at(x, y);
+        let drop_target = self.drop_target_at(x, y);
+        let hover_target = self.binding_target_at(x, y, false);
         self.dnd.target = None;
         self.dnd.hovered.clear();
         self.dirty = true;
-        let Some(target) = target else { return false };
-        self.fire_file_drop(target, paths);
-        self.fire_file_hover(target, DropPhase::Drop);
-        true
+        let mut handled = false;
+        if let Some(target) = drop_target {
+            handled = self.fire_file_drop(target, paths);
+        }
+        if let Some(target) = hover_target {
+            self.fire_file_hover(target, DropPhase::Drop);
+        }
+        handled
     }
 
     /// Runs the drop callback bound to `id`, if any, using the take-call-restore

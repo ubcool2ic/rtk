@@ -637,3 +637,5 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 
 - RECOVERED: src/tk/a11y.rs 1-297 edits re-applied. Checks are green with no extra calls, so the earlier test failure came from the concurrent PR #8 merge or flakiness, not from these edits.
 
+- RECOVERED: src/tk/dnd.rs 1-202 edits re-applied. After the fix, a hover-only binding no longer swallows drops. tests/m012_dnd.rs expected the old behaviour, where `sim_file_drop` returned true on a hover-only target, so DeepSeek updated it to expect false and to check that the Drop phase still reaches the hover callback (recover-dnd). The lead reviewed this. It matches the intended semantics of the BizyBot5 hand fix flagged for review.
+
