@@ -888,3 +888,13 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [bug] The `pack` results in `destroying_parent_removes_descendants_and_focus` (line 43) were ignored. A failed pack would only show up later as a confusing focus assertion, so the setup could silently fail. -> fixed, each `pack` call is now asserted.
 - Nothing else needed fixing in lines 1-88. The stale-ID, foreign-variable and incompatible-configuration assertions are meaningful and not timing-dependent. Every helper and test has a `///` doc comment.
 
+### tests/layout_fuzz.rs lines 1-131
+- none
+
+I found nothing in lines 1-131 that needs a fix.
+
+- **Helpers:** The RNG is a valid xorshift64 with a nonzero seed, and it is deterministic, so the test has no timing flakiness. `dimension()` and `check()` cannot panic on their own.
+- **Imports and types:** Every import is used. The `(usize, u32)` weight tuples match what `grid` is called with.
+- **Assertions:** Both tests assert meaningful properties. The pathological-index test covers `usize::MAX` for row, column and spans, with an empty column-weight list.
+- **Parent bounds in `check()` (line 37-38):** I could not check this because the layout engine source was not provided. For a NaN or negative parent size, `check()` compares against a non-finite or inverted bound, so the test only passes if `pack` and `grid` return no rects in that case. I left the assertions as they are, since loosening them would weaken a correct check.
+
