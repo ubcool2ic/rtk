@@ -354,3 +354,197 @@ fn progress_fraction(tk: &Tk, id: crate::WidgetId) -> f64 {
 fn _keep_outline_import(pixmap: &mut Pixmap, rect: Rect, clip: Rect, scale: f32, color: Color) {
     outline(pixmap, rect, clip, scale, (color, color));
 }
+
+/// Draws a Slider: rounded track, accent fill, round thumb, optional ticks.
+pub(super) fn draw_slider(
+    tk: &mut Tk,
+    pixmap: &mut Pixmap,
+    id: crate::WidgetId,
+    logical: Rect,
+    clip: Rect,
+    scale: f32,
+    resolved: &ResolvedStyle,
+) {
+    let Some(node) = tk.node(id) else { return };
+    let orient = node.inputs.as_ref().map_or(crate::tk::inputs_state::Orient::Horizontal, |s| s.slider_orient);
+    let ticks = node.inputs.as_ref().and_then(|s| s.slider_ticks);
+    let (from, to) = node.range_f64;
+    let disabled = node.disabled;
+    let fraction = tk.slider_fraction(id);
+    let palette = tk.style_engine.tokens().palette;
+    // Track always uses the theme border colour; the filled portion the accent.
+    let track_color = palette.border;
+    let fill_color = if disabled { palette.muted } else { palette.accent };
+    let thumb_border = palette.border;
+    // A transparent widget background means "show the surface through", so the
+    // thumb uses the theme surface; otherwise it matches the widget background.
+    let thumb_fill = if resolved.bg.a == 0 { palette.surface } else { resolved.bg };
+
+    let track_w = 4.0;
+    let thumb_d = 16.0;
+
+    let (track_rect, thumb_center) = match orient {
+        crate::tk::inputs_state::Orient::Horizontal => {
+            let track = logical.inset(12.0, 0.0);
+            let y = logical.y + logical.height / 2.0;
+            let track_rect = Rect::new(track.x, y - track_w / 2.0, track.width, track_w);
+            let cx = track.x + track.width * fraction;
+            (track_rect, (cx, y))
+        }
+        crate::tk::inputs_state::Orient::Vertical => {
+            let track = logical.inset(0.0, 12.0);
+            let x = logical.x + logical.width / 2.0;
+            let track_rect = Rect::new(x - track_w / 2.0, track.y, track_w, track.height);
+            let cy = track.y + track.height * (1.0 - fraction);
+            (track_rect, (x, cy))
+        }
+    };
+
+    // Track background.
+    if let Some(path) = crate::style::build_rounded_rect_path(track_rect.scaled(scale), track_w / 2.0 * scale) {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
+        paint.anti_alias = true;
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // Filled portion.
+    let filled = match orient {
+        crate::tk::inputs_state::Orient::Horizontal => {
+            Rect::new(track_rect.x, track_rect.y, track_rect.width * fraction, track_rect.height)
+        }
+        crate::tk::inputs_state::Orient::Vertical => {
+            let h = track_rect.height * fraction;
+            Rect::new(track_rect.x, track_rect.y + track_rect.height - h, track_rect.width, h)
+        }
+    };
+    if filled.width > 0.0 && filled.height > 0.0 {
+        if let Some(path) = crate::style::build_rounded_rect_path(filled.scaled(scale), track_w / 2.0 * scale) {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(fill_color.r, fill_color.g, fill_color.b, fill_color.a);
+            paint.anti_alias = true;
+            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        }
+    }
+
+    // Ticks.
+    if let Some(every) = ticks {
+        if every > 0.0 && (to - from).abs() > f64::EPSILON {
+            let span = (to - from).abs();
+            let count = (span / every).floor() as i64;
+            for k in 0..=count {
+                let value = from + (k as f64) * every * if to >= from { 1.0 } else { -1.0 };
+                let f = ((value - from) / (to - from)).clamp(0.0, 1.0) as f32;
+                match orient {
+                    crate::tk::inputs_state::Orient::Horizontal => {
+                        let x = track_rect.x + track_rect.width * f;
+                        fill(
+                            pixmap,
+                            Rect::new(x, logical.y + 2.0, 1.0, logical.height - 4.0).scaled(scale),
+                            clip,
+                            palette.muted,
+                        );
+                    }
+                    crate::tk::inputs_state::Orient::Vertical => {
+                        let y = track_rect.y + track_rect.height * (1.0 - f);
+                        fill(
+                            pixmap,
+                            Rect::new(logical.x + 2.0, y, logical.width - 4.0, 1.0).scaled(scale),
+                            clip,
+                            palette.muted,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Thumb.
+    let thumb_rect = Rect::new(
+        thumb_center.0 - thumb_d / 2.0,
+        thumb_center.1 - thumb_d / 2.0,
+        thumb_d,
+        thumb_d,
+    ).scaled(scale);
+    if let Some(path) = crate::style::build_rounded_rect_path(thumb_rect, thumb_d / 2.0 * scale) {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(thumb_fill.r, thumb_fill.g, thumb_fill.b, thumb_fill.a);
+        paint.anti_alias = true;
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        let mut stroke_paint = Paint::default();
+        stroke_paint.set_color_rgba8(thumb_border.r, thumb_border.g, thumb_border.b, thumb_border.a);
+        stroke_paint.anti_alias = true;
+        let stroke = Stroke { width: 1.5 * scale, ..Stroke::default() };
+        pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+    }
+}
+
+/// Draws a DoubleSpinbox: text field + up/down arrow buttons on the right.
+pub(super) fn draw_dspin(
+    tk: &mut Tk,
+    pixmap: &mut Pixmap,
+    id: crate::WidgetId,
+    logical: Rect,
+    clip: Rect,
+    scale: f32,
+    resolved: &ResolvedStyle,
+) {
+    let Some(node) = tk.node(id) else { return };
+    let disabled = node.disabled;
+    let text = tk.dspin_display(id);
+    let palette = tk.style_engine.tokens().palette;
+    let fg = if disabled { palette.muted } else { resolved.fg };
+
+    let inner = Rect::new(logical.x, logical.y, (logical.width - 20.0).max(0.0), logical.height);
+    let origin = (
+        (inner.x + 6.0) * scale,
+        (inner.y + (inner.height - resolved.font_size * 1.3) / 2.0) * scale,
+    );
+    let text_clip = clip.intersection(inner.scaled(scale));
+    tk.text_engine.draw_styled_pub(
+        pixmap,
+        &text,
+        (resolved.font_size * scale, fg),
+        resolved.font_family.as_deref(),
+        resolved.font_weight,
+        resolved.italic,
+        origin,
+        text_clip,
+        resolved.opacity,
+    );
+
+    // Buttons on the right, matching the integer Spinbox in `render.rs`:
+    // resolved.bg background, resolved.border_color outline and separator,
+    // resolved.fg arrow glyphs (visible in HighContrast).
+    let btn_rect = Rect::new(logical.x + logical.width - 20.0, logical.y, 20.0, logical.height).scaled(scale);
+    fill(pixmap, btn_rect, clip, resolved.bg);
+    outline(pixmap, btn_rect, clip, scale, (resolved.border_color, resolved.border_color));
+    let half_h = btn_rect.height / 2.0;
+    fill(pixmap, Rect::new(btn_rect.x, btn_rect.y + half_h, btn_rect.width, scale), clip, resolved.border_color);
+    let up_text = "▲";
+    let dn_text = "▼";
+    let up_m = tk.measure(up_text, 8.0);
+    let dn_m = tk.measure(dn_text, 8.0);
+    tk.text_engine.draw_styled_pub(
+        pixmap,
+        up_text,
+        (8.0 * scale, resolved.fg),
+        None,
+        400,
+        false,
+        (btn_rect.x + (btn_rect.width - up_m.width * scale) / 2.0, btn_rect.y + (half_h - up_m.height * scale) / 2.0),
+        clip,
+        resolved.opacity,
+    );
+    tk.text_engine.draw_styled_pub(
+        pixmap,
+        dn_text,
+        (8.0 * scale, resolved.fg),
+        None,
+        400,
+        false,
+        (btn_rect.x + (btn_rect.width - dn_m.width * scale) / 2.0, btn_rect.y + half_h + (half_h - dn_m.height * scale) / 2.0),
+        clip,
+        resolved.opacity,
+    );
+}

@@ -222,6 +222,8 @@ impl Tk {
                 }
                 Kind::ProgressRing => self.ring_requested(id, &resolved),
                 Kind::Switch => self.switch_requested(id, &resolved),
+                Kind::Slider => self.slider_requested(id, &resolved),
+                Kind::DoubleSpinbox => self.dspin_requested(id, &resolved),
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;

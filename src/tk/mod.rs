@@ -43,6 +43,10 @@ mod tooltip;
 pub(crate) mod inputs_state;
 pub(crate) mod ring;
 pub(crate) mod switch;
+/// Decimal slider construction and interaction.
+pub(crate) mod slider;
+/// Decimal spinbox construction, editing, and interaction.
+pub(crate) mod double_spinbox;
 mod shortcuts;
 mod clipboard;
 mod edit;

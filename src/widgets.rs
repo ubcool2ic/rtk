@@ -451,6 +451,8 @@ pub(crate) enum Kind {
     Notebook,
     ProgressRing,
     Switch,
+    Slider,
+    DoubleSpinbox,
 }
 
 impl Kind {
@@ -467,6 +469,8 @@ impl Kind {
                 | Self::Text
                 | Self::Combobox
                 | Self::Switch
+                | Self::Slider
+                | Self::DoubleSpinbox
         )
     }
 
@@ -479,6 +483,8 @@ impl Kind {
                 | Self::Listbox
                 | Self::Radiobutton
                 | Self::Switch
+                | Self::Slider
+                | Self::DoubleSpinbox
         )
     }
 }
@@ -515,6 +521,8 @@ pub(crate) struct WidgetNode {
     pub check: Option<Var<bool>>,
     pub scale: Option<Var<i64>>,
     pub range: (i64, i64),
+    /// Floating-point range for Slider/DoubleSpinbox.
+    pub range_f64: (f64, f64),
     pub style: Style,
     pub command: Option<Command>,
     pub command_running: bool,
@@ -617,6 +625,7 @@ impl WidgetNode {
             check: None,
             scale: None,
             range: (0, 100),
+            range_f64: (0.0, 1.0),
             style: Style {
                 bg: if matches!(kind, Kind::Entry | Kind::Listbox) {
                     Color::WHITE

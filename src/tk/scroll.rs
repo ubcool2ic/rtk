@@ -40,6 +40,18 @@ impl Tk {
                     self.set_scroll_pos(id, pos - lines.round());
                 }
             }
+            Kind::Slider => {
+                let step = node.inputs.as_ref().map_or(0.0, |s| s.slider_step);
+                let (from, to) = node.range_f64;
+                let unit = if step > 0.0 { step } else { (to - from).abs() * 0.01 };
+                let current = node.progress_f64.and_then(|v| v.get(self)).unwrap_or(from);
+                let direction = if dy > 0.0 { 1.0 } else { -1.0 };
+                self.slider_user_set(id, current + direction * unit);
+            }
+            Kind::DoubleSpinbox => {
+                let direction = if dy > 0.0 { 1 } else { -1 };
+                self.dspin_step(id, direction);
+            }
             Kind::Combobox if !node.combo_open => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;

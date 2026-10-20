@@ -483,6 +483,12 @@ impl Tk {
                 Kind::Switch => {
                     inputs::draw_switch(self, &mut pixmap, id, logical, clip, scale, &resolved);
                 }
+                Kind::Slider => {
+                    inputs::draw_slider(self, &mut pixmap, id, logical, clip, scale, &resolved);
+                }
+                Kind::DoubleSpinbox => {
+                    inputs::draw_dspin(self, &mut pixmap, id, logical, clip, scale, &resolved);
+                }
                 Kind::Text => {
                     let inner = logical.inset(4.0, 4.0);
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);

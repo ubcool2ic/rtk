@@ -22,6 +22,8 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Notebook => "TNotebook",
         Kind::ProgressRing => "TProgressRing",
         Kind::Switch => "TSwitch",
+        Kind::Slider => "TSlider",
+        Kind::DoubleSpinbox => "TDoubleSpinbox",
     }
 }
 

@@ -97,6 +97,10 @@ impl Tk {
         if let Some(id) = self.pressed {
             if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
                 self.drag_scale(id, x);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::Slider && !node.disabled) {
+                if let Some(value) = self.slider_value_at(id, x, y) {
+                    self.slider_user_set(id, value);
+                }
             } else if self.node(id).is_some_and(|node| matches!(node.kind, Kind::Entry | Kind::Text) && !node.disabled) {
                 self.drag_text_selection(id, x, y);
             }
@@ -256,6 +260,21 @@ impl Tk {
                     }
                 }
                 Kind::Scale => self.drag_scale(id, x),
+                Kind::Slider => {
+                    if let Some(value) = self.slider_value_at(id, x, y) {
+                        self.slider_user_set(id, value);
+                    }
+                }
+                Kind::DoubleSpinbox => {
+                    let rx = x - node.rect.x;
+                    let rw = node.rect.width;
+                    let ry = y - node.rect.y;
+                    let rh = node.rect.height;
+                    if rx >= rw - 20.0 {
+                        let direction = if ry < rh / 2.0 { 1 } else { -1 };
+                        self.dspin_step(id, direction);
+                    }
+                }
                 Kind::Listbox => {
                     let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
                     let local_y = y - node.rect.y;
@@ -635,6 +654,12 @@ impl Tk {
                     }
                 }
             }
+            Kind::Slider => {
+                self.slider_key(id, key);
+            }
+            Kind::DoubleSpinbox => {
+                self.dspin_key(id, key);
+            }
             Kind::Spinbox if matches!(key, Key::Up | Key::Down) => {
                 let (from, to) = node.range;
                 let step = if to >= from { 1 } else { -1 };
@@ -662,6 +687,8 @@ impl Tk {
                 self.edit_entry(id, None, text);
             } else if self.node(id).is_some_and(|node| node.kind == Kind::Text && !node.disabled && !node.text_read_only) {
                 self.edit_text(id, None, text);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::DoubleSpinbox && !node.disabled) {
+                self.dspin_type(id, text);
             }
         }
     }

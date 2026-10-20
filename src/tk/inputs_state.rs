@@ -1,5 +1,5 @@
 //! Per-widget state for the milestone 0.10 input widgets (ProgressRing, Switch,
-//! and the polished linear ProgressBar).
+//! Slider, DoubleSpinbox, and the polished linear ProgressBar).
 //!
 //! All new widget state lives in this single struct so that `WidgetNode` only
 //! needs one additive field (`inputs`). Other milestone branches extend this
@@ -15,6 +15,17 @@ pub enum RingMode {
     Percent,
     /// An indeterminate arc that rotates continuously.
     Spinner,
+}
+
+/// Orientation of a [`crate::Slider`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Orient {
+    /// Horizontal slider (default).
+    #[default]
+    Horizontal,
+    /// Vertical slider (top = max, bottom = min).
+    Vertical,
 }
 
 /// State shared by the milestone 0.10 input widgets.
@@ -47,4 +58,24 @@ pub(crate) struct InputsState {
     pub(crate) progress_drawn: f32,
     /// True once `progress_drawn` has been initialised from the bound value.
     pub(crate) progress_initialised: bool,
+
+    // ---- Slider ----
+    /// Slider orientation.
+    pub(crate) slider_orient: Orient,
+    /// Snap step (0 = continuous).
+    pub(crate) slider_step: f64,
+    /// Tick spacing along the track (`None` = no ticks).
+    pub(crate) slider_ticks: Option<f64>,
+    /// Slider length in logical px.
+    pub(crate) slider_length: f32,
+
+    // ---- DoubleSpinbox ----
+    /// Step used by arrows/keys/wheel.
+    pub(crate) dspin_step: f64,
+    /// Number of decimals used for display.
+    pub(crate) dspin_decimals: u8,
+    /// Suffix appended to the displayed value.
+    pub(crate) dspin_suffix: String,
+    /// In-progress text edit buffer (`None` = show the formatted value).
+    pub(crate) dspin_buffer: Option<String>,
 }

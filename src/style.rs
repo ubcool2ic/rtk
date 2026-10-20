@@ -848,6 +848,28 @@ impl StyleEngine {
             });
         }
 
+        // TSlider & TDoubleSpinbox (v0.10 inputs): transparent backgrounds so the
+        // surrounding surface shows through in every theme. Without these the
+        // widgets fell back to the default light-grey box, which was unreadable
+        // in Dark and HighContrast. TDoubleSpinbox mirrors TSpinbox.
+        self.styles.insert("TSlider".into(), StyleSpec {
+            bg: Some(Color::rgba(0, 0, 0, 0)),
+            fg: Some(p.fg),
+            border_color: Some(p.border),
+            border_width: Some(0.0),
+            radius: Some(r.sm),
+            padding: Some(Edges::symmetrical(3.0, 4.0)),
+            margin: Some(Edges::default()),
+            shadow: Some(None),
+            gradient: Some(None),
+            opacity: Some(1.0),
+            font_family: Some(ff.clone()),
+            font_size: Some(ts.body),
+            font_weight: Some(400),
+            italic: Some(false),
+            transition_ms: Some(120),
+        });
+
         // TScale
         self.styles.insert("TScale".into(), StyleSpec {
             bg: Some(p.border),
@@ -904,6 +926,10 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(120),
         });
+        // TDoubleSpinbox mirrors TSpinbox (same field look and state maps).
+        if let Some(spinbox) = self.styles.get("TSpinbox").cloned() {
+            self.styles.insert("TDoubleSpinbox".into(), spinbox);
+        }
 
         // TProgressbar
         self.styles.insert("TProgressbar".into(), StyleSpec {
@@ -971,6 +997,16 @@ impl StyleEngine {
             self.state_maps.insert(("TText".into(), State::FOCUSED.bits()), focus.clone());
             self.state_maps.insert(("TCombobox".into(), State::FOCUSED.bits()), focus);
         }
+        // TDoubleSpinbox inherits every TSpinbox state map (focused/hover/...).
+        let spinbox_states: Vec<(u8, StyleSpec)> = self
+            .state_maps
+            .iter()
+            .filter(|((name, _), _)| name == "TSpinbox")
+            .map(|((_, bits), spec)| (*bits, spec.clone()))
+            .collect();
+        for (bits, spec) in spinbox_states {
+            self.state_maps.insert(("TDoubleSpinbox".into(), bits), spec);
+        }
         if let Some(frame) = self.styles.get("TFrame").cloned() {
             self.styles.insert("TNotebook".into(), frame);
         }
@@ -978,7 +1014,7 @@ impl StyleEngine {
         for class in [
             "TButton", "TLabel", "TEntry", "TCheckbutton", "TRadiobutton", "TScale",
             "TListbox", "TSpinbox", "TProgressbar", "TText", "TCombobox", "TNotebook",
-            "TSwitch", "TProgressRing",
+            "TSwitch", "TProgressRing", "TSlider", "TDoubleSpinbox",
         ] {
             self.state_maps
                 .entry((class.into(), State::DISABLED.bits()))
