@@ -26,7 +26,7 @@ pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Combobox, Command,
     Compound, DragPhase, Entry, Frame, Label, Listbox, Notebook, Opt, ProgressBar, Radiobutton,
-    Scale, Scrollbar, Spinbox, Table, Text, Theme, WidgetId,
+    Scale, Scrollbar, Spinbox, Table, Text, Theme, TreeView, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

@@ -283,6 +283,11 @@ impl Tk {
                     let local_y = y - node.rect.y;
                     self.table_mouse_down(id, local_x, local_y);
                 }
+                Kind::TreeView => {
+                    let local_x = x - node.rect.x;
+                    let local_y = y - node.rect.y;
+                    self.tree_mouse_down(id, local_x, local_y);
+                }
                 Kind::Notebook if y < node.rect.y + 32.0 => {
                     let mut cur_x = node.rect.x;
                     let pages = node.notebook_pages.clone();
@@ -576,6 +581,9 @@ impl Tk {
             }
             Kind::Table => {
                 self.table_key(id, key);
+            }
+            Kind::TreeView => {
+                self.tree_key(id, key);
             }
             Kind::Spinbox if matches!(key, Key::Up | Key::Down) => {
                 let (from, to) = node.range;

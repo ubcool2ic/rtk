@@ -231,6 +231,14 @@ impl Tk {
                         row_h + height_rows as f32 * row_h + 2.0 + pad_h,
                     )
                 }
+                Kind::TreeView => {
+                    let row_h = (resolved.font_size * 1.6).round().max(8.0);
+                    let height_rows = self.node(id).map(|n| n.tree_height_rows).unwrap_or(5);
+                    Size::new(
+                        specified.unwrap_or(200.0) + pad_w,
+                        height_rows as f32 * row_h + 2.0 + pad_h,
+                    )
+                }
                 Kind::Notebook => {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;

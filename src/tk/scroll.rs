@@ -44,6 +44,10 @@ impl Tk {
                 let lines = if pixels { dy / 20.0 } else { dy };
                 self.table_scroll(id, -lines * 3.0);
             }
+            Kind::TreeView => {
+                let lines = if pixels { dy / 20.0 } else { dy };
+                self.tree_scroll(id, -lines * 3.0);
+            }
             Kind::Combobox if !node.combo_open => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;

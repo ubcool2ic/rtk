@@ -206,6 +206,8 @@ pub struct Combobox;
 pub struct Notebook;
 /// Constructor namespace for virtualized, sortable data tables (ttk `Treeview`-like).
 pub struct Table;
+/// Constructor namespace for hierarchical, virtualized tree views.
+pub struct TreeView;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -451,6 +453,19 @@ impl Table {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl TreeView {
+    /// Creates an empty hierarchical tree view showing `height_rows` rows (at least 1).
+    pub fn new(tk: &mut Tk, parent: WidgetId, height_rows: usize) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::TreeView, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.tree = Some(Box::new(crate::tk::TreeState::new()));
+            node.tree_height_rows = height_rows.max(1);
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -469,6 +484,7 @@ pub(crate) enum Kind {
     Combobox,
     Notebook,
     Table,
+    TreeView,
 }
 
 impl Kind {
@@ -485,6 +501,7 @@ impl Kind {
                 | Self::Text
                 | Self::Combobox
                 | Self::Table
+                | Self::TreeView
         )
     }
 
@@ -597,6 +614,9 @@ pub(crate) struct WidgetNode {
     // Table
     pub table: Option<Box<crate::tk::TableState>>,
     pub table_height_rows: usize,
+    // TreeView
+    pub tree: Option<Box<crate::tk::TreeState>>,
+    pub tree_height_rows: usize,
 }
 
 impl WidgetNode {
@@ -675,6 +695,8 @@ impl WidgetNode {
             transition: None,
             table: None,
             table_height_rows: 5,
+            tree: None,
+            tree_height_rows: 5,
         }
     }
 }

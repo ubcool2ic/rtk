@@ -108,6 +108,146 @@ impl TableSnapshot {
     }
 }
 
+/// Owned snapshot of everything `draw_tree` needs from the widget node.
+///
+/// Taking this up front ends the immutable borrow of `tk` so the text engine
+/// can be borrowed mutably while drawing. Only the visible window of rows is
+/// copied, so large trees stay cheap.
+struct TreeSnapshot {
+    /// Selected node key.
+    selected: Option<usize>,
+    /// Display row shown at the top of the body.
+    top: usize,
+    /// Visible rows as `(key, depth, text, has_children, open)` for the window.
+    visible_rows: Vec<(usize, usize, String, bool, bool)>,
+}
+
+impl TreeSnapshot {
+    /// Builds a snapshot from the tree state of `id`, or `None` if `id` is not a TreeView.
+    fn capture(tk: &mut Tk, id: crate::WidgetId, visible: usize) -> Option<Self> {
+        let node = tk.node(id)?;
+        if node.kind != Kind::TreeView {
+            return None;
+        }
+        let state = node.tree.as_deref()?;
+        let top = state.top;
+        let end = (top + visible + 1).min(state.visible.len());
+        let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
+        for display in top..end {
+            let Some(&(key, depth)) = state.visible.get(display) else { continue };
+            let Some(n) = state.get(key) else { continue };
+            visible_rows.push((key, depth, n.text.clone(), !n.children.is_empty(), n.open));
+        }
+        Some(Self {
+            selected: state.selected,
+            top,
+            visible_rows,
+        })
+    }
+}
+
+/// Draws a small disclosure triangle with its apex at `(cx, cy)`.
+fn tree_triangle(pixmap: &mut Pixmap, cx: f32, cy: f32, half: f32, open: bool, color: crate::Color) {
+    let mut pb = PathBuilder::new();
+    if open {
+        pb.move_to(cx - half, cy - half * 0.5);
+        pb.line_to(cx + half, cy - half * 0.5);
+        pb.line_to(cx, cy + half * 0.8);
+    } else {
+        pb.move_to(cx - half * 0.5, cy - half);
+        pb.line_to(cx + half * 0.8, cy);
+        pb.line_to(cx - half * 0.5, cy + half);
+    }
+    pb.close();
+    if let Some(path) = pb.finish() {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+        paint.anti_alias = true;
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+/// Draws the whole tree view: virtualized rows, disclosure triangles, selection.
+pub(crate) fn draw_tree(
+    tk: &mut Tk,
+    pixmap: &mut Pixmap,
+    id: crate::WidgetId,
+    logical: Rect,
+    logical_clip: Rect,
+    scale: f32,
+    resolved: &ResolvedStyle,
+) {
+    let font_size = resolved.font_size;
+    let rh = row_height(font_size);
+
+    let rect = logical.scaled(scale);
+    let clip = logical_clip.scaled(scale);
+    if clip.width <= 0.0 || clip.height <= 0.0 {
+        return;
+    }
+
+    let visible = (logical.height / rh).floor().max(0.0) as usize;
+    let Some(snap) = TreeSnapshot::capture(tk, id, visible) else { return };
+
+    let palette = tk.style_engine.tokens().palette;
+    let opacity = resolved.opacity;
+
+    // Body rows (virtualized; only the snapshot window is drawn).
+    for (key, depth, text, has_children, open) in &snap.visible_rows {
+        let display = snap.top + snap.visible_rows.iter().position(|r| r.0 == *key).unwrap_or(0);
+        let row_y = logical.y + (display - snap.top) as f32 * rh;
+        let row_rect = Rect::new(logical.x, row_y, logical.width, rh);
+        let row_clip = clip.intersection(row_rect.scaled(scale));
+        if row_clip.width <= 0.0 || row_clip.height <= 0.0 {
+            continue;
+        }
+        let is_selected = snap.selected == Some(*key);
+        let bg = if is_selected { palette.select_bg } else { palette.bg };
+        fill(pixmap, row_rect.scaled(scale), clip, bg);
+        let fg = if is_selected { palette.select_fg } else { palette.fg };
+
+        let indent = *depth as f32 * 16.0;
+        if *has_children {
+            let cx = (logical.x + indent + 8.0) * scale;
+            let cy = (row_y + rh / 2.0) * scale;
+            tree_triangle(pixmap, cx, cy, 4.0 * scale, *open, fg);
+        }
+        let text_x = logical.x + indent + 16.0;
+        let origin = (
+            (text_x + 4.0) * scale,
+            (row_y + (rh - font_size * 1.3) / 2.0) * scale,
+        );
+        tk.text_engine.draw_styled(
+            pixmap,
+            text,
+            (font_size * scale, fg),
+            resolved.font_family.as_deref(),
+            400,
+            resolved.italic,
+            origin,
+            row_clip,
+            opacity,
+        );
+    }
+
+    // Outer border.
+    let border = palette.border;
+    fill(pixmap, Rect::new(rect.x, rect.y, rect.width, scale).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x, rect.y + rect.height - scale, rect.width, scale).intersection(clip),
+        clip,
+        border,
+    );
+    fill(pixmap, Rect::new(rect.x, rect.y, scale, rect.height).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x + rect.width - scale, rect.y, scale, rect.height).intersection(clip),
+        clip,
+        border,
+    );
+}
+
 /// Draws the whole table: header strip, sort indicator, separators and the
 /// virtualized body rows (alternating stripes, selection highlight, cell text).
 pub(crate) fn draw_table(

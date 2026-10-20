@@ -532,6 +532,9 @@ impl Tk {
                 Kind::Table => {
                     data::draw_table(self, &mut pixmap, id, logical, logical_clip, scale, &resolved);
                 }
+                Kind::TreeView => {
+                    data::draw_tree(self, &mut pixmap, id, logical, logical_clip, scale, &resolved);
+                }
                 Kind::Notebook => {
                     let strip_h = 32.0;
                     let mut cur_x = logical.x;
