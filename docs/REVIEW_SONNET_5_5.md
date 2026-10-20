@@ -765,3 +765,16 @@ I found nothing to fix in this chunk. I could only check it against `lib.rs`, so
 - [severity low] [docs] The page stacks about 1000 px of widgets in a 900 px window with plain `pack`, so the bottom of the page (canvas and its scrollbar) can be clipped on `main` (line 205) -> not fixed (changing the layout or window size is a restyle of working code, and the 1.0 gallery embeds the page in its own container)
 - [severity low] [bug] The canvas rectangles capture `accent` once at build time, so they keep the old color when the theme buttons are used (lines 179-183) -> not fixed (canvas items are static draws and there is no theme-change hook in the visible API)
 
+### examples/hello.rs lines 1-21
+- none
+
+I found nothing to fix in lines 1-21. I could not check the calls into `Tk` or `PackOpts`, because only `lib.rs` was provided. The file is consistent with the exported API as far as I can see.
+
+- Every public function has a `///` doc comment.
+- The `?` operators on `Label::new` and `Button::new` convert `RtkError` into `Box<dyn Error>` correctly, since `RtkError` implements `std::error::Error`.
+- The example has no `unwrap` calls and no panics on fallible paths.
+
+Two assumptions I could not verify:
+- `PackOpts` must be `Copy`, because `options` is passed by value twice (lines 13-14).
+- `mainloop()` must return a `Result` whose error converts into `Box<dyn Error>`.
+
