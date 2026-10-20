@@ -983,3 +983,14 @@ I found nothing in lines 1-75 that needs a fix, though I could only check the fi
 ### tests/m013_a11y.rs lines 1-122
 - none
 
+### tests/m013_damage.rs lines 1-164
+- none
+
+I found nothing in lines 1-164 that needs an edit. I could only read this chunk and `lib.rs`, so I could not check the expectations that depend on `Tk` internals.
+
+- **Timing:** the tests use `sim_advance_time` and the `sim_*` input helpers, so nothing depends on wall-clock time.
+- **Helpers:** none of them can panic outside a genuine test failure. The `expect` calls only fire if a widget rect or the cached frame is missing, which is a real failure.
+- **Assertions:** each test checks something meaningful. They cover `Full` vs `None` vs `Partial`, rect containment, coalescing to one rect, and partial-vs-full pixel equality at scale 1.0 and 1.5.
+- **Unverified expectation (line 90):** the test expects `Full` after clicking the entry, which presumably reflects a focus change forcing a full redraw. I left it because I cannot confirm that from this chunk.
+- **Weak spots, left as is:** `entry_typing_partial` and `partial_matches_full_at_scale` only check that the rects are non-empty. `invalidate_coalesces` only checks the rect count. Tightening them would need renderer details such as rounding and inflation, and a guess there could make a correct test fail.
+
