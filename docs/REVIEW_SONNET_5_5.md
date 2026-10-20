@@ -609,3 +609,8 @@ This chunk contains only three public enums and a `pub(crate)` state struct, so 
 - The struct is stored inside the widget node, so it is dropped with the widget and is not reset separately on destroy.
 - Two things could not be checked from this chunk. One is that `Default` gives `slider_step` and `dspin_step` a value of 0.0, so their constructors must set a sensible step. The other is that `scroll_area_content` could dangle if the content frame is destroyed independently of its ScrollArea. Both are outside the lines reviewed.
 
+### src/lib.rs lines 1-88
+- [severity medium] [api] Public enum `RtkError` lacked `#[non_exhaustive]`, so adding a variant after 1.0 (e.g. a new construction failure) would be a semver break for downstream exhaustive matches (line 59) -> fixed
+- [severity low] [docs] The other public enums re-exported here (`Side`, `Key`, `State`, and so on) are defined in other modules, so I cannot check their `#[non_exhaustive]` attributes or docs from this chunk -> not fixed (outside the reviewed chunk)
+- [severity low] [bug] The rest of the chunk is correct. The `Display` impl matches all variants, every fn has a `///` doc, and the `cfg` gating on `a11y_accesskit`, `tray` and the doctest struct is consistent. -> not fixed (nothing to fix)
+

@@ -56,6 +56,7 @@ pub use widgets::{
 
 /// Errors from widget construction and headless image allocation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RtkError {
     /// The given parent is not a live `Frame` (or root) of this toolkit.
     InvalidParent,
