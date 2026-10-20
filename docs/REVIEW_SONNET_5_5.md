@@ -407,3 +407,10 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [api] `selection_clear` breaks the `<widget>_<verb>` naming pattern, while the sibling methods are `edit_*`, `entry_*` and `text_*`. A rename would break callers outside this chunk -> not fixed (the call sites are not visible here)
 - [low] [bug] After an external text set, `last_edit_typing` is not reset, so the next typing may coalesce into a stale undo step. The setter lives outside this chunk -> not fixed
 
+### src/tk/a11y.rs lines 1-297
+- [medium] [bug] `a11y_labels` overrides are never removed when a widget is destroyed, so the map can grow without bound and keep stale entries (lines 86, 199). The destroy path is outside this chunk, so I mitigated it here by pruning entries for dead widgets in `a11y_tree_changed` (lines 288-295), which runs once per a11y poll. The proper fix is still to remove the entry in the widget destroy routine. -> fixed (mitigated)
+- [low] [api] `accessibility_tree` does not follow the `a11y_*` naming used by the neighbouring methods (line 44). Renaming it would break `a11y_accesskit.rs` and any callers outside this chunk. -> not fixed (public rename outside this chunk's scope)
+- [low] [bug] `A11yAction::Focus` and the Click/Toggle/Increment paths set `self.focused` directly, which may bypass focus-change handling such as blur callbacks and cursor reset (lines 226-272). The central focus setter is not visible in this chunk, so I could not verify this. -> not fixed (cannot verify)
+- [low] [api] `A11yAction`, `A11yRole` and `A11yNode` may need `#[non_exhaustive]`, but they are defined in `src/a11y.rs`, outside this chunk. -> not fixed (outside this chunk)
+- NOTE: edits for src/tk/a11y.rs:1-297 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
+
