@@ -49,7 +49,7 @@ pub enum ToastKind {
 
 /// Generational-free handle to a toast created with [`Tk::toast`] /
 /// [`Tk::toast_with`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ToastId(pub(crate) u32);
 
 /// Where the toast stack is anchored inside the viewport.
@@ -222,7 +222,8 @@ impl Tk {
         id
     }
 
-    /// Starts the fade-out of `id`. Returns false if the toast is unknown.
+    /// Starts the fade-out of `id`. Returns false if the toast is unknown or
+    /// is already fading out.
     pub fn toast_dismiss(&mut self, id: ToastId) -> bool {
         let ok = self.toasts.dismiss(id);
         if ok {

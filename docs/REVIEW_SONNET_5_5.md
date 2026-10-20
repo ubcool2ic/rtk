@@ -361,3 +361,18 @@ I read lines 1-324 and found nothing I could confirm as a bug or API problem.
 - [low] [api] The public enum `Icon` lacks `#[non_exhaustive]`, so adding icons later would be a breaking change (line 10). -> fixed
 - [low] [docs] The `render_rgba` doc did not state the buffer length or the empty-buffer cases (line 70). -> fixed
 
+### src/tk/toast.rs lines 1-337
+- [severity low] [api] `ToastId` derives only `Clone, Copy, Debug, PartialEq, Eq`, so it cannot be used as a `HashMap` or `HashSet` key. This is inconsistent with other handle types (line 52) -> fixed (added `Hash`)
+- [severity low] [docs] `toast_dismiss` says it returns false only if the toast is unknown, but it also returns false when the toast is already fading out (line 225) -> fixed (doc clarified)
+- [severity low] [docs] `toasts()` and `toast_rect` say "visible", but they also include toasts that are fading out (lines 242, 267) -> not fixed (the wording is acceptable and fading toasts are still drawn)
+- [severity low] [bug] `toast_layout` divides by `scale_factor` with no zero guard (lines 280-281) -> not fixed (winit never reports 0, and the guard belongs where `scale_factor` is set)
+- [severity medium] [bug] The reported 2x clipping cannot be traced to this chunk -> not fixed (see below)
+  - `toast_layout` is internally consistent in logical px. It uses `viewport / scale_factor` and the logical constants, and it clamps width and position.
+  - The remaining suspects are `measure_with` returning physical-scaled widths, or `draw_toast_overlay` mixing logical rects with a physical clip. Both are outside this chunk and I could not verify either.
+- [severity none] [bug] Lifecycle (PR #7) checked, no defects:
+  - **Expiry:** a non-sticky toast starts its fade-out once `elapsed_ms >= duration_ms`, carrying the overshoot into `fade_out_ms`.
+  - **Removal:** `retain(!is_finished)` runs after every advance, and large time steps cannot overflow because the adds saturate.
+  - **Timers:** `is_animating` stays true for any toast that has a duration, is fading out, or is still in fade-in. A sticky toast stops requesting frames once it has faded in.
+  - **Eviction:** `toast_set_max` and the over-max eviction in `toast_with` drop the oldest toasts correctly. `toast_clear` resets the list.
+  - **Clicks:** `toast_click` is index-aligned with the layout and only fades a toast out once.
+
