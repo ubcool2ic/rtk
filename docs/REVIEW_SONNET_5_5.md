@@ -588,3 +588,9 @@ I found no other defects in lines 1-126. The colourblind capture and restore log
 - [low] [bug] `switch_set` is documented to return false for dead variables, but it called `var.set` and returned true unconditionally, so a dead or foreign variable was reported as success and the tree was marked dirty (lines 45-48) -> fixed
 - [low] [api] No other API, docs or `#[non_exhaustive]` issues in this chunk. `Switch` is a constructor namespace with no public enums, and the method names follow `switch_<verb>`. The animation code has no panics, overflow, or state-reset problems here.
 
+### src/a11y.rs lines 1-97
+- [low] [api] `A11yNode` is `#[non_exhaustive]`, so external users and tests cannot construct it. This is acceptable for a snapshot type produced only by the toolkit. -> not fixed (intentional)
+- [low] [docs] `A11yNode::value` doc says "Current text/selection value", which is vague, but it is not wrong. -> not fixed (cosmetic)
+- [low] [api] `A11yNode` derives `PartialEq` with `f64` fields, so `Eq` cannot be derived. This is correct as written. -> not fixed (n/a)
+- [low] [api] All enums are already `#[non_exhaustive]`, every item has rustdoc, and the derives are consistent. No bugs are present in this type-only chunk. -> not fixed (nothing to fix)
+
