@@ -791,3 +791,13 @@ I found nothing to fix in lines 1-20. Two points rest on assumptions, because on
 - **Argument handling:** `main` reads the output path with `args_os`, so non-UTF-8 paths work. It has a default, and every fallible call uses `?`, so there are no unwraps on user-facing paths.
 - **API use:** `PackOpts` is reused for two `tk.pack` calls, which compiles only if it is `Copy`. `save_png` is called with `&path` (a `&PathBuf`), which compiles only if its parameter accepts `&Path` or `AsRef<Path>`.
 
+### examples/scrolling.rs lines 1-23
+- none
+
+I reviewed lines 1-23 and found nothing to fix. The reference API surface does not show signatures for `Tk::new`, `tk.title`, `tk.geometry`, `canvas_*`, `link_scrollbar` or `mainloop`, so I checked only what the chunk shows.
+
+- **Error handling:** The fallible constructors (`Canvas::new`, `Scrollbar::new`) use `?` and do not unwrap. `main` returns `Result<(), Box<dyn Error>>`, and `RtkError` implements `std::error::Error`, so this compiles.
+- **Layout math:** The 40 cards run from `y = 10` to `10 + 39*60 + 50 = 2400`. The scroll region height is `10 + 40*60 = 2410`, which covers every card with a 10px bottom margin.
+- **Width:** The canvas is 400 wide plus a scrollbar in a 420-wide window. The scrollbar width is theme-dependent and unknown here, so I left it alone.
+- **Doc comment:** `main` has its `///` doc comment, and the module-level `//!` comment matches the behavior shown.
+
