@@ -817,3 +817,13 @@ I found nothing to fix in lines 1-20, but I only had `lib.rs` and not the signat
 - The fallible `Label::new` and `Button::new` calls use `?` rather than `unwrap`, which is the right pattern for an example users copy.
 - `main` has a `///` doc comment.
 
+### examples/widgets.rs lines 1-31
+- none
+
+I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, `Var`, `Command` or `Scale` signatures, so I judged the calls by how they are used.
+
+- **Variables:** `enabled`, `level` and `status` are reused after being passed by value to widget constructors, so `Var` must be `Copy`, which is consistent with the `move` closure in the trace callback.
+- **Error handling:** every widget constructor uses `?`, so there are no `unwrap` calls on user paths. The one `unwrap_or(false)` in the trace callback is a safe fallback.
+- **Initial state:** the `Enabled` string matches the initial `true` of `enabled`, so the label does not contradict the checkbutton at startup.
+- **Docs:** the module doc and the `main` doc comment are present and match what the program does.
+
