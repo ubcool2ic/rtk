@@ -951,3 +951,16 @@ I found nothing in lines 1–161 that needs fixing, and I made no edits. I could
   - The hover test uses `contains` plus a final-entry check rather than an exact sequence. Tightening it would assume how often the implementation fires `Enter`, which I can't confirm, so I left it.
 - **Docs:** every function, helper and test has a `///` comment.
 
+### tests/m012_golden_charts.rs lines 1-75
+- none
+
+I found nothing in lines 1-75 that needs a fix, though I could only check the file against `lib.rs`, not the `chart`, `testing` or `Tk` sources.
+
+- **Helper panics:** `build_scene` only uses `.expect` and `assert!` on constructors and setters. A failure there is a real test failure, not a helper bug.
+- **Golden names:** `{scale}` formats `1.0_f64` as `1`, so the names come out as `charts_light_1x` and `charts_dark_2x`. They are stable and unique across theme and scale.
+- **Size math:** `(640.0 * scale) as u32` is exact for 1.0 and 2.0.
+- **Layout:** the widgets stack to about 388 px plus padding, which fits the 480 px height, so nothing is clipped.
+- **Flakiness:** the test has no timing, randomness or I/O beyond the golden directory, and the sine and cosine data is deterministic.
+- **Assertions:** `assert_golden` does the pixel comparison and the setter calls are asserted, so the test does check something.
+- **Doc comment:** it says the line chart has a legend, but `build_scene` never enables one. I couldn't confirm whether the legend is on by default, so I left it alone.
+
