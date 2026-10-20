@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased): work in progress on branch `rtk-1.0`
+## 1.0.0 (2026-10-20)
 
 ### 0.9 Foundations
 - Clippy runs clean on the stable toolchain (1.99) with `-D warnings`.
