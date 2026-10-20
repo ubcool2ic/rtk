@@ -1045,3 +1045,12 @@ I found nothing in lines 1-159 that needs fixing, and I did not run the tests.
 - [severity low] [bug] `slider_wheel` (line 125) assumes a positive wheel delta increases the value. -> not fixed (this is the toolkit's documented direction as far as can be seen, and no contradiction is visible)
 - No panics, UTF-8 errors, overflow or timing flakiness found in the helpers. The golden name `format!("slider_{theme:?}_{scale}x")` gives `slider_light_1x`, since `1.0_f64` displays as `1`, so it is stable. The pixel size casts are safe.
 
+### tests/m0_10_spinbox.rs lines 1-172
+- none
+
+I found no bugs in this chunk. Nothing here looks flaky or wrongly expected, and every test makes meaningful assertions. I did not run the tests or see the widget implementation, so the points below are unchecked assumptions.
+
+- **Caret position:** the entry tests click at `rect.x + 5.0` and then press Backspace 8 times. This assumes the click leaves the caret at the end of the text or selects all. If the click put the caret at the start, those tests would not clear the buffer.
+- **Weak assertion in the invalid-text test:** `dspin_invalid_text_reverts` only checks `dspin_get`. I considered also asserting `dspin_text == "2.00"`, but I can't confirm the widget reformats the text after a revert, so I left it unchanged rather than risk a wrong expectation.
+- **Golden names:** `{scale}` formats `1.0_f64` as `1`, so the names come out as `dspin_light_1x` and `dspin_light_2x`, which are stable and valid.
+
