@@ -880,3 +880,7 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [docs] `golden_m011_scenes_render` says it renders "each scene" once at 1x, but it skips the menu and modal scenes and renders an unrelated bare Frame (lines 251-272) -> fixed: the test now also renders the menu and modal scenes.
 - [severity low] [bug] The goldens, name convention, scale and size math, and the other tests are correct and assert meaningful things. I found no timing dependence beyond the deterministic `sim_advance_time`, and no helper panics beyond intentional `expect`s -> not fixed (nothing to fix).
 
+### tests/golden_widgets.rs lines 1-140
+- [severity low] [bug] `compare_pixmaps_detects_changes` writes the fixed value 200 into the red byte (lines 134-135). If the background pixel at (32,32) already had that value, the pixmaps would be identical and the `count > 0` assertion would fail depending on theme colors. Changed to flip the existing byte with `^ 0xFF`, which guarantees a difference. -> fixed
+- [severity low] [docs] none; every fn has a `///` doc comment. Nothing else in lines 1-140 needed fixing: the golden names format as `widgets_light_1x` and `widgets_light_2x`, the scale cast is safe, and the `sim_scale_factor` result is asserted.
+

@@ -250,3 +250,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/fonts.rs:1-17 | 2463 (0 cached) | 920 (439 reasoning) | 0.0141 | 4.8005 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/gallery_smoke.rs:1-76 | 3216 (0 cached) | 2009 (699 reasoning) | 0.0265 | 4.8270 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/golden_m011.rs:1-273 | 7118 (0 cached) | 1325 (851 reasoning) | 0.0275 | 4.8545 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/golden_widgets.rs:1-140 | 4645 (0 cached) | 1005 (631 reasoning) | 0.0193 | 4.8738 |

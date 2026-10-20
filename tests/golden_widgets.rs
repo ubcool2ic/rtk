@@ -132,7 +132,8 @@ fn compare_pixmaps_detects_changes() {
 
     let mut b = a.clone();
     let idx = (32 * 64 + 32) * 4;
-    b.data_mut()[idx] = 200;
+    // Flip the byte so the pixel is guaranteed to differ from the original.
+    b.data_mut()[idx] = a.data()[idx] ^ 0xFF;
     let (count, delta) = compare_pixmaps(&a, &b, 0);
     assert!(count > 0);
     assert!(delta > 0);
