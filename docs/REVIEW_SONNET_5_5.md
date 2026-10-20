@@ -1057,3 +1057,14 @@ I found no bugs in this chunk. Nothing here looks flaky or wrongly expected, and
 ### tests/m0_10_switch.rs lines 1-131
 - none
 
+### tests/m0_10_tristate.rs lines 1-244
+- none
+
+I found nothing in lines 1-244 that needs fixing.
+
+- **Helpers:** `build_tristate_scene` has no panic paths beyond `expect` on widget construction, which is appropriate in a test.
+- **Assertions:** the tests assert real behaviour (state transitions, variable sync, command counts, disabled handling, a11y `mixed`/`toggled`). None are vacuous, and no timing or sleeps are involved.
+- **Golden names:** `format!("tristate_{theme:?}_{scale}x").to_lowercase()` gives stable names such as `tristate_highcontrast_2x`.
+- **Docs:** every function has a `///` doc comment.
+- **Not verifiable from this chunk:** whether `assert_golden` takes logical or physical size at 2x. Checking that needs the `testing` module source.
+
