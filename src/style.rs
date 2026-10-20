@@ -201,7 +201,7 @@ impl Tokens {
         t.palette.accent = Color::rgb(0, 103, 192);
         t.palette.surface2 = Color::rgb(240, 240, 240);
         t.radius = Radius { sm: 2.0, md: 4.0, lg: 6.0 };
-        t.font_family = Some("Segoe UI".into());
+        // Bundled Noto Sans everywhere (v0.8.2); set a family explicitly to override.
         t
     }
 
@@ -226,7 +226,7 @@ impl Tokens {
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 4.0, md: 10.0, lg: 20.0 },
             type_scale: TypeScale { small: 12.0, body: 14.0, title: 20.0, heading: 26.0 },
-            font_family: Some("Roboto".into()),
+            font_family: None, // bundled Noto Sans (v0.8.2)
         }
     }
 

@@ -290,6 +290,12 @@ impl Tk {
         self.theme
     }
 
+    /// Which font family became the default sans-serif: the bundled Noto Sans,
+    /// or Arial / a platform sans if the bundled font could not be loaded.
+    pub fn default_font(&self) -> &crate::fonts::DefaultFont {
+        self.text_engine.default_font()
+    }
+
     /// Returns the design tokens (palette, fonts, radii) of the active theme.
     pub fn tokens(&self) -> &Tokens {
         self.style_engine.tokens()

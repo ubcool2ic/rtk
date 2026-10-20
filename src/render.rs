@@ -25,16 +25,27 @@ pub(crate) struct TextEngine {
     shaped: std::collections::HashMap<TextKey, Buffer>,
     /// Measured sizes; much smaller than buffers, so it can hold many more entries.
     measured: std::collections::HashMap<TextKey, Size>,
+    /// Which family became the default sans-serif (bundled Noto Sans normally).
+    default_font: crate::fonts::DefaultFont,
 }
 
 impl TextEngine {
+    /// Loads system fonts plus the bundled Noto Sans and picks the default sans-serif.
     pub fn new() -> Self {
+        let mut fonts = FontSystem::new();
+        let default_font = crate::fonts::install(fonts.db_mut(), &crate::fonts::BUNDLED_FACES);
         Self {
-            fonts: FontSystem::new(),
+            default_font,
+            fonts,
             cache: SwashCache::new(),
             shaped: std::collections::HashMap::new(),
             measured: std::collections::HashMap::new(),
         }
+    }
+
+    /// The family used for the default sans-serif.
+    pub fn default_font(&self) -> &crate::fonts::DefaultFont {
+        &self.default_font
     }
 
     /// Returns a cached shaped buffer, shaping and caching it on a miss.

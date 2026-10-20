@@ -316,3 +316,5 @@ smoke tests on supported operating systems.
 ## License
 
 MIT OR Apache-2.0.
+
+The bundled font in `fonts/` (Noto Sans Regular and Bold, Copyright 2022 The Noto Project Authors) is licensed under the SIL Open Font License 1.1; see `fonts/OFL.txt`. It is the default UI font; see `rtk::fonts` for the fallback order (Noto Sans, then Arial, then the platform sans).
