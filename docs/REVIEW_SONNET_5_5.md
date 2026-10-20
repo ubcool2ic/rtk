@@ -414,3 +414,8 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [api] `A11yAction`, `A11yRole` and `A11yNode` may need `#[non_exhaustive]`, but they are defined in `src/a11y.rs`, outside this chunk. -> not fixed (outside this chunk)
 - NOTE: edits for src/tk/a11y.rs:1-297 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
 
+### src/tk/tree.rs lines 1-296
+- [medium] [bug] `destroy` compared `id == self.root()` only after the slot generations had been bumped. If `root()` is built from the live generation of slot 0, the comparison fails and destroying the root never requests quit. The check is now computed before the teardown loop (line 101) -> fixed
+- [low] [bug] `config(Opt::Disabled(true))` leaves `hovered` and `pressed` pointing at the now-disabled widget (line 178) -> not fixed (the event code that reads those fields is outside this chunk, so I can't tell whether it is a real problem)
+- [low] [api] `set_command` and `set_selected` do not follow the `<widget>_<verb>` pattern (lines 207, 274) -> not fixed (renaming public API is a larger change than a minimal edit, and both are documented and consistent with each other)
+

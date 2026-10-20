@@ -68,6 +68,9 @@ impl Tk {
         if self.scrollbar_drag.is_some_and(|(sb, _, _)| self.is_descendant_of(sb, id)) {
             self.scrollbar_drag = None;
         }
+        // Evaluate before generations are bumped below, otherwise a root
+        // lookup built from the live generation would no longer match `id`.
+        let is_root = id == self.root();
         let mut pending = vec![id];
         while let Some(current) = pending.pop() {
             let Some(slot) = self.nodes.get_mut(current.index as usize) else { continue };
@@ -98,7 +101,7 @@ impl Tk {
                 self.open_combobox = None;
             }
         }
-        if id == self.root() {
+        if is_root {
             self.quit();
         }
         self.dirty = true;
