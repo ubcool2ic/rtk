@@ -767,9 +767,25 @@ impl Tk {
                     }
                 }
                 Kind::Scrollbar => {
-                    let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics(tid));
-                    if let Some((total, visible, scroll)) = target_info {
-                        {
+                    let horizontal = node
+                        .inputs
+                        .as_ref()
+                        .is_some_and(|s| s.scrollbar_horizontal);
+                    if horizontal {
+                        let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics_x(tid));
+                        if let Some((total, visible, scroll)) = target_info {
+                            let track_w = logical.width;
+                            let thumb_w = (track_w * (visible / total)).clamp(16.0, track_w);
+                            let avail = track_w - thumb_w;
+                            let max_scroll = total - visible;
+                            let thumb_x = if max_scroll > 0.0 { avail * (scroll / max_scroll) } else { 0.0 };
+                            let thumb_rect = Rect::new(logical.x + thumb_x, logical.y + 1.0, thumb_w, logical.height - 2.0).scaled(scale);
+                            let thumb_color = resolved.fg;
+                            fill(&mut pixmap, thumb_rect, clip, thumb_color);
+                        }
+                    } else {
+                        let target_info = node.scroll_target.and_then(|tid| self.scroll_metrics(tid));
+                        if let Some((total, visible, scroll)) = target_info {
                             let track_h = logical.height;
                             let thumb_h = (track_h * (visible / total)).clamp(16.0, track_h);
                             let avail = track_h - thumb_h;

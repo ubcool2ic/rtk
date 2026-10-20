@@ -1008,13 +1008,14 @@ impl StyleEngine {
             self.state_maps.insert(("TDoubleSpinbox".into(), bits), spec);
         }
         if let Some(frame) = self.styles.get("TFrame").cloned() {
-            self.styles.insert("TNotebook".into(), frame);
+            self.styles.insert("TNotebook".into(), frame.clone());
+            self.styles.insert("TScrollArea".into(), frame);
         }
         // Disabled look for every class (theme- and stylesheet-overridable).
         for class in [
             "TButton", "TLabel", "TEntry", "TCheckbutton", "TRadiobutton", "TScale",
             "TListbox", "TSpinbox", "TProgressbar", "TText", "TCombobox", "TNotebook",
-            "TSwitch", "TProgressRing", "TSlider", "TDoubleSpinbox",
+            "TSwitch", "TProgressRing", "TSlider", "TDoubleSpinbox", "TScrollArea",
         ] {
             self.state_maps
                 .entry((class.into(), State::DISABLED.bits()))

@@ -206,6 +206,7 @@ pub struct Combobox;
 pub struct Notebook;
 
 
+
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
     /// Creates an empty container frame under `parent`.
@@ -303,9 +304,20 @@ impl Listbox {
 
 #[allow(clippy::new_ret_no_self)]
 impl Scrollbar {
-    /// Creates a scrollbar; link it to a widget with `Tk::scrollbar_attach`-style APIs.
+    /// Creates a vertical scrollbar; link it to a widget with `Tk::link_scrollbar`.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
         tk.add(Kind::Scrollbar, parent, String::new())
+    }
+
+    /// Creates a horizontal scrollbar (thumb along x); link it with
+    /// `Tk::link_scrollbar` to a Canvas with a scrollregion or a ScrollArea.
+    pub fn horizontal(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Scrollbar, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            let state = node.inputs.get_or_insert_with(Default::default);
+            state.scrollbar_horizontal = true;
+        }
+        Ok(id)
     }
 }
 
@@ -453,6 +465,7 @@ pub(crate) enum Kind {
     Switch,
     Slider,
     DoubleSpinbox,
+    ScrollArea,
 }
 
 impl Kind {
@@ -600,6 +613,8 @@ pub(crate) struct WidgetNode {
     pub last_edit_ms: u64,
     /// True when the last edit was a single-character insertion (coalescable).
     pub last_edit_typing: bool,
+    /// ScrollArea that owns this widget as its content frame, if any.
+    pub scroll_area_owner: Option<WidgetId>,
 }
 
 /// A snapshot of editable text state for undo/redo.
@@ -694,6 +709,7 @@ impl WidgetNode {
             redo_stack: Vec::new(),
             last_edit_ms: 0,
             last_edit_typing: false,
+            scroll_area_owner: None,
         }
     }
 }

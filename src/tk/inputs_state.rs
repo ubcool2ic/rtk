@@ -78,4 +78,14 @@ pub(crate) struct InputsState {
     pub(crate) dspin_suffix: String,
     /// In-progress text edit buffer (`None` = show the formatted value).
     pub(crate) dspin_buffer: Option<String>,
+
+    // ---- Scrollbar orientation ----
+    /// True when the scrollbar runs horizontally (thumb along x).
+    pub(crate) scrollbar_horizontal: bool,
+
+    // ---- ScrollArea ----
+    /// The inner content frame of a ScrollArea.
+    pub(crate) scroll_area_content: Option<crate::WidgetId>,
+    /// Current scroll offset `(x, y)` of a ScrollArea in logical px.
+    pub(crate) scroll_area_offset: (f32, f32),
 }

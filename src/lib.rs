@@ -31,6 +31,7 @@ pub use tk::ring::ProgressRing;
 pub use tk::switch::Switch;
 pub use tk::slider::Slider;
 pub use tk::double_spinbox::DoubleSpinbox;
+pub use tk::scroll_area::ScrollArea;
 pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Checkbutton, Color, Combobox, Command,

@@ -24,6 +24,7 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
         Kind::Switch => "TSwitch",
         Kind::Slider => "TSlider",
         Kind::DoubleSpinbox => "TDoubleSpinbox",
+        Kind::ScrollArea => "TScrollArea",
     }
 }
 
