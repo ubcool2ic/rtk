@@ -207,3 +207,5 @@
 | 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r1 [Sol fix] | 24871 (0 cached) | 498 (167 reasoning) | 0.0672 | 1.2951 |
 | 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r2 [Sol fix] | 22467 (0 cached) | 1451 (1383 reasoning) | 0.0707 | 1.3658 |
 | hand glue | lead | Dialog anchor + paint-order fix: reverted a Sol edit to tests/golden_m011.rs (it tried to dodge the expected golden change); tests/paint_order.rs scene: added `sim_resize`, place `width/height: None` instead of `Some(0.0)`; marked the hover hit-test `#[ignore]` as an open decision (hit-testing skips non-interactive frames). Re-blessed m011_modal_* after a visual check. | $0 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-regressions r0 | 25874 (0 cached) | 32000 (32000 reasoning) | 0.3717 | 3.7470 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-regressions-a r0 | 25727 (0 cached) | 5618 (3172 reasoning) | 0.1076 | 3.8546 |

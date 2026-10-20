@@ -653,3 +653,4 @@ I found no bugs or API problems in lines 1-172 of `src/tk/tristate.rs`.
 
 I did not check whether `inputs` is dropped when a widget is destroyed, because that code is outside this chunk.
 
+- NOTE: the first Sonnet call writing tests/tk_review_regressions.rs used all 32k max_tokens on reasoning, ignoring the 16k budget, and returned no code ($0.37). Per the rules it was not retried at the same settings. The work was split into two smaller tasks with max_tokens 40k.
