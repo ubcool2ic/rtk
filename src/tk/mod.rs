@@ -40,6 +40,7 @@ mod combobox;
 mod notebook;
 mod progress;
 mod tooltip;
+mod shortcuts;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -55,6 +56,12 @@ pub(crate) type ModalAccept = Box<dyn FnMut(&mut Tk)>;
 pub(crate) type ModalEntryChanged = Box<dyn FnMut(&mut Tk, WidgetId, &str)>;
 /// Callback invoked on a window close request; returns true to allow quit.
 pub(crate) type CloseCallback = Box<dyn FnMut(&mut Tk) -> bool>;
+/// A bound keyboard shortcut: its id, the parsed chord, and its callback.
+pub(crate) type ShortcutBinding = (
+    crate::shortcut::ShortcutId,
+    crate::shortcut::Shortcut,
+    Box<dyn FnMut(&mut Tk)>,
+);
 
 #[derive(Debug)]
 pub(crate) struct RtkUserEvent;
@@ -84,7 +91,8 @@ impl TkProxy {
 const MAX_ENTRY_BYTES: usize = 64 * 1024;
 
 /// Keys understood by the real backend and the headless event harness.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     /// Deletes the character/cluster before the cursor.
     Backspace,
@@ -116,6 +124,13 @@ pub enum Key {
     PageDown,
     /// Closes an open Combobox or cancels a modal dialog.
     Escape,
+    /// A character key: a lowercase letter/digit/punctuation pressed with a
+    /// modifier, or a bare key when no text input applies.
+    Char(char),
+    /// A function key, F1..=F24.
+    F(u8),
+    /// The Insert key.
+    Insert,
 }
 
 /// Scroll step for `yview_scroll`/`xview_scroll`.
@@ -185,6 +200,12 @@ pub struct Tk {
     pub(crate) close_callback: Option<CloseCallback>,
     /// True when window properties (icon, size constraints) need re-applying.
     pub(crate) window_props_dirty: bool,
+    /// Modifiers of the most recent key press.
+    pub(crate) mods: crate::shortcut::Modifiers,
+    /// Bound keyboard shortcuts, in binding order.
+    pub(crate) shortcuts: Vec<ShortcutBinding>,
+    /// Next shortcut id to hand out.
+    pub(crate) next_shortcut_id: u64,
 }
 
 impl Default for Tk {
@@ -246,6 +267,9 @@ impl Tk {
             window_resizable: (true, true),
             close_callback: None,
             window_props_dirty: false,
+            mods: crate::shortcut::Modifiers::NONE,
+            shortcuts: Vec::new(),
+            next_shortcut_id: 1,
         }
     }
 

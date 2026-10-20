@@ -438,8 +438,18 @@ impl Tk {
 
     /// Headless harness: delivers a non-text key to the focused widget (or to the
     /// modal/combobox/focus-traversal handlers that intercept it).
+    ///
+    /// Equivalent to [`Tk::sim_key_with`] with no modifiers held.
     #[doc(hidden)]
     pub fn sim_key(&mut self, key: Key) {
+        self.sim_key_with(key, crate::shortcut::Modifiers::NONE);
+    }
+
+    /// Delivers a non-text key to the focused widget, ignoring bound shortcuts.
+    ///
+    /// This is the internal dispatch path used by [`Tk::sim_key_with`] once
+    /// shortcut matching has been ruled out.
+    pub(crate) fn sim_key_raw(&mut self, key: Key) {
         self.ensure_layout();
         if key == Key::Escape {
             if let Some(combo_id) = self.open_combobox.take() {
