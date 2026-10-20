@@ -65,7 +65,9 @@ impl Tk {
 
     /// Edits an Entry, optionally extending the selection (Shift held).
     pub(crate) fn edit_entry_ext(&mut self, id: WidgetId, key: Option<Key>, inserted: &str, extend: bool) {
-        let Some(text) = self.entry_get(id) else { return };
+        let combo = self.combobox_is_editable(id);
+        let text = if combo { self.node(id).map(|n| n.text.clone()) } else { self.entry_get(id) };
+        let Some(text) = text else { return };
         let Some(node) = self.node(id) else { return };
         let boundaries = clusters(&text);
         let mut cursor = cursor_boundary(&text, node.cursor);
@@ -151,7 +153,15 @@ impl Tk {
                 node.cursor = cursor;
                 node.selection_anchor = None;
             }
-            self.write_entry(id, new_text);
+            if combo {
+                // Editable Combobox: no Var binding; run its post-edit hook.
+                if let Some(node) = self.node_mut(id) {
+                    node.text = new_text;
+                }
+                self.combo_text_edited(id);
+            } else {
+                self.write_entry(id, new_text);
+            }
         } else if let Some(node) = self.node_mut(id) {
             node.cursor = cursor;
             node.selection_anchor = None;

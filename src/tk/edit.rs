@@ -281,13 +281,20 @@ impl Tk {
     }
 
     /// After an edit, syncs a Var-bound Entry and clamps the cursor.
+    ///
+    /// For an editable Combobox this also recomputes the filter, opens/closes
+    /// the dropdown, updates the bound variable and fires the text callback.
     pub(crate) fn sync_after_edit(&mut self, id: WidgetId) {
         let Some(node) = self.node_mut(id) else { return };
         let len = node.text.len();
         node.cursor = floor_char_boundary(&node.text, node.cursor.min(len));
+        let editable_combo = node.kind == Kind::Combobox && node.combo_editable;
         if node.kind == Kind::Entry {
             let text = node.text.clone();
             self.write_entry(id, text);
+        }
+        if editable_combo {
+            self.combo_text_edited(id);
         }
     }
 

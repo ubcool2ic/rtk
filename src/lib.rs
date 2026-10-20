@@ -10,6 +10,7 @@ pub mod chart;
 pub mod colormap;
 pub mod dialog;
 pub mod dnd;
+pub mod file_dialog;
 pub mod fonts;
 pub mod icons;
 pub mod image;
@@ -31,6 +32,7 @@ pub use chart::ChartKind;
 pub use colormap::Colormap;
 pub use dialog::MessageKind;
 pub use dnd::{DropPhase, FileDropCallback, FileHoverCallback};
+pub use file_dialog::{FileDialog, FileDialogBackend, FileDialogDone, FileDialogKind, FileDialogResult, FileFilter, MockFileDialog};
 pub use fonts::DefaultFont;
 pub use icons::Icon;
 pub use image::ImageFit;
@@ -49,9 +51,10 @@ pub use tk::double_spinbox::DoubleSpinbox;
 pub use tk::scroll_area::ScrollArea;
 pub use var::Var;
 pub use widgets::{
-    Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,
-    Compound, DragPhase, Entry, Frame, Image, Label, Listbox, Notebook, Opt, ProgressBar,
-    Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Table, Text, Theme, TreeView, WidgetId,
+    Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, ComboSelectCallback,
+    ComboTextCallback, Combobox, Command, Compound, DragPhase, Entry, Frame, Image, Label, Listbox,
+    Notebook, Opt, ProgressBar, Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Table, Text,
+    Theme, TreeView, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

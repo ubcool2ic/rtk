@@ -132,8 +132,21 @@ impl Tk {
                 if let Some(value) = self.slider_value_at(id, x, y) {
                     self.slider_user_set(id, value);
                 }
-            } else if self.node(id).is_some_and(|node| matches!(node.kind, Kind::Entry | Kind::Text) && !node.disabled) {
-                self.drag_text_selection(id, x, y);
+            } else if self.node(id).is_some_and(|node| {
+                (matches!(node.kind, Kind::Entry | Kind::Text)
+                    || (node.kind == Kind::Combobox && node.combo_editable))
+                    && !node.disabled
+            }) {
+                // A press that began in the editable combobox arrow zone must
+                // not extend a text selection.
+                let in_arrow = self.node(id).is_some_and(|node| {
+                    node.kind == Kind::Combobox
+                        && node.combo_editable
+                        && self.pointer.0 >= node.rect.x + node.rect.width - 22.0
+                });
+                if !in_arrow {
+                    self.drag_text_selection(id, x, y);
+                }
             }
         }
     }
@@ -147,7 +160,7 @@ impl Tk {
         let font = self.resolved_style(id).unwrap_or_default();
         let text = node.text.clone();
         let cursor = match kind {
-            Kind::Entry => {
+            Kind::Entry | Kind::Combobox => {
                 let target = (x - rect.x - 6.0 + scroll_x).max(0.0);
                 let boundaries = clusters(&text);
                 let (mut low, mut high) = (0, boundaries.len());
@@ -207,19 +220,26 @@ impl Tk {
 
         // Check if click is on open combobox dropdown
         if let Some(combo_id) = self.open_combobox {
+            let rows = self.combo_rows(combo_id);
             if let Some(cnode) = self.node(combo_id) {
                 let item_h = (cnode.style.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (cnode.combo_values.len() as f32 * item_h).max(item_h).min(240.0);
+                let drop_h = (rows.len() as f32 * item_h).max(item_h).min(crate::render::COMBO_POPUP_MAX_H);
                 let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
                 if drop_rect.contains(x, y) {
-                    let idx = ((y - drop_rect.y) / item_h).floor() as usize;
-                    if idx < cnode.combo_values.len() {
-                        if let Some(var) = cnode.combo_var {
-                            var.set(self, idx as i64);
-                        }
+                    // Apply the same scroll offset as the drawing code so a
+                    // click selects the row that is actually drawn.
+                    let first = crate::render::combo_popup_first_row(
+                        cnode.combo_highlight,
+                        rows.len(),
+                        crate::render::combo_popup_rows_visible(item_h),
+                    );
+                    let pos = first + ((y - drop_rect.y) / item_h).floor() as usize;
+                    if let Some(&idx) = rows.get(pos) {
+                        self.combo_select_value(combo_id, idx);
                     }
                     if let Some(cn) = self.node_mut(combo_id) {
                         cn.combo_open = false;
+                        cn.combo_highlight = None;
                     }
                     self.open_combobox = None;
                     self.dirty = true;
@@ -228,6 +248,7 @@ impl Tk {
             }
             if let Some(cn) = self.node_mut(combo_id) {
                 cn.combo_open = false;
+                cn.combo_highlight = None;
             }
             self.open_combobox = None;
             just_closed = Some(combo_id);
@@ -435,6 +456,52 @@ impl Tk {
                             node.selection_anchor = Some(byte_offset.min(node.text.len()));
                         }
                         node.cursor = byte_offset.min(node.text.len());
+                    }
+                }
+                Kind::Combobox if node.combo_editable => {
+                    let arrow_x = node.rect.x + node.rect.width - 22.0;
+                    if x >= arrow_x {
+                        let open = !node.combo_open && just_closed != Some(id);
+                        if open {
+                            self.combobox_open(id);
+                        } else {
+                            self.combobox_close(id);
+                        }
+                        // The arrow is a click target, not a text-drag origin.
+                        self.pressed = None;
+                    } else {
+                        // Place the caret in the text area like an Entry.
+                        let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
+                        let text = node.text.clone();
+                        let font = self.resolved_style(id).unwrap_or_default();
+                        let boundaries = clusters(&text);
+                        let (mut low, mut high) = (0, boundaries.len());
+                        while low < high {
+                            let mid = low + (high - low) / 2;
+                            let end = boundaries.get(mid).copied().unwrap_or(text.len());
+                            let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
+                            if width < target {
+                                low = mid + 1;
+                            } else {
+                                high = mid;
+                            }
+                        }
+                        let right = boundaries.get(low).copied().unwrap_or(text.len());
+                        let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
+                        let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
+                        let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
+                        let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                        let shift = self.mods.shift;
+                        if let Some(node) = self.node_mut(id) {
+                            if shift {
+                                if node.selection_anchor.is_none() {
+                                    node.selection_anchor = Some(node.cursor);
+                                }
+                            } else {
+                                node.selection_anchor = Some(cursor);
+                            }
+                            node.cursor = cursor;
+                        }
                     }
                 }
                 Kind::Combobox => {
@@ -659,6 +726,7 @@ impl Tk {
             if let Some(combo_id) = self.open_combobox.take() {
                 if let Some(node) = self.node_mut(combo_id) {
                     node.combo_open = false;
+                    node.combo_highlight = None;
                 }
                 self.dirty = true;
                 return;
@@ -751,6 +819,13 @@ impl Tk {
                     self.edit_text_ext(id, Some(key), "", extend);
                 }
             }
+            Kind::Combobox if node.combo_editable => {
+                if key == Key::Space {
+                    self.sim_text(" ");
+                } else {
+                    self.combo_key(id, key, extend);
+                }
+            }
             Kind::Combobox => {
                 if matches!(key, Key::Up | Key::Down) && !node.combo_values.is_empty() {
                     let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
@@ -833,6 +908,8 @@ impl Tk {
                 self.edit_entry(id, None, text);
             } else if self.node(id).is_some_and(|node| node.kind == Kind::Text && !node.disabled && !node.text_read_only) {
                 self.edit_text(id, None, text);
+            } else if self.node(id).is_some_and(|node| node.kind == Kind::Combobox && node.combo_editable && !node.disabled) {
+                self.edit_entry(id, None, text);
             } else if self.node(id).is_some_and(|node| node.kind == Kind::DoubleSpinbox && !node.disabled) {
                 self.dspin_type(id, text);
             }
@@ -840,7 +917,15 @@ impl Tk {
     }
 
 
+    /// Headless test helper: simulates the window losing OS focus, which clears
+    /// focus, press, hover and drag state and closes any open combobox dropdown.
+    pub fn sim_window_focus_lost(&mut self) {
+        self.clear_input();
+    }
+
     /// Clears all transient input state such as focus, press, hover and drag, and marks the toolkit dirty.
+    ///
+    /// Also closes any open combobox dropdown (clearing its highlight).
     pub(crate) fn clear_input(&mut self) {
         self.focused = None;
         self.pressed = None;
@@ -851,6 +936,7 @@ impl Tk {
         if let Some(combo_id) = self.open_combobox.take() {
             if let Some(node) = self.node_mut(combo_id) {
                 node.combo_open = false;
+                node.combo_highlight = None;
             }
         }
         self.dirty = true;

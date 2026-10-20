@@ -24,6 +24,7 @@ impl Tk {
         match node.kind {
             Kind::Entry => true,
             Kind::Text => !node.text_read_only,
+            Kind::Combobox => node.combo_editable,
             _ => false,
         }
     }
@@ -103,6 +104,7 @@ impl Tk {
         match node.kind {
             Kind::Entry => self.edit_entry(id, None, text),
             Kind::Text if !node.text_read_only => self.edit_text(id, None, text),
+            Kind::Combobox if node.combo_editable => self.edit_entry(id, None, text),
             _ => {}
         }
         self.dirty = true;
@@ -131,7 +133,7 @@ impl Tk {
         let line_h = (resolved.font_size * 1.3).max(1.0);
         let caret = floor_char_boundary(&value, cursor.min(value.len()));
         match kind {
-            Kind::Entry => {
+            Kind::Entry | Kind::Combobox => {
                 let before = value.get(..caret).unwrap_or_default();
                 let width = self.measure_with(before, &resolved).width;
                 let x = rect.x + 6.0 + width - scroll_x.max(0.0);
