@@ -536,3 +536,16 @@ No other defects found in this chunk:
 - [severity low] [bug] Input that cleans down to an empty string (for example only control characters, or a full entry) falls through to the tail of the function. That clears the selection anchor and repaints without any change to the text (lines 138-143) -> fixed
 - [severity low] [bug] `join_text` silently drops the prefix or suffix if an index is out of range or off a char boundary (lines 9, 11) -> not fixed (documented as tolerant; callers pass cluster boundaries)
 
+### src/tk/chart.rs lines 1-155
+- none
+
+I found nothing in lines 1-155 that needs an edit.
+
+- **Borrows:** `self.dirty = true` comes after the last use of `state` in every method, so the borrows are fine.
+- **Slicing:** `&points[start..]` uses a `saturating_sub` start, so it cannot go out of range.
+- **Retention limits:** `max_points` is clamped to at least 1 in `chart_set_data`, `chart_append` and `chart_set_max_points`, so a zero limit cannot occur.
+- **`chart_set_y_range`:** it rejects non-finite bounds and `lo >= hi`, and it does this before touching state.
+- **Docs:** every function has a `///` comment, and the naming follows `chart_<verb>`.
+- **Not fixed, outside this chunk:** non-finite `(x, y)` values are accepted by `chart_append` and `chart_set_data`. Whether they can break `bounds()` or drawing depends on code outside this chunk, so I left the behaviour alone.
+- **Not fixed, outside this chunk:** `ChartKind` is defined in `crate::chart`, so any `#[non_exhaustive]` attribute belongs there, not in this file.
+
