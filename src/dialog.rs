@@ -45,7 +45,7 @@ pub fn modal_depth(tk: &Tk) -> usize {
 pub fn close(tk: &mut Tk) {
     if let Some(mut cancel) = tk.modal_cancel.take() {
         cancel(tk);
-    } else if let Some(modal_id) = tk.modal.take() {
+    } else if let Some(modal_id) = tk.modal {
         finish_modal(tk, modal_id);
     }
 }
