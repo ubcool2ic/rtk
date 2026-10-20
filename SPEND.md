@@ -224,3 +224,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/combobox.rs:1-30 | 2514 (0 cached) | 1185 (677 reasoning) | 0.0169 | 4.1436 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/bench.rs:1-166 | 5723 (0 cached) | 1447 (1026 reasoning) | 0.0259 | 4.1696 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/bench_table.rs:1-173 | 4972 (0 cached) | 2733 (1487 reasoning) | 0.0373 | 4.2068 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/counter.rs:1-27 | 2556 (0 cached) | 705 (429 reasoning) | 0.0122 | 4.2190 |

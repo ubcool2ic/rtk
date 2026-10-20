@@ -697,3 +697,16 @@ No edits needed: no panics, UTF-8 slicing, overflow or borrow issues in lines 1-
 - [low] [docs] The first `Tk` stays alive after it is shadowed at line 156, so two toolkits exist at once. This is harmless in a headless run, and `Tk::new` allocates nothing global as far as the visible API shows. -> not fixed
 - [low] [docs] `report` prints FAIL but `main` still exits 0, so the "performance check" cannot gate CI. This is a design choice for an example, so I left it. -> not fixed
 
+### examples/counter.rs lines 1-27
+- none
+
+I found no bugs and no API or doc problems in lines 1-27.
+
+I could only see `lib.rs`, not the signatures of `Tk` or `PackOpts`, so I could not check three things. These are whether `Tk::new()` returns a `Result`, whether `mainloop()`'s error type converts to `Box<dyn Error>`, and whether `PackOpts` is `Copy`. The code reuses `options` for two `pack` calls, which only compiles if it is `Copy`.
+
+Within what is visible:
+- The `///` doc comment on `main` is present and the module doc matches what the program does.
+- Fallible widget construction propagates with `?` instead of `unwrap`.
+- `count.get(tk)` is handled as an `Option`.
+- `saturating_add` avoids overflow on the counter.
+
