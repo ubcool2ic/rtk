@@ -641,3 +641,15 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 
 - RECOVERED: src/tk/damage.rs 1-251. One SEARCH block was stale; DeepSeek re-targeted it (recover-damage r1). Result: degenerate coalesced damage now forces a full repaint instead of being silently dropped, and the scratch-failure fallback resets `coalesced`. This confirms the BizyBot6 coalesce hand fix otherwise never drops damage and stays bounded.
 
+### src/tk/tristate.rs lines 1-172
+- none
+
+I found no bugs or API problems in lines 1-172 of `src/tk/tristate.rs`.
+
+- **Borrows:** the immutable `node` borrows at lines 59 and 138-145 end before `var.get(self)` and `var.set(self, …)` need `self`, so there is no borrow conflict.
+- **Cycle logic:** the transitions in `tristate_activate` match the rustdoc on `checkbutton_set_cycle_mixed`. With cycling on, the order is `Unchecked -> Checked -> Mixed -> Unchecked`. With cycling off, a mixed box goes to `Checked`.
+- **Mixed flag on disable:** `checkbutton_set_tristate(false)` clears both `check_mixed` and `check_cycle_mixed`, so no stale mixed state survives.
+- **API:** all public methods follow `checkbutton_<verb>` naming and have `///` docs. `CheckState` is re-exported from `lib.rs`, and I did not check it for `#[non_exhaustive]` because its definition is outside this chunk.
+
+I did not check whether `inputs` is dropped when a widget is destroyed, because that code is outside this chunk.
+
