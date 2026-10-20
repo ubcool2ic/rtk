@@ -7,7 +7,7 @@ use rtk::{Button, Opt, Theme,
     Radiobutton, Scale, Scrollbar, Side, Spinbox, Tk,
 };
 
-/// Builds a small demo window with three side-by-side frames containing a label and entry, returning the Tk instance for benchmarking.
+/// Builds a demo-like window with three side-by-side frames (a form of common controls, a listbox with scrollbar, and a canvas of ovals), returning the Tk instance for benchmarking.
 fn demo_like() -> Result<Tk, Box<dyn Error>> {
     let mut tk = Tk::new();
     let root = tk.root();

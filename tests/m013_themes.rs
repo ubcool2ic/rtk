@@ -95,6 +95,8 @@ fn follow_system_theme_switches_theme() {
 #[test]
 fn unfollow_stops_theme_changes() {
     let mut tk = Tk::new();
+    // Start away from Light so the first assertion proves following applied it.
+    tk.set_theme(Theme::Dark);
     tk.follow_system_theme(Theme::Light, Theme::Dark);
     tk.sim_system_theme(SystemTheme::Light);
     assert_eq!(tk.theme(), Theme::Light);

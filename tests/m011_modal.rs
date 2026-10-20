@@ -153,7 +153,7 @@ fn clicking_outside_inner_does_not_reach_outer_buttons() {
 #[test]
 fn stale_closure_does_not_close_restored_outer() {
     let mut tk = Tk::new();
-    let _ = open_nested(&mut tk);
+    let (a_fired, _b_fired) = open_nested(&mut tk);
 
     assert_eq!(dialog::modal_depth(&tk), 2);
     let inner_scrim = tk.modal.expect("inner scrim present");
@@ -165,6 +165,8 @@ fn stale_closure_does_not_close_restored_outer() {
     // The inner scrim is gone and the outer one is the active modal again.
     assert!(!tk.contains(inner_scrim));
     assert_ne!(tk.modal, Some(inner_scrim));
-    assert_eq!(dialog::modal_depth(&tk), 1);
+    let outer_scrim = tk.modal.expect("outer scrim restored as active modal");
+    assert!(tk.contains(outer_scrim));
+    assert!(!a_fired.load(Ordering::SeqCst));
     assert!(dialog::is_open(&tk));
 }

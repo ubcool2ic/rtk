@@ -1,7 +1,6 @@
 //! Behaviour tests for the milestone 0.10 visual fixes: DoubleSpinbox packing,
 //! ProgressBar label sizing and contrast, and ScrollArea content width.
 
-use rtk::testing::{golden_dir, GoldenOpts};
 use rtk::{
     DoubleSpinbox, Fill, Frame, Label, PackOpts, ProgressBar, ScrollArea, Scrollbar, Theme, Tk,
 };
@@ -96,11 +95,10 @@ fn scrollarea_content_fills_width() {
     );
 }
 
-/// The ProgressBar label is drawn in a colour legible over the fill; sampling
-/// the pixmap over the filled part must find pixels close to the on-fill
-/// colour rather than the track colour.
+/// A ProgressBar with a label and percent text lays out to a non-empty rect.
+/// Exact label colours are covered by the golden tests, not here.
 #[test]
-fn progress_bar_label_contrast() {
+fn progress_bar_label_has_nonempty_rect() {
     let mut tk = Tk::new();
     tk.set_theme(Theme::Light);
     let root = tk.root();
@@ -111,9 +109,5 @@ fn progress_bar_label_contrast() {
     tk.pack(bar, PackOpts::default());
     tk.sim_resize(320, 200);
     let r = rect_of(&mut tk, bar);
-    assert!(r.width > 0.0 && r.height > 0.0);
-    // Render headlessly and confirm the bar's rect is non-empty; the golden
-    // tests cover the exact pixel colours.
-    let _ = golden_dir();
-    let _ = GoldenOpts::default();
+    assert!(r.width > 0.0 && r.height > 0.0, "empty bar rect {r:?}");
 }

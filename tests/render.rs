@@ -57,5 +57,6 @@ fn hidpi_keeps_logical_geometry_and_scales_pixels() {
     let image = tk.render_to_pixmap(400, 200).expect("scaled image");
     assert_eq!(tk.widget_rect(frame), Some(before));
     assert_eq!(image.width(), 400);
+    assert_eq!(image.height(), 200);
     assert!(!tk.sim_scale_factor(f64::NAN));
 }

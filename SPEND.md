@@ -195,6 +195,117 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tooltip.rs:1-37 | 2559 (0 cached) | 1440 (671 reasoning) | 0.0195 | 3.3522 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-widgets r0 | 21291 (640 cached) | 118 (0 reasoning) | 0.0017 | 0.2221 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-dnd r0 | 7699 (3072 cached) | 520 (0 reasoning) | 0.0007 | 0.2228 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r0 | 7167 (3072 cached) | 302 (0 reasoning) | 0.0005 | 0.2233 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r1 | 7310 (7040 cached) | 299 (0 reasoning) | 0.0002 | 0.2235 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tristate.rs:1-172 | 4934 (0 cached) | 1321 (916 reasoning) | 0.0231 | 3.3753 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | dialog-anchor r0 | 22286 (0 cached) | 1579 (0 reasoning) | 0.0026 | 0.2261 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | dialog-anchor-fix r0 | 23581 (3200 cached) | 2194 (0 reasoning) | 0.0028 | 0.2288 |
+| 2026-10-20 | openai/gpt-6.1-sol | dialog-anchor-fix r1 [Sol fix] | 23597 (0 cached) | 91 (0 reasoning) | 0.0599 | 1.1484 |
+| 2026-10-20 | openai/gpt-6.1-sol | dialog-anchor-fix r2 [Sol fix] | 25194 (0 cached) | 1664 (1552 reasoning) | 0.0796 | 1.2280 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | paint-order r0 | 20044 (3072 cached) | 1820 (0 reasoning) | 0.0023 | 0.2311 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | paint-order-fix r0 | 21174 (7808 cached) | 347 (0 reasoning) | 0.0013 | 0.2324 |
+| 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r1 [Sol fix] | 24871 (0 cached) | 498 (167 reasoning) | 0.0672 | 1.2951 |
+| 2026-10-20 | openai/gpt-6.1-sol | paint-order-fix r2 [Sol fix] | 22467 (0 cached) | 1451 (1383 reasoning) | 0.0707 | 1.3658 |
+| hand glue | lead | Dialog anchor + paint-order fix: reverted a Sol edit to tests/golden_m011.rs (it tried to dodge the expected golden change); tests/paint_order.rs scene: added `sim_resize`, place `width/height: None` instead of `Some(0.0)`; marked the hover hit-test `#[ignore]` as an open decision (hit-testing skips non-interactive frames). Re-blessed m011_modal_* after a visual check. | $0 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-regressions r0 | 25874 (0 cached) | 32000 (32000 reasoning) | 0.3717 | 3.7470 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-regressions-a r0 | 25727 (0 cached) | 5618 (3172 reasoning) | 0.1076 | 3.8546 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-regressions-b r0 | 25849 (0 cached) | 7747 (4278 reasoning) | 0.1292 | 3.9838 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | regressions-b-fix r0 | 16569 (0 cached) | 193 (0 reasoning) | 0.0014 | 0.2338 |
+| 2026-10-20 | openai/gpt-6.1-sol | regressions-b-fix r1 [Sol fix] | 22744 (0 cached) | 93 (0 reasoning) | 0.0578 | 1.4236 |
+| 2026-10-20 | openai/gpt-6.1-sol | regressions-b-fix r2 [Sol fix] | 23772 (0 cached) | 981 (684 reasoning) | 0.0692 | 1.4929 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | f6-ask-directory r0 | 24415 (0 cached) | 1067 (0 reasoning) | 0.0025 | 0.2363 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | f6-ask-directory r1 | 25057 (256 cached) | 165 (0 reasoning) | 0.0018 | 0.2381 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | listbox-activate r0 | 42477 (0 cached) | 5266 (0 reasoning) | 0.0056 | 0.2438 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | listbox-activate r1 | 43562 (11008 cached) | 81 (0 reasoning) | 0.0024 | 0.2462 |
+| 2026-10-20 | openai/gpt-6.1-sol | listbox-activate r2 [Sol fix] | 41654 (0 cached) | 445 (164 reasoning) | 0.1086 | 1.6014 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:646-894 | 6272 (0 cached) | 4204 (2637 reasoning) | 0.0546 | 4.0384 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:345-645 | 7135 (0 cached) | 3035 (1852 reasoning) | 0.0446 | 4.0830 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/dialog.rs:1-344 | 7535 (0 cached) | 2869 (1609 reasoning) | 0.0438 | 4.1268 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/combobox.rs:1-30 | 2514 (0 cached) | 1185 (677 reasoning) | 0.0169 | 4.1436 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/bench.rs:1-166 | 5723 (0 cached) | 1447 (1026 reasoning) | 0.0259 | 4.1696 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/bench_table.rs:1-173 | 4972 (0 cached) | 2733 (1487 reasoning) | 0.0373 | 4.2068 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/counter.rs:1-27 | 2556 (0 cached) | 705 (429 reasoning) | 0.0122 | 4.2190 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/demo.rs:1-139 | 4778 (0 cached) | 1222 (746 reasoning) | 0.0218 | 4.2408 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/form.rs:1-50 | 2846 (0 cached) | 480 (194 reasoning) | 0.0105 | 4.2513 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:637-800 | 4937 (0 cached) | 2271 (1518 reasoning) | 0.0326 | 4.2839 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:310-636 | 8398 (0 cached) | 2911 (1795 reasoning) | 0.0459 | 4.3298 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:1-309 | 7424 (0 cached) | 2084 (1163 reasoning) | 0.0357 | 4.3654 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery_charts_media.rs:1-168 | 5303 (0 cached) | 1946 (1161 reasoning) | 0.0301 | 4.3955 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery_m011.rs:1-189 | 5079 (0 cached) | 1074 (847 reasoning) | 0.0209 | 4.4164 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery_progress_inputs.rs:1-210 | 6430 (0 cached) | 2265 (1777 reasoning) | 0.0355 | 4.4519 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/hello.rs:1-21 | 2449 (0 cached) | 457 (187 reasoning) | 0.0095 | 4.4614 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/modern.rs:1-308 | 6905 (0 cached) | 1521 (1147 reasoning) | 0.0290 | 4.4904 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/screenshot.rs:1-20 | 2483 (0 cached) | 460 (221 reasoning) | 0.0096 | 4.5000 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/scrolling.rs:1-23 | 2702 (0 cached) | 390 (0 reasoning) | 0.0093 | 4.5093 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/styling.rs:1-157 | 5213 (0 cached) | 1427 (894 reasoning) | 0.0247 | 4.5340 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/timers.rs:1-20 | 2566 (0 cached) | 828 (430 reasoning) | 0.0134 | 4.5474 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/widgets.rs:1-31 | 2731 (0 cached) | 639 (341 reasoning) | 0.0119 | 4.5592 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/canvas_shapes.rs:1-56 | 3692 (0 cached) | 1842 (1261 reasoning) | 0.0258 | 4.5850 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/dialog_anchor.rs:1-194 | 5447 (0 cached) | 3315 (1868 reasoning) | 0.0440 | 4.6291 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/edit_selection.rs:1-291 | 7465 (0 cached) | 2331 (1386 reasoning) | 0.0382 | 4.6673 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/entry_submit.rs:1-60 | 3181 (0 cached) | 1065 (486 reasoning) | 0.0170 | 4.6843 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/entry_unicode.rs:1-95 | 4094 (0 cached) | 2513 (1483 reasoning) | 0.0333 | 4.7177 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/events.rs:1-122 | 4597 (0 cached) | 1223 (814 reasoning) | 0.0214 | 4.7391 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/features.rs:1-303 | 8381 (0 cached) | 3049 (2009 reasoning) | 0.0473 | 4.7863 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/fonts.rs:1-17 | 2463 (0 cached) | 920 (439 reasoning) | 0.0141 | 4.8005 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/gallery_smoke.rs:1-76 | 3216 (0 cached) | 2009 (699 reasoning) | 0.0265 | 4.8270 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/golden_m011.rs:1-273 | 7118 (0 cached) | 1325 (851 reasoning) | 0.0275 | 4.8545 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/golden_widgets.rs:1-140 | 4645 (0 cached) | 1005 (631 reasoning) | 0.0193 | 4.8738 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/ids.rs:1-88 | 3913 (0 cached) | 1078 (757 reasoning) | 0.0186 | 4.8924 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/layout_fuzz.rs:1-131 | 4343 (0 cached) | 1308 (987 reasoning) | 0.0218 | 4.9142 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/listbox_activate.rs:1-66 | 3412 (0 cached) | 1208 (762 reasoning) | 0.0189 | 4.9331 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_menu.rs:1-213 | 6181 (0 cached) | 1984 (937 reasoning) | 0.0322 | 4.9653 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_modal.rs:1-171 | 5248 (0 cached) | 1575 (744 reasoning) | 0.0262 | 4.9915 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_table.rs:1-242 | 6799 (0 cached) | 2456 (1392 reasoning) | 0.0382 | 5.0297 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_toast.rs:1-130 | 4447 (0 cached) | 2152 (1243 reasoning) | 0.0304 | 5.0601 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m011_tree.rs:1-249 | 7178 (0 cached) | 2989 (1800 reasoning) | 0.0442 | 5.1043 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_charts.rs:1-150 | 5138 (0 cached) | 1805 (968 reasoning) | 0.0283 | 5.1327 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_dnd.rs:1-161 | 5169 (0 cached) | 974 (605 reasoning) | 0.0201 | 5.1528 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_golden_charts.rs:1-75 | 3719 (0 cached) | 895 (470 reasoning) | 0.0164 | 5.1691 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_golden_image.rs:1-89 | 3847 (0 cached) | 1469 (951 reasoning) | 0.0224 | 5.1915 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_image.rs:1-113 | 4602 (0 cached) | 1633 (964 reasoning) | 0.0255 | 5.2171 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_tray.rs:1-146 | 4847 (0 cached) | 1789 (1028 reasoning) | 0.0276 | 5.2446 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_a11y.rs:1-122 | 4799 (0 cached) | 701 (689 reasoning) | 0.0166 | 5.2612 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_damage.rs:1-164 | 5382 (0 cached) | 1353 (921 reasoning) | 0.0243 | 5.2855 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_hidpi.rs:1-330 | 7813 (0 cached) | 1993 (1479 reasoning) | 0.0356 | 5.3211 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_ime.rs:1-165 | 5596 (0 cached) | 1800 (1054 reasoning) | 0.0292 | 5.3503 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_theme_goldens.rs:1-139 | 4557 (0 cached) | 389 (377 reasoning) | 0.0130 | 5.3633 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_themes.rs:1-119 | 4458 (0 cached) | 1360 (867 reasoning) | 0.0225 | 5.3858 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_tokens.rs:1-114 | 4023 (0 cached) | 1519 (817 reasoning) | 0.0232 | 5.4090 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_a11y.rs:1-129 | 4799 (0 cached) | 350 (0 reasoning) | 0.0131 | 5.4221 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_progress.rs:1-159 | 5115 (0 cached) | 1360 (960 reasoning) | 0.0238 | 5.4460 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_scroll.rs:1-292 | 8322 (0 cached) | 3346 (2187 reasoning) | 0.0501 | 5.4961 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_slider.rs:1-192 | 5869 (0 cached) | 1713 (1241 reasoning) | 0.0289 | 5.5249 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_spinbox.rs:1-172 | 5501 (0 cached) | 1376 (1032 reasoning) | 0.0248 | 5.5497 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_switch.rs:1-131 | 4478 (0 cached) | 724 (712 reasoning) | 0.0162 | 5.5659 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_tristate.rs:1-244 | 7359 (0 cached) | 1054 (766 reasoning) | 0.0253 | 5.5912 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_visual_fixes.rs:1-120 | 4602 (0 cached) | 2278 (1193 reasoning) | 0.0320 | 5.6231 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/paint_order.rs:1-86 | 3800 (0 cached) | 1040 (636 reasoning) | 0.0180 | 5.6411 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/reentrancy.rs:1-106 | 4029 (0 cached) | 790 (778 reasoning) | 0.0160 | 5.6571 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/render.rs:1-62 | 3337 (0 cached) | 1113 (669 reasoning) | 0.0178 | 5.6749 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/review.rs:1-102 | 4161 (0 cached) | 1856 (1414 reasoning) | 0.0269 | 5.7018 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/review_fable.rs:1-17 | 2462 (0 cached) | 1071 (694 reasoning) | 0.0156 | 5.7174 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/scrollarea_width.rs:1-58 | 3196 (0 cached) | 299 (0 reasoning) | 0.0094 | 5.7268 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/scrolling.rs:1-123 | 5096 (0 cached) | 1460 (1448 reasoning) | 0.0248 | 5.7516 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/shortcuts.rs:1-137 | 4918 (0 cached) | 1057 (865 reasoning) | 0.0204 | 5.7720 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/styling.rs:350-487 | 4848 (0 cached) | 1177 (1165 reasoning) | 0.0215 | 5.7935 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/styling.rs:1-349 | 8318 (0 cached) | 1446 (1201 reasoning) | 0.0311 | 5.8246 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/timers.rs:1-31 | 2695 (0 cached) | 169 (0 reasoning) | 0.0071 | 5.8316 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/tk_review_regressions.rs:1-119 | 4781 (0 cached) | 1395 (860 reasoning) | 0.0235 | 5.8552 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/tk_review_regressions_2.rs:1-152 | 5661 (0 cached) | 2850 (1710 reasoning) | 0.0398 | 5.8950 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/treeview_notebook.rs:1-80 | 3480 (0 cached) | 2498 (1310 reasoning) | 0.0319 | 5.9269 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/v08_extras.rs:1-258 | 6753 (0 cached) | 1272 (838 reasoning) | 0.0262 | 5.9531 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/v08_widgets.rs:1-279 | 7379 (0 cached) | 1481 (976 reasoning) | 0.0296 | 5.9827 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/vars.rs:1-54 | 2971 (0 cached) | 711 (454 reasoning) | 0.0131 | 5.9958 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_api.rs:1-142 | 4588 (0 cached) | 795 (539 reasoning) | 0.0171 | 6.0129 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_pinning.rs:1-50 | 3002 (0 cached) | 1183 (600 reasoning) | 0.0178 | 6.0307 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery r0 | 13401 (0 cached) | 102 (0 reasoning) | 0.0010 | 0.2472 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r0 | 5661 (0 cached) | 333 (0 reasoning) | 0.0006 | 0.2477 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r1 | 5783 (3584 cached) | 948 (0 reasoning) | 0.0007 | 0.2484 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | hidpi-bg-fix r0 | 18992 (2816 cached) | 473 (0 reasoning) | 0.0014 | 0.2498 |
+| 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r1 [Sol fix] | 19141 (0 cached) | 3427 (2951 reasoning) | 0.0821 | 1.6836 |
+| 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r2 [Sol fix] | 22852 (0 cached) | 463 (347 reasoning) | 0.0618 | 1.7453 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | changelog r0 | 10780 (256 cached) | 1284 (0 reasoning) | 0.0014 | 0.2511 |
 
 ### 0.11 follow-ups: file dialogs + editable combobox (BizyBot4, branch m0.11-dialogs-combobox)
 

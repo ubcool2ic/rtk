@@ -108,8 +108,8 @@ fn dispatch_handler_can_replace_itself() {
 /// `dispatch` with no handler installed is a no-op.
 #[test]
 fn dispatch_without_handler_is_noop() {
-    // Ensure no handler is installed by installing then clearing via a fresh
-    // dispatch that replaces it with a no-op.
+    // There is no public way to clear the handler, so install a no-op one and
+    // verify that dispatching to it does not panic or touch other state.
     set_handler_for_test(|_tk, _ev| {});
     let mut tk = Tk::new();
     dispatch(&mut tk, TrayEvent::Click);
@@ -128,7 +128,7 @@ fn tray_error_display() {
 /// `TrayError` implements `std::error::Error`.
 #[test]
 fn tray_error_is_error() {
-    /// Verifies that TrayEvent implements Clone, Debug, PartialEq, and Eq with correct equality semantics.
+    /// Compile-time check that `E` implements `std::error::Error`.
     fn assert_error<E: std::error::Error>(_: &E) {}
     assert_error(&TrayError::InvalidIcon);
     assert_error(&TrayError::Platform("x".into()));

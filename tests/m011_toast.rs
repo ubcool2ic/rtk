@@ -118,12 +118,21 @@ fn position_variants_place_toasts() {
 #[test]
 fn toasts_render() {
     let mut tk = make_tk();
+    let baseline = tk.render_to_pixmap(640, 480).expect("baseline render");
+    let baseline_data = baseline.data().to_vec();
     let _ = tk.toast_with("info", ToastKind::Info, 0);
     let _ = tk.toast_with("ok", ToastKind::Success, 0);
     let _ = tk.toast_with("warn", ToastKind::Warning, 0);
     let _ = tk.toast_with("err", ToastKind::Error, 0);
+    // Let the fade-in finish so the toasts are fully opaque.
+    tk.sim_advance_time(500);
     let pixmap = tk.render_to_pixmap(640, 480).expect("render");
     assert_eq!(pixmap.width(), 640);
+    assert_ne!(
+        pixmap.data(),
+        &baseline_data[..],
+        "rendering toasts must change the pixels"
+    );
     let rect: Rect = tk.toast_rect(tk.toasts()[0].0).expect("rect");
     assert!(rect.width > 0.0);
 }

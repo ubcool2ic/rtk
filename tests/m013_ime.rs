@@ -42,15 +42,18 @@ fn commit_inserts_and_clears_preedit() {
 /// A focus change implicitly cancels an active composition.
 #[test]
 fn focus_change_clears_preedit() {
-    let (mut tk, _entry) = entry_tk();
+    let (mut tk, entry) = entry_tk();
     let root = tk.root();
     let other = Entry::new(&mut tk, root).expect("entry2");
     tk.pack(other, PackOpts { side: Side::Top, fill: rtk::Fill::X, ..PackOpts::default() });
     tk.sim_resize(240, 120);
-    tk.sim_click(20.0, 10.0);
+    let first_rect = tk.widget_rect(entry).expect("first rect");
+    let other_rect = tk.widget_rect(other).expect("other rect");
+    tk.sim_click(first_rect.x + 20.0, first_rect.y + first_rect.height / 2.0);
+    assert_eq!(tk.focused_widget(), Some(entry));
     tk.sim_ime_preedit("abc", None);
     assert!(tk.ime_preedit().is_some());
-    tk.sim_click(20.0, 50.0);
+    tk.sim_click(other_rect.x + 20.0, other_rect.y + other_rect.height / 2.0);
     assert!(tk.ime_preedit().is_none());
     assert_eq!(tk.focused_widget(), Some(other));
 }

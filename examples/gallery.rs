@@ -227,8 +227,13 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let row = Frame::new(tk, col_a)?;
     tk.pack(row, PackOpts::default());
 
+    let row_opts = PackOpts {
+        side: Side::Left,
+        padx: 2.0,
+        ..PackOpts::default()
+    };
     let normal = Button::new(tk, row, "Normal")?;
-    tk.pack(normal, PackOpts::default());
+    tk.pack(normal, row_opts);
     tk.tooltip(normal, "A plain button");
     if let Some(img) = icons::icon(tk, Icon::Bolt, 16, Color::rgb(79, 140, 255)) {
         tk.config(normal, Opt::Image(img));
@@ -237,11 +242,11 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
 
     let accent = Button::new(tk, row, "Accent")?;
     tk.config(accent, Opt::Style("Accent.TButton".into()));
-    tk.pack(accent, PackOpts::default());
+    tk.pack(accent, row_opts);
 
     let disabled = Button::new(tk, row, "Disabled")?;
     tk.config(disabled, Opt::Disabled(true));
-    tk.pack(disabled, PackOpts::default());
+    tk.pack(disabled, row_opts);
 
     let entry = Entry::new(tk, col_a)?;
     tk.pack(entry, PackOpts::default());
@@ -284,12 +289,25 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let list_row = Frame::new(tk, col_b)?;
     tk.pack(list_row, PackOpts::default());
     let listbox = Listbox::new(tk, list_row, 6)?;
-    tk.pack(listbox, PackOpts::default());
+    tk.pack(
+        listbox,
+        PackOpts {
+            side: Side::Left,
+            ..PackOpts::default()
+        },
+    );
     for i in 0..20 {
         tk.listbox_insert(listbox, i, format!("Item {i}"));
     }
     let list_bar = Scrollbar::new(tk, list_row)?;
-    tk.pack(list_bar, PackOpts::default());
+    tk.pack(
+        list_bar,
+        PackOpts {
+            side: Side::Left,
+            fill: Fill::Y,
+            ..PackOpts::default()
+        },
+    );
     tk.link_scrollbar(list_bar, listbox);
 
     // --- Column C: text, canvas ------------------------------------------
@@ -478,9 +496,13 @@ fn build_data(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
         },
     );
     for i in 0..3 {
-        let root = tk.tree_insert(tree, None, &format!("Group {i}")).expect("root");
+        let root = tk
+            .tree_insert(tree, None, &format!("Group {i}"))
+            .ok_or("tree_insert failed for a root node")?;
         for j in 0..3 {
-            let child = tk.tree_insert(tree, Some(root), &format!("Child {i}.{j}")).expect("child");
+            let child = tk
+                .tree_insert(tree, Some(root), &format!("Child {i}.{j}"))
+                .ok_or("tree_insert failed for a child node")?;
             for k in 0..2 {
                 tk.tree_insert(tree, Some(child), &format!("Leaf {i}.{j}.{k}"));
             }
@@ -543,8 +565,8 @@ fn build_charts(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     tk.chart_set_time_axis(line, true);
     tk.chart_set_legend(line, true);
     tk.chart_set_max_points(line, 120);
-    let temp = tk.chart_add_series(line, "temp").unwrap_or(0);
-    let humidity = tk.chart_add_series(line, "humidity").unwrap_or(1);
+    let temp = tk.chart_add_series(line, "temp").ok_or("chart_add_series failed")?;
+    let humidity = tk.chart_add_series(line, "humidity").ok_or("chart_add_series failed")?;
     let line_points: Vec<(f64, f64)> = (0..40)
         .map(|i| {
             let x = (i * 60) as f64;
@@ -573,7 +595,7 @@ fn build_charts(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let area = Chart::new(tk, col_a, 640.0, 140.0, ChartKind::Area)?;
     tk.pack(area, PackOpts::default());
     tk.chart_set_legend(area, true);
-    let area_series = tk.chart_add_series(area, "load").unwrap_or(0);
+    let area_series = tk.chart_add_series(area, "load").ok_or("chart_add_series failed")?;
     let area_points: Vec<(f64, f64)> = (0..40)
         .map(|i| {
             let x = i as f64;
@@ -585,7 +607,7 @@ fn build_charts(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let bar = Chart::new(tk, col_a, 640.0, 140.0, ChartKind::Bar)?;
     tk.pack(bar, PackOpts::default());
     tk.chart_set_legend(bar, true);
-    let bar_series = tk.chart_add_series(bar, "sales").unwrap_or(0);
+    let bar_series = tk.chart_add_series(bar, "sales").ok_or("chart_add_series failed")?;
     let bar_points: Vec<(f64, f64)> = (0..8)
         .map(|i| (i as f64, 10.0 + (i as f64 * 7.0) % 40.0))
         .collect();
@@ -758,8 +780,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut screenshot_dir: Option<PathBuf> = None;
     let mut i = 1;
     while i < args.len() {
-        if args[i] == "--screenshot-dir" && i + 1 < args.len() {
-            screenshot_dir = Some(PathBuf::from(&args[i + 1]));
+        if args[i] == "--screenshot-dir" {
+            let Some(value) = args.get(i + 1) else {
+                return Err("--screenshot-dir requires a directory argument".into());
+            };
+            screenshot_dir = Some(PathBuf::from(value));
             i += 2;
             continue;
         }

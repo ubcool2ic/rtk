@@ -196,7 +196,7 @@ fn test_monospace_font_option() {
     tk.pack(lbl, PackOpts::default());
 
     let pm = tk.render_to_pixmap(100, 50);
-    assert!(pm.is_ok());
+    pm.expect("render_to_pixmap should succeed");
 }
 
 /// Tests tooltip registration and activation on mouse hover.

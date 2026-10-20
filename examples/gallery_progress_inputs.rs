@@ -192,6 +192,7 @@ fn build_page(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn std::error::E
         let t = tick as f64;
         let value = 0.5 + 0.5 * (t * 0.2).sin();
         progress_var.set(tk, value);
+        slider_var.set(tk, value);
         tk.ring_set(ring, value);
     });
 

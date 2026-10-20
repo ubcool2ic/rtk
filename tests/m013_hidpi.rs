@@ -218,25 +218,37 @@ fn hit_testing_is_logical_at_every_scale() {
     }
 }
 
-/// Counts pixels inside `rect` (physical px) that differ from `bg`.
-fn ink_pixels(pixmap: &tiny_skia::Pixmap, rect: Rect, bg: [u8; 4]) -> usize {
+/// Samples the RGBA colour of the pixel at physical coordinates `(x, y)`,
+/// clamping to the pixmap bounds.
+fn sample_pixel(pixmap: &tiny_skia::Pixmap, x: f32, y: f32) -> [u8; 4] {
+    let px = (x.max(0.0) as usize).min(pixmap.width().saturating_sub(1) as usize);
+    let py = (y.max(0.0) as usize).min(pixmap.height().saturating_sub(1) as usize);
+    let idx = py * pixmap.width() as usize * 4 + px * 4;
+    let data = pixmap.data();
+    [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]
+}
+
+/// Measures contrast-weighted ink area inside `rect` (physical px) relative to `bg`.
+///
+/// Antialiased edge pixels contribute proportionally rather than as full pixels,
+/// so their larger relative contribution at small scales does not bias the ratio.
+fn ink_pixels(pixmap: &tiny_skia::Pixmap, rect: Rect, bg: [u8; 4]) -> f64 {
     let data = pixmap.data();
     let stride = pixmap.width() as usize * 4;
     let x0 = rect.x.max(0.0) as usize;
     let y0 = rect.y.max(0.0) as usize;
     let x1 = ((rect.x + rect.width) as usize).min(pixmap.width() as usize);
     let y1 = ((rect.y + rect.height) as usize).min(pixmap.height() as usize);
-    let mut count = 0usize;
+    let mut count = 0.0;
     for y in y0..y1 {
         for x in x0..x1 {
             let idx = y * stride + x * 4;
             let px = &data[idx..idx + 4];
-            if px[0].abs_diff(bg[0]) > 8
-                || px[1].abs_diff(bg[1]) > 8
-                || px[2].abs_diff(bg[2]) > 8
-            {
-                count += 1;
-            }
+            let contrast = px[0]
+                .abs_diff(bg[0])
+                .max(px[1].abs_diff(bg[1]))
+                .max(px[2].abs_diff(bg[2]));
+            count += f64::from(contrast) / 255.0;
         }
     }
     count
@@ -256,9 +268,16 @@ fn label_ink_scales_with_scale_factor() {
             logical.width * scale as f32,
             logical.height * scale as f32,
         );
-        // The label background is the theme's default frame colour.
-        let bg = [217u8, 217, 217, 255];
-        let ink = ink_pixels(&pixmap, physical, bg) as f64;
+        // Sample the label background from the rendered pixmap at the rect's
+        // top-left inner pixel instead of assuming a hard-coded colour.
+        let bg = sample_pixel(&pixmap, physical.x + 1.0, physical.y + 1.0);
+        let ink = ink_pixels(&pixmap, physical, bg);
+        let area = (physical.width as f64 * physical.height as f64).floor();
+        assert!(ink > 0.0, "label rendered no ink at scale {scale}");
+        assert!(
+            ink < area,
+            "label ink covers the whole rect at scale {scale}: background colour assumption is wrong"
+        );
         match baseline {
             None => baseline = Some(ink),
             Some(base) => {

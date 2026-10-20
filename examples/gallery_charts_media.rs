@@ -8,9 +8,9 @@
 #[cfg(feature = "tray")]
 use std::cell::RefCell;
 
-use rtk::{
-    Button, Chart, ChartKind, Image, Label, Opt, PackOpts, Sparkline, Tk, WidgetId,
-};
+use rtk::{Chart, ChartKind, Label, Opt, PackOpts, Sparkline, Tk, WidgetId};
+#[cfg(feature = "svg")]
+use rtk::{Button, Image};
 
 /// Builds the "Charts & media" page under `parent`.
 ///
@@ -104,8 +104,8 @@ fn build_page(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn std::error::E
     let mut tick: u64 = 0;
     tk.every(500, move |tk| {
         tick = tick.wrapping_add(1);
-        let x = (tick * 60) as f64;
         let t = tick as f64;
+        let x = t * 60.0;
         let temp_y = 20.0 + 5.0 * (t * 0.2).sin();
         let humidity_y = 50.0 + 20.0 * (t * 0.15).cos();
         tk.chart_append(line, temp, x, temp_y);

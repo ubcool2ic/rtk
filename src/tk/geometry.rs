@@ -393,12 +393,19 @@ impl Tk {
                 }
             }
 
-            if !pack_children.is_empty() {
+            // Paint order among siblings: pack, then grid, then place (topmost),
+            // each group in creation order. `pending` is a LIFO stack, so the
+            // groups are pushed in the reverse of the desired paint order.
+            let mut pack_entries = Vec::new();
+            let has_pack = !pack_children.is_empty();
+            if has_pack {
                 let rects = layout::pack(content, &self.pack_items(&pack_children));
                 for (child, child_rect) in pack_children.into_iter().zip(rects).rev() {
-                    pending.push((child, child_rect, content.within(clip)));
+                    pack_entries.push((child, child_rect, content.within(clip)));
                 }
-            } else if !grid_children.is_empty() {
+            }
+            let mut grid_entries = Vec::new();
+            if !has_pack && !grid_children.is_empty() {
                 let (columns, rows): (Vec<_>, Vec<_>) = self.node(id).map(|node| {
                     (
                         node.columns.iter().map(|(&i, &w)| (i, w)).collect(),
@@ -407,16 +414,20 @@ impl Tk {
                 }).unwrap_or_default();
                 let rects = layout::grid(content, &self.grid_items(&grid_children), &columns, &rows);
                 for (child, child_rect) in grid_children.into_iter().zip(rects).rev() {
-                    pending.push((child, child_rect, content.within(clip)));
+                    grid_entries.push((child, child_rect, content.within(clip)));
                 }
             }
+            let mut place_entries = Vec::new();
             for child in place_children.into_iter().rev() {
                 let Some(cnode) = self.node(child) else { continue };
                 if let Some(Manager::Place(opts)) = cnode.manager {
                     let prect = layout::place_rect(content, cnode.requested, opts);
-                    pending.push((child, prect, content.within(clip)));
+                    place_entries.push((child, prect, content.within(clip)));
                 }
             }
+            pending.extend(place_entries);
+            pending.extend(grid_entries);
+            pending.extend(pack_entries);
         }
         if !self.focused.is_some_and(|id| self.is_focusable(id)) {
             self.focused = None;

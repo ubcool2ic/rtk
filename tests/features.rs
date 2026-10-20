@@ -48,9 +48,12 @@ fn test_listbox_click_keys_wheel_clamp() {
     tk.sim_wheel(-2.0); // scroll down
     // scroll clamped
     tk.sim_wheel(-100.0);
+    // Wheel scrolling must not change the selection
+    assert_eq!(tk.listbox_curselection(lb), Some(0));
     // Delete items
     tk.listbox_delete(lb, 0, 1);
     assert_eq!(tk.listbox_get(lb).len(), 4);
+    assert!(tk.listbox_get(lb)[0] == "Cherry");
 }
 
 /// Verifies that dragging a linked scrollbar changes the listbox view range.
@@ -238,6 +241,12 @@ fn test_progressbar_render_fraction() {
     let pixmap = tk.render_to_pixmap(120, 40).unwrap();
     assert_eq!(pixmap.width(), 120);
     assert_eq!(pixmap.height(), 40);
+    let half = pixmap.data().to_vec();
+
+    // An empty bar must render differently from a half-filled one.
+    val.set(&mut tk, 0);
+    let empty = tk.render_to_pixmap(120, 40).unwrap();
+    assert_ne!(half, empty.data().to_vec());
 }
 
 /// Ensures tab focus order includes new interactive widgets but excludes the canvas.

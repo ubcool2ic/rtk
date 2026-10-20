@@ -18,7 +18,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     while i < args.len() {
         if args[i] == "--dark" {
             dark = true;
-        } else if args[i] == "--png" && i + 1 < args.len() {
+        } else if args[i] == "--png" {
+            if i + 1 >= args.len() {
+                return Err("--png requires an output path".into());
+            }
             png_out = Some(args[i + 1].clone());
             i += 1;
         }

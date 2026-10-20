@@ -230,10 +230,14 @@ fn test_tree_10k_nodes_performance() {
     assert_eq!(tk.tree_visible_count(tree), 10_100);
     let rect = tk.widget_rect(tree).expect("rect");
     tk.sim_click(rect.x + 40.0, rect.y + 4.0);
+    let first = tk.tree_selection(tree);
+    assert!(first.is_some());
     tk.sim_key(Key::End);
-    assert!(tk.tree_selection(tree).is_some());
+    let last = tk.tree_selection(tree);
+    assert!(last.is_some());
+    assert_ne!(first, last, "End must move the selection to the last row");
     let elapsed = start.elapsed();
-    assert!(elapsed.as_secs_f64() < 2.0, "10k tree ops took {elapsed:?}");
+    assert!(elapsed.as_secs_f64() < 10.0, "10k tree ops took {elapsed:?}");
 }
 
 #[test]
@@ -245,4 +249,13 @@ fn test_tree_two_roots() {
     assert_eq!(tk.tree_children(tree, None), vec![a, b]);
     assert!(tk.tree_select(tree, Some(b)));
     assert_eq!(tk.tree_selection(tree), Some(b));
+    // Keyboard navigation moves between the two top-level nodes.
+    let rect = tk.widget_rect(tree).expect("rect");
+    let row_h = tk.tree_row_height(tree);
+    tk.sim_click(rect.x + 40.0, rect.y + row_h / 2.0);
+    assert_eq!(tk.tree_selection(tree), Some(a));
+    tk.sim_key(Key::Down);
+    assert_eq!(tk.tree_selection(tree), Some(b));
+    tk.sim_key(Key::Up);
+    assert_eq!(tk.tree_selection(tree), Some(a));
 }

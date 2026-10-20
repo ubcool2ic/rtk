@@ -332,7 +332,22 @@ impl Tk {
                     let local_y = y - node.rect.y;
                     let row_idx = node.list_scroll + (local_y / line_h).floor() as usize;
                     if row_idx < node.list_items.len() {
+                        // Double-click detection: a second press on the same row
+                        // within 400 ms activates it (in addition to selecting).
+                        let now = self.now_ms();
+                        let prev = self
+                            .node(id)
+                            .map(|n| (n.list_last_click_ms, n.list_last_click_row))
+                            .unwrap_or((0, None));
+                        let is_double = prev.1 == Some(row_idx) && now.saturating_sub(prev.0) <= 400;
+                        if let Some(n) = self.node_mut(id) {
+                            n.list_last_click_ms = now;
+                            n.list_last_click_row = Some(row_idx);
+                        }
                         self.listbox_select(id, Some(row_idx));
+                        if is_double {
+                            self.dispatch_list_activate(id, row_idx);
+                        }
                     }
                 }
                 Kind::Spinbox => {
@@ -712,7 +727,17 @@ impl Tk {
             let on_button = self.focused.is_some_and(|f| {
                 self.node(f).is_some_and(|n| n.kind == Kind::Button)
             });
-            if !on_button {
+            // A focused Listbox with a selection and an activate binding takes
+            // precedence over the modal accept handler (e.g. directory chooser
+            // navigation into a sub-directory).
+            let listbox_activates = self.focused.is_some_and(|f| {
+                self.node(f).is_some_and(|n| {
+                    n.kind == Kind::Listbox
+                        && n.list_selection.is_some()
+                        && n.list_activate_cb.is_some()
+                })
+            });
+            if !on_button && !listbox_activates {
                 if let Some(mut accept) = self.modal_accept.take() {
                     accept(self);
                     // If the dialog rejected the input (still open, no new handler
@@ -816,6 +841,13 @@ impl Tk {
                     };
                     if new_sel != sel {
                         self.listbox_select(id, new_sel);
+                    }
+                    // Enter/Return activates the selected row (does not fire on
+                    // arrow-key selection changes).
+                    if matches!(key, Key::Enter) {
+                        if let Some(idx) = self.node(id).and_then(|n| n.list_selection) {
+                            self.dispatch_list_activate(id, idx);
+                        }
                     }
                 }
             }

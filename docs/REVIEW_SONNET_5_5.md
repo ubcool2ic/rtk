@@ -639,3 +639,566 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 
 - RECOVERED: src/tk/dnd.rs 1-202 edits re-applied. After the fix, a hover-only binding no longer swallows drops. tests/m012_dnd.rs expected the old behaviour, where `sim_file_drop` returned true on a hover-only target, so DeepSeek updated it to expect false and to check that the Drop phase still reaches the hover callback (recover-dnd). The lead reviewed this. It matches the intended semantics of the BizyBot5 hand fix flagged for review.
 
+- RECOVERED: src/tk/damage.rs 1-251. One SEARCH block was stale; DeepSeek re-targeted it (recover-damage r1). Result: degenerate coalesced damage now forces a full repaint instead of being silently dropped, and the scratch-failure fallback resets `coalesced`. This confirms the BizyBot6 coalesce hand fix otherwise never drops damage and stays bounded.
+
+### src/tk/tristate.rs lines 1-172
+- none
+
+I found no bugs or API problems in lines 1-172 of `src/tk/tristate.rs`.
+
+- **Borrows:** the immutable `node` borrows at lines 59 and 138-145 end before `var.get(self)` and `var.set(self, …)` need `self`, so there is no borrow conflict.
+- **Cycle logic:** the transitions in `tristate_activate` match the rustdoc on `checkbutton_set_cycle_mixed`. With cycling on, the order is `Unchecked -> Checked -> Mixed -> Unchecked`. With cycling off, a mixed box goes to `Checked`.
+- **Mixed flag on disable:** `checkbutton_set_tristate(false)` clears both `check_mixed` and `check_cycle_mixed`, so no stale mixed state survives.
+- **API:** all public methods follow `checkbutton_<verb>` naming and have `///` docs. `CheckState` is re-exported from `lib.rs`, and I did not check it for `#[non_exhaustive]` because its definition is outside this chunk.
+
+I did not check whether `inputs` is dropped when a widget is destroyed, because that code is outside this chunk.
+
+- NOTE: the first Sonnet call writing tests/tk_review_regressions.rs used all 32k max_tokens on reasoning, ignoring the 16k budget, and returned no code ($0.37). Per the rules it was not retried at the same settings. The work was split into two smaller tasks with max_tokens 40k.
+
+### Fable regression tests
+- tests/tk_review_regressions.rs (Sonnet): Fable F1-F4. All pass.
+- tests/tk_review_regressions_2.rs (Sonnet; compile errors fixed by DeepSeek and Sol): F6-F8, F20, pass-3 F5 (passes; nested dialogs were fixed in 0.11), pass-3 F6 (**failed: real bug**).
+- **pass-3 F6 fixed** (DeepSeek, f6-ask-directory and listbox-activate, with Sol fixing the new test): `ask_directory` now navigates into a sub-directory or `..` on Enter or double-click, and Enter otherwise accepts. This added `Tk::listbox_bind_activate`, which fires on Enter or double-click but not on selection changes, plus tests/listbox_activate.rs.
+
+### src/dialog.rs lines 646-894
+- [high] [bug] `ask_directory`: the ".." branch in `activate` holds a `cur_dir.borrow()` temporary across the whole `if let` body (edition 2021). The `borrow_mut()` inside then panics with `BorrowMutError`, so navigating up crashes (line 803) -> fixed
+- [medium] [bug] F7/F8: the save dialog's list was static. Activating a file did not fill the name entry, directories could not be entered, and the path label never updated (lines 678-683) -> fixed. Enter/double-click on a file now fills the entry, a directory or ".." navigates and refreshes the list, and the path label updates. I only used APIs already visible in this chunk, so the fill happens on activation rather than on single-click selection.
+- [low] [bug] The save dialog's refresh clears the listbox itself and adds ".." if `populate_file_list` didn't, so the result is the same either way -> fixed
+- [low] [bug] F10/F11: the filter syntax and the empty typed-confirm phrase are not in this chunk (646-894), so I could not check or fix them -> not fixed (out of chunk)
+
+### src/dialog.rs lines 345-645
+- [medium] [bug] F11: with an empty `phrase`, Confirm started disabled and the entry never fires a change event, so the dialog could only be confirmed with Enter (line 394) -> fixed (Confirm now starts enabled when `phrase` is empty)
+- [medium] [bug] F8: filter extensions given as `*.png`, `.png` or `*.*` never matched in `read_dir_entries`, and the combobox label showed `*.*.png` or `*.` (lines 528-530, 555) -> fixed (extensions are normalised once, and the label shows `(*)` for match-all filters)
+- [medium] [bug] F7: changing the filter combobox does not refresh the file list. The list is built once from the first filter and only re-filtered on navigation (lines 560-565, 597) -> not fixed (this chunk shows no variable-change or combobox-change hook, and I won't invent API)
+- [low] [bug] F10: the save dialog's list does not fill the name entry -> not fixed (`ask_save_filename` is outside this chunk)
+
+### src/dialog.rs lines 1-344
+- [medium] [bug] `build_scrim_card` pushed the outer dialog's state onto `modal_stack` and cleared `tk.modal` before creating the scrim and card. If `Frame::new` failed (e.g. arena full), the outer dialog was left on the stack with no active modal, and a half-built scrim could leak. The push now happens only after both frames exist, and a card failure destroys the scrim. (lines 82-123) -> fixed
+- [low] [api] Public enum `MessageKind` lacked `#[non_exhaustive]` (line 19) -> fixed
+- [low] [bug] `message_box`, `ask_yes_no` and `ask_string` call `.unwrap()` on `Label::new`, `Button::new`, `Entry::new` and `Frame::new`. This can panic and leave the modal half-built if the arena fills mid-dialog. -> not fixed (it needs a larger restructure of each function, and the failure is only reachable at arena exhaustion)
+- [low] [api] `message_box` ignores `_kind`, so Info, Warning and Error render identically. -> not fixed (the icon is a feature, not a bug)
+- [info] F7/F8/F10/F11 concern the file-dialog filter, filter syntax, save-dialog name fill and typed-confirm phrase. None of that code is in lines 1-344. -> not applicable to this chunk
+- The F5 modal stack in `finish_modal`, `close` and `modal_depth` is intact and unchanged.
+
+### src/tk/combobox.rs lines 1-30
+- [severity low] [bug] `combobox_set_values` (line 12) neither clamps nor resets the bound selection variable when the new list is shorter. `combobox_get` then returns `(idx, "")` with a stale index. This is safe: `get` returns `None` for out-of-range indices, and a negative `i64` cast to `usize` becomes huge, so it can't panic. Clamping would mean writing to the variable and could surprise users who set the variable first and values second, and the `combo_var` write path isn't visible in this chunk. -> not fixed (intentional; the caller owns the variable)
+- [severity low] [api] `combobox_get` (line 21) returns the raw variable index with empty text for out-of-range or negative selections, where tkinter's `current()` gives -1. It also defaults to index 0 when no variable is bound. The result is non-panicking and unambiguous (empty text), and other callers in the crate may rely on the raw index, so I left it unchanged. -> not fixed (behaviour change outside this chunk's scope)
+- [severity low] [docs] `combobox_get` doc (line 20) does not state that the text is empty when the index is out of range, nor what `bool` and `Option` mean on the other methods. This is cosmetic, and the lines are otherwise documented. -> not fixed
+
+No edits needed: no panics, UTF-8 slicing, overflow or borrow issues in lines 1-30. The mutable node borrow ends before `self.dirty = true` (NLL), and the casts are safe.
+
+### examples/bench.rs lines 1-166
+- [severity low] [docs] The `demo_like` doc comment says the tree is "three side-by-side frames containing a label and entry". The function actually builds radio buttons, a checkbutton, a scale, a spinbox, a progress bar, a listbox with a scrollbar, and a canvas with 60 ovals. Since users copy from this example, the doc could mislead them (line 10) -> fixed
+- [severity low] [bug] I found nothing else in this chunk that needs changing. There are no panics on user paths: `?` and `ok_or` are used instead of `unwrap`. `w - (i % 2)` cannot underflow for the sizes used. The integer-literal inference in `f64::from(frames)` compiles, so I left it. -> not fixed (no issue)
+
+### examples/bench_table.rs lines 1-173
+- [low] [bug] `build_table` and `build_tree` use `.expect()` on the fallible `Table::new` and `TreeView::new` constructors (lines 24, 53), even though `main` already returns `Result<_, Box<dyn Error>>`. Users copy this example, so it should show error propagation with `?` instead of panicking. I assumed both constructors return `Result<_, RtkError>`, which is consistent with `RtkError::InvalidParent` and `ArenaFull` in lib.rs. -> fixed
+- [low] [bug] The `.expect("root")` on `tree_insert` (line 64) and the discarded result of the leaf `tree_insert` (line 66) are not changed. I can't see the return type of `tree_insert`, so I can't convert it safely. -> not fixed (the signature is outside this chunk)
+- [low] [docs] The first `Tk` stays alive after it is shadowed at line 156, so two toolkits exist at once. This is harmless in a headless run, and `Tk::new` allocates nothing global as far as the visible API shows. -> not fixed
+- [low] [docs] `report` prints FAIL but `main` still exits 0, so the "performance check" cannot gate CI. This is a design choice for an example, so I left it. -> not fixed
+
+### examples/counter.rs lines 1-27
+- none
+
+I found no bugs and no API or doc problems in lines 1-27.
+
+I could only see `lib.rs`, not the signatures of `Tk` or `PackOpts`, so I could not check three things. These are whether `Tk::new()` returns a `Result`, whether `mainloop()`'s error type converts to `Box<dyn Error>`, and whether `PackOpts` is `Copy`. The code reuses `options` for two `pack` calls, which only compiles if it is `Copy`.
+
+Within what is visible:
+- The `///` doc comment on `main` is present and the module doc matches what the program does.
+- Fallible widget construction propagates with `?` instead of `unwrap`.
+- `count.get(tk)` is handled as an `Option`.
+- `saturating_add` avoids overflow on the counter.
+
+### examples/demo.rs lines 1-139
+- [low] [bug] `--png` as the last argument, with no path, was silently ignored. The demo then opened a window instead of writing a PNG. (line 21) -> fixed: it now returns an error.
+- [low] [bug] The canvas drag callback adds one oval per Press/Move event with no cap. A long drag grows the item list without bound, but the "Clear Canvas" button already resets it, so this is acceptable for a demo. (line 122) -> not fixed (demo behaviour, user-clearable)
+- [low] [api] Several calls cannot be checked against the reference, because only lib.rs is shown. These are `listbox_insert(.., usize::MAX, ..)` as an append, `Var::trace`, `Var::get` returning `Option`, and `Theme: PartialEq`. -> not fixed (no evidence of a bug in the visible code)
+
+### examples/form.rs lines 1-50
+- none
+
+I found nothing in lines 1-50 to fix. I could only check this chunk against `lib.rs`, so I could not confirm the signatures of `Tk` methods such as `mainloop`, `grid`, `set_command` and `entry_get`, or the `GridOpts` field types and the `Sticky::EW` variant.
+
+- **Error handling:** every fallible constructor uses `?`, and `main` returns a boxed error, so nothing can panic from a bad parent or arena-full condition. `unwrap_or_default()` on `entry_get` is a safe fallback for a destroyed widget.
+- **Grid layout:** the grid options are consistent. The submit button spans both columns with the default column 0, and column 1 is made expandable so the entries stretch.
+- **Doc comments:** the module and `main` doc comments match what the code does.
+
+### examples/gallery.rs lines 637-800
+- [medium] [bug] `--screenshot-dir` given without a value is silently ignored, so the interactive window opens instead of rendering screenshots (lines 761-765) -> fixed (now returns an error)
+- [medium] [bug] Semantic-colour swatches and the label text colour are fixed at build time (lines 644-653). `tokens` is a snapshot, and the label colour is hard-coded `rgb(25,25,25)`. After a theme switch, including the dark-theme screenshots, the swatches still show the Light colours and the labels may be unreadable on a dark canvas. -> not fixed (the canvas items have no re-theme hook visible in this chunk, and the `ColorRole` names for a themed text colour are not shown; this needs a rebuild-on-theme-change callback)
+- [low] [bug] The canvas height is hard-coded to 600 (line 646) while the swatch rows are generated from `ColorRole::ALL` at 26px each. If the role count grows past about 22, rows are clipped. -> not fixed (the window is only 760px tall, so the canvas cannot simply be sized to the role count)
+- [low] [docs] `iconphoto_rgba` errors are discarded with `let _` (line 778). -> not fixed (the icon is cosmetic and failure on some platforms is acceptable)
+- [low] [docs] The `_unused` and `_grid_defaults` placeholder functions exist only to silence warnings (lines 787-799). -> not fixed (they are harmless, documented, and a refactor is out of scope)
+
+### examples/gallery.rs lines 310-636
+- [medium] [bug] `tree_insert(...).expect("root"/"child")` panics on a fallible path in an example users copy (lines 481, 483) -> fixed (propagates an error through the function's `Result` return instead of panicking)
+- [low] [bug] `chart_add_series(...).unwrap_or(0/1)` silently falls back to a series index that may not exist, so data would go to the wrong series or be dropped (lines 546, 547, 576, 588) -> fixed (propagates an error instead)
+- [low] [docs] "Open"/"Quit" menu items show `Ctrl+O`/`Ctrl+Q` accelerators. These are display-only unless a shortcut is registered elsewhere, which this chunk cannot show -> not fixed (cannot verify from this chunk)
+- [low] [bug] `tick * 60` in the timer callback could overflow after a `wrapping_add` -> not fixed (unreachable in practice: it would take about 2^64/60 ticks at 500 ms each)
+
+I assumed `tree_insert` and `chart_add_series` return `Option`, based on how the existing code uses them. If either returns `Result`, the `ok_or` edits will not compile.
+
+### examples/gallery.rs lines 1-309
+- [medium] [bug] The "row" frame packs Normal/Accent/Disabled with the default side (Top), so the buttons stack vertically instead of sitting in one row (lines 231, 240, 244) -> fixed
+- [medium] [bug] The listbox and its scrollbar are packed in `list_row` with the default side, so the vertical scrollbar lands below the listbox instead of beside it (lines 287, 292) -> fixed. This assumes `Fill::Y` exists alongside `Fill::X` and `Fill::Both`.
+- [low] [bug] The canvas text uses a hard-coded near-black colour (line 306), which may be unreadable on dark themes -> not fixed. The palette's text-colour field isn't visible in this chunk, so a safe replacement can't be written. It is also a deliberate Okabe-Ito-style fixed colour demo.
+- NOTE: edits for examples/gallery.rs:1-309 were REVERTED (checks failed or SEARCH mismatch): '[clippy failed]\nerror: using `clone` on type `PackOpts` which implements the `Copy` trait\n   --> examples/gallery.rs:236:21\n    |\n236 |     tk.pack(normal, row_opts.clone());\n    |                     ^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `row_opts`\n    |\n    = help: for further info'
+
+### examples/gallery_charts_media.rs lines 1-168
+- [low] [bug] `Button` and `Image` are imported unconditionally but only used inside the `#[cfg(feature = "svg")]` block, so a build without `svg` emits unused-import warnings (line 12) -> fixed (imports moved under the same cfg).
+- [low] [bug] `tick` is advanced with `wrapping_add`, but `tick * 60` is a plain u64 multiplication that would panic on overflow in debug builds. The two are inconsistent, and users copy this pattern (line 107) -> fixed (computed in f64).
+- [low] [api] `chart_add_series(...).unwrap_or(0)` and `.unwrap_or(1)` silently fall back to a guessed series index if creation fails, so later appends could go to the wrong series (lines 27, 28, 34, 48) -> not fixed. I can't see the return type, and the fallback can't panic. Propagating the error would be better in a real app.
+- [low] [docs] The comment says x is "seconds since 2026-01-01T00:00Z", but the time axis may interpret x as Unix-epoch seconds, so labels could read as 1970 (line 103) -> not fixed. I can't confirm the axis semantics from this chunk.
+- [low] [docs] The tray "Show" menu item (index 0) has no handler, and a `Tray::new` error is silently ignored (lines 144-153) -> not fixed. This is acceptable demo behaviour and can't panic.
+
+### examples/gallery_m011.rs lines 1-189
+- none
+
+I found nothing to fix in this chunk. I could only check it against `lib.rs`, so the widget and `Tk` method signatures it calls are unverified.
+
+- **Error handling:** The `.expect(...)` calls sit inside the example's builder helpers, which return `WidgetId` rather than `Result`. That is a style choice, not a panic on a path where users supply input, so I left it.
+- **Accelerator labels (lines 17, 22):** `with_accel("Ctrl+O")` and `with_accel("Ctrl+Q")` may be display-only labels rather than bound shortcuts. I couldn't confirm this from the reference, so I left it.
+
+### examples/gallery_progress_inputs.rs lines 1-210
+- [severity low] [bug] The demo timer rewrites `progress_var` and the ring every 500 ms but never updates the slider. Dragging the slider is overwritten half a second later, and the slider no longer matches the bar and ring, contradicting "wires the sliders to the progress widgets" (lines 190-196) -> fixed (the timer now also sets `slider_var`)
+- [severity low] [docs] The page stacks about 1000 px of widgets in a 900 px window with plain `pack`, so the bottom of the page (canvas and its scrollbar) can be clipped on `main` (line 205) -> not fixed (changing the layout or window size is a restyle of working code, and the 1.0 gallery embeds the page in its own container)
+- [severity low] [bug] The canvas rectangles capture `accent` once at build time, so they keep the old color when the theme buttons are used (lines 179-183) -> not fixed (canvas items are static draws and there is no theme-change hook in the visible API)
+
+### examples/hello.rs lines 1-21
+- none
+
+I found nothing to fix in lines 1-21. I could not check the calls into `Tk` or `PackOpts`, because only `lib.rs` was provided. The file is consistent with the exported API as far as I can see.
+
+- Every public function has a `///` doc comment.
+- The `?` operators on `Label::new` and `Button::new` convert `RtkError` into `Box<dyn Error>` correctly, since `RtkError` implements `std::error::Error`.
+- The example has no `unwrap` calls and no panics on fallible paths.
+
+Two assumptions I could not verify:
+- `PackOpts` must be `Copy`, because `options` is passed by value twice (lines 13-14).
+- `mainloop()` must return a `Result` whose error converts into `Box<dyn Error>`.
+
+### examples/modern.rs lines 1-308
+- [low] [bug] The worker thread is never told to stop after `mainloop()` returns. `running` is only cleared in screenshot mode, so the thread keeps running and posting to the proxy after the window closes. Users who copy this pattern inherit the leak. (lines 300-306) -> fixed
+- [low] [docs] The `val <= 100` loop guard is dead, because `val` wraps at 102 and never exceeds 100. Only the `running` flag ends the loop, and that is now cleared on exit. -> not fixed (harmless, no behaviour change)
+
+I found no other real API misuse or panic paths in this chunk. Every fallible constructor uses `?`, and the `--screenshot` argument parsing is bounds-checked.
+
+### examples/screenshot.rs lines 1-20
+- none
+
+I found nothing to fix in lines 1-20. Two points rest on assumptions, because only `lib.rs` was provided, not the `Tk` or `PackOpts` signatures:
+- **Argument handling:** `main` reads the output path with `args_os`, so non-UTF-8 paths work. It has a default, and every fallible call uses `?`, so there are no unwraps on user-facing paths.
+- **API use:** `PackOpts` is reused for two `tk.pack` calls, which compiles only if it is `Copy`. `save_png` is called with `&path` (a `&PathBuf`), which compiles only if its parameter accepts `&Path` or `AsRef<Path>`.
+
+### examples/scrolling.rs lines 1-23
+- none
+
+I reviewed lines 1-23 and found nothing to fix. The reference API surface does not show signatures for `Tk::new`, `tk.title`, `tk.geometry`, `canvas_*`, `link_scrollbar` or `mainloop`, so I checked only what the chunk shows.
+
+- **Error handling:** The fallible constructors (`Canvas::new`, `Scrollbar::new`) use `?` and do not unwrap. `main` returns `Result<(), Box<dyn Error>>`, and `RtkError` implements `std::error::Error`, so this compiles.
+- **Layout math:** The 40 cards run from `y = 10` to `10 + 39*60 + 50 = 2400`. The scroll region height is `10 + 40*60 = 2410`, which covers every card with a 10px bottom margin.
+- **Width:** The canvas is 400 wide plus a scrollbar in a 420-wide window. The scrollbar width is theme-dependent and unknown here, so I left it alone.
+- **Doc comment:** `main` has its `///` doc comment, and the module-level `//!` comment matches the behavior shown.
+
+### examples/styling.rs lines 1-157
+- [medium] [bug] `--theme material` initialises `theme_var` to 0 (the `_ => 0` arm), so the "Light" radio is selected while the Material theme is active. Material is in the picker with value 3, and the comment saying it isn't is wrong (lines 61-68) -> fixed
+- [low] [bug] The `ProgressBar` maximum is 120.0 but it shares `sc_var` with a `Scale` ranging 0..100, so the bar can never reach full. Assuming the `120.0` argument is the maximum, as in tkinter's `ProgressBar` (the signature wasn't checked), I changed it to 100.0 (line 139) -> fixed
+
+### examples/timers.rs lines 1-20
+- none
+
+I found nothing to fix in lines 1-20, but I only had `lib.rs` and not the signatures of `Tk`, `Label`, `Button` or `TimerId`. These points rest on assumptions I could not check:
+- `Label::new` and `Button::new` are assumed to return `Result<WidgetId, RtkError>`, so the `?` conversions into `Box<dyn Error>` work (`RtkError` implements `Error`).
+- `Tk::mainloop` is assumed to return a `Result` whose error type implements `std::error::Error`.
+- `TimerId` is assumed to be `Copy`, so the `move` closure at line 17 can call `after_cancel(id)`.
+- The `n` counter is an `i32` that would take about 68 years of ticks to overflow, so it is not a practical concern.
+- The one-shot `after` at line 16 still fires after Stop is pressed. That is consistent with the header comment, since Stop only cancels the repeating tick.
+- The fallible `Label::new` and `Button::new` calls use `?` rather than `unwrap`, which is the right pattern for an example users copy.
+- `main` has a `///` doc comment.
+
+### examples/widgets.rs lines 1-31
+- none
+
+I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, `Var`, `Command` or `Scale` signatures, so I judged the calls by how they are used.
+
+- **Variables:** `enabled`, `level` and `status` are reused after being passed by value to widget constructors, so `Var` must be `Copy`, which is consistent with the `move` closure in the trace callback.
+- **Error handling:** every widget constructor uses `?`, so there are no `unwrap` calls on user paths. The one `unwrap_or(false)` in the trace callback is a safe fallback.
+- **Initial state:** the `Enabled` string matches the initial `true` of `enabled`, so the label does not contradict the checkbutton at startup.
+- **Docs:** the module doc and the `main` doc comment are present and match what the program does.
+
+### tests/canvas_shapes.rs lines 1-56
+- [severity low] [bug] `px` indexes the pixel buffer with no bounds check, so an out-of-range coordinate fails with an opaque index panic instead of a clear message (line 6-10) -> fixed
+- [severity low] [bug] The polygon handle is created and then discarded with `let _ = poly;`, so the polygon's bounds are never checked and the test asserts less than it appears to (lines 44, 51) -> fixed (now asserts the polygon's bounding box)
+- [severity low] [bug] Pixel coordinates in both tests come from `widget_rect`, which is called before any render. If layout runs lazily it could be stale, but the canvas fills the whole window, so I did not change this -> not fixed
+- [severity low] [bug] The `h_big > 28.0` assertion depends on the font's line height being at least the font size. That is true for normal fonts and I left it as is -> not fixed
+
+### tests/dialog_anchor.rs lines 1-194
+- [medium] [bug] `card_is_centred_in_window` never checks the card. It only compares the four window corners, which the scrim darkens identically even if the card is off-centre, so the test passes whatever the card position. I added a check that measures the card's horizontal and vertical extents in the rendered frame and requires their centre to be near the window centre. The vertical tolerance is wider to allow for a shadow offset. I could not run this, so the tolerances are unverified. -> fixed
+- [low] [docs] The doc comment on `card_is_centred_in_window` (line 61) says the card is found by scanning the scrim's children through the geometry API, which the test does not do. -> fixed
+- [low] [bug] The `let _ = Color::BLACK;` line and the `Color` import (lines 11 and 191-192) exist only to keep an import alive and assert nothing. -> fixed (removed both)
+- [low] [bug] The "black overlay" check in `scrim_style_is_translucent_black` only compares absolute channel drops, which is weak but not wrong. -> not fixed (the assertion is correct, and tightening it would depend on the unknown theme background)
+- [low] [bug] `tk.modal` is accessed directly (lines 39 and 68), and `let mut tk` may trigger an `unused_mut` warning if `widget_rect` takes `&self`. -> not fixed (I can't see `Tk`'s field visibility or method signatures from here)
+
+### tests/edit_selection.rs lines 1-291
+- [severity low] [bug] `typing_coalesces` discards the return value of `edit_undo` (line 174), so the test would still pass if undo were a no-op and the text happened to be empty -> fixed
+- [severity low] [bug] `edit_reset_clears_history` never checks that the typed text was present before the reset, or that it survives afterwards (lines 249-251). `!edit_undo` alone would also hold if typing had never reached the Entry -> fixed
+- [severity low] [bug] `unicode_boundaries` is named for the combining mark but never checks that the selection includes it (lines 223-229). A selection of an empty or wrong range would still pass the boundary checks -> fixed
+- [severity low] [bug] No panics in the helpers, timing dependence, or wrong expectations found in the rest of the file. The `mouse_drag_selects` and golden tests have weak but valid assertions -> not fixed (valid as written; the exact selection offsets depend on font metrics and would be brittle)
+
+### tests/entry_submit.rs lines 1-60
+- [severity medium] [bug] `disabled_entry_does_not_submit` could pass without testing anything (lines 49-59). It never shows that Enter submits before the entry is disabled, so it would still pass if Enter never reached the callback, for example if focus were lost. The `entry_bind_submit` return value is also ignored. -> fixed: added a positive control (Enter submits while enabled), asserted the bind result, and checked that the count does not increase after disabling.
+- [severity low] [bug] The focus assertion and the other two tests (lines 7-47) have no timing dependence, helper panics or wrong expectations. -> not fixed (nothing to fix)
+
+### tests/entry_unicode.rs lines 1-95
+- [severity low] [bug] Line 62: `text.is_char_boundary(text.len())` is always true for a `String`, so it checks nothing about the input cap. It is replaced with checks on the content: the text starts with `a`, the rest is only `界`, and something was actually inserted. -> fixed
+- [severity low] [bug] Line 68: the final assertion only checks `len() < text.len()`, which would pass even if the loop deleted nothing useful. Each Left+Delete should remove exactly one 3-byte `界`, so it now asserts `text.len() - 60`. -> fixed
+- [severity low] [bug] Lines 81-93: the pixel-comparison test hardcodes the stride `220` and never checks that scrolling changed anything inside the entry. If the caret never scrolled, the test would still pass. It now uses `end.width()` and asserts at least one pixel differs inside the entry rect. -> fixed
+- [severity low] [bug] Lines 7-41: the Unicode navigation and deletion assertions are correct and meaningful. -> not fixed (no change needed)
+
+### tests/events.rs lines 1-122
+- [severity low] [bug] `release_outside_button_does_not_activate` could pass without testing anything. If the press never reached the button (bad rect, no layout), `count` would stay 0 anyway. I added a positive control: a click inside the same button must fire the command and set `count` to 1 (line 94) -> fixed
+- [severity low] [bug] Timing flakiness, panicking helpers, UTF-8 handling, and wrong expectations: none found in the rest of the file. The `click` helper's `expect` is acceptable in tests, and the multibyte `sim_text("hello 世界")` case is a good one to keep.
+
+### tests/features.rs lines 1-303
+- [medium] [bug] `test_progressbar_render_fraction` only asserted pixmap width/height, so the 50% fraction was never checked (line 238) -> fixed. It now also renders at value 0 and asserts the pixels differ.
+- [medium] [bug] `test_listbox_click_keys_wheel_clamp` made wheel and clamp calls with no assertions, and the delete step only checked the length (lines 47-53) -> fixed. It now asserts that wheel scrolling leaves the selection alone and that the right items remain after the delete. The check on the remaining items assumes `listbox_delete(lb, 0, 1)` is inclusive, which the existing length assertion of 4 already implies. The view offset itself is still unchecked because no view accessor is shown in the API I was given.
+- [medium] [bug] `test_scrollbar_drag_changes_view` asserts nothing: `view_after_page` is discarded and the thumb drag is never checked (lines 76-83) -> not fixed. I can't see an accessor for the listbox view offset, so I can't write a correct assertion. A pixel-diff assertion would depend on layout details I can't verify here. This test needs a view-offset getter or a golden comparison.
+- [low] [docs] `blue.gen` (line 292) uses `gen`, a reserved keyword in edition 2024 -> not fixed. This is a library field name and compiles fine in edition 2021.
+
+### tests/fonts.rs lines 1-17
+- [severity medium] [bug] The assertion `p[0] < 100` (line 15) passes trivially if the default background has a red channel below 100, for example in a dark theme. It also passes if any non-text element is dark. It does not prove that text was drawn with the font. -> fixed. The test now renders a baseline pixmap before adding the label and asserts that the pixels differ afterwards.
+
+### tests/gallery_smoke.rs lines 1-76
+- [medium] [bug] The screenshot checks only assert `len() > 0`, so a garbage or truncated file would pass (lines 63-72). -> fixed: a helper now checks the PNG signature and a non-zero IHDR width and height.
+- [low] [bug] The 2x HiDPI screenshot was only checked for existence and non-emptiness, so it could be a 1x render without failing (lines 69-72). -> fixed: its width must now exceed the 1x light/basics width.
+- [low] [docs] The test returns silently when `RTK_GALLERY_TEST` is unset, so it reports as passed with no hint it was skipped (line 30). -> fixed: it prints a skip message to stderr.
+- [low] [bug] The temp dir is left behind when an assertion fails (line 74). -> not fixed: keeping the output on failure is useful for debugging.
+- NOTE: edits for tests/gallery_smoke.rs:1-76 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror: unexpected closing delimiter: `}`\n  --> tests/gallery_smoke.rs:56:5\n   |\n46 | fn gallery_screenshots() {\n   |                          - this delimiter might not be properly closed...\n...\n55 |         }\n   |         - ...as it matches this but it has different indentation\n56 | '
+
+### tests/golden_m011.rs lines 1-273
+- [severity low] [docs] `golden_m011_scenes_render` says it renders "each scene" once at 1x, but it skips the menu and modal scenes and renders an unrelated bare Frame (lines 251-272) -> fixed: the test now also renders the menu and modal scenes.
+- [severity low] [bug] The goldens, name convention, scale and size math, and the other tests are correct and assert meaningful things. I found no timing dependence beyond the deterministic `sim_advance_time`, and no helper panics beyond intentional `expect`s -> not fixed (nothing to fix).
+
+### tests/golden_widgets.rs lines 1-140
+- [severity low] [bug] `compare_pixmaps_detects_changes` writes the fixed value 200 into the red byte (lines 134-135). If the background pixel at (32,32) already had that value, the pixmaps would be identical and the `count > 0` assertion would fail depending on theme colors. Changed to flip the existing byte with `^ 0xFF`, which guarantees a difference. -> fixed
+- [severity low] [docs] none; every fn has a `///` doc comment. Nothing else in lines 1-140 needed fixing: the golden names format as `widgets_light_1x` and `widgets_light_2x`, the scale cast is safe, and the `sim_scale_factor` result is asserted.
+
+### tests/ids.rs lines 1-88
+- [severity low] [bug] The `pack` results in `destroying_parent_removes_descendants_and_focus` (line 43) were ignored. A failed pack would only show up later as a confusing focus assertion, so the setup could silently fail. -> fixed, each `pack` call is now asserted.
+- Nothing else needed fixing in lines 1-88. The stale-ID, foreign-variable and incompatible-configuration assertions are meaningful and not timing-dependent. Every helper and test has a `///` doc comment.
+
+### tests/layout_fuzz.rs lines 1-131
+- none
+
+I found nothing in lines 1-131 that needs a fix.
+
+- **Helpers:** The RNG is a valid xorshift64 with a nonzero seed, and it is deterministic, so the test has no timing flakiness. `dimension()` and `check()` cannot panic on their own.
+- **Imports and types:** Every import is used. The `(usize, u32)` weight tuples match what `grid` is called with.
+- **Assertions:** Both tests assert meaningful properties. The pathological-index test covers `usize::MAX` for row, column and spans, with an empty column-weight list.
+- **Parent bounds in `check()` (line 37-38):** I could not check this because the layout engine source was not provided. For a NaN or negative parent size, `check()` compares against a non-finite or inverted bound, so the test only passes if `pack` and `grid` return no rects in that case. I left the assertions as they are, since loosening them would weaken a correct check.
+
+### tests/listbox_activate.rs lines 1-66
+- [low] [bug] `double_click_activates_row` guesses the row height (`16.0.max(height/5.0)`) and never checks that the first click landed on row 1, so a geometry mismatch fails with a misleading "activated wrong row" error (lines 58-64) -> fixed (added an assertion that the first click selects row 1)
+- [low] [bug] `double_click_activates_row` depends on `sim_click` treating two back-to-back clicks as a double-click. This is not visible from this chunk, and I could not change it from this file -> not fixed (the dependency lives in the toolkit's click handling, not in this file)
+- [low] [bug] The other tests (lines 28-51) assert something meaningful: the final selection is checked and the activation log is compared exactly -> not fixed (nothing to fix)
+
+### tests/m011_menu.rs lines 1-213
+- [medium] [bug] `test_keyboard_skips_separators` never checks which item Enter activated. It only asserts that the menu closed, so a highlight bug that skipped to the wrong item, or onto the separator or the disabled item, would still pass. The `let _ = (a, b)` line hides this. (lines 66-83) -> fixed (each item now has a command that records a distinct value, and the test asserts B's value)
+- [low] [bug] `test_popup_clamped` checks only the right and bottom edges. A popup clamped to a negative x or y would pass. (lines 197-199) -> fixed (added lower-bound assertions)
+- [low] [docs] `test_check_toggles_var` binds `idx` and then discards it with `let _ = idx;`. This is harmless and I left it as is. (line 44) -> not fixed (not a correctness issue)
+
+### tests/m011_modal.rs lines 1-171
+- [severity low] [bug] `stale_closure_does_not_close_restored_outer` never checked that the outer dialog survived, and line 168 repeated the line 163 depth assertion (lines 163-168). The test passed whether or not the outer scrim was still alive. -> fixed. It now takes the restored `tk.modal` scrim, asserts the widget still exists, and asserts the outer callback has not fired.
+- [severity low] [bug] The test does not call a stale teardown closure directly, because the public API gives no handle to one. The new assertions cover only the observable effect, that the outer dialog is intact after the inner one closes. -> not fixed (no API to reach the closure from an integration test).
+- [severity low] [api] The test reads the `tk.modal` field (lines 159, 167) and calls `tk.contains`. I could not check from the files given that these are public, so a visibility problem would show up as a compile error. -> not fixed (cannot verify; the file otherwise appears to compile against the public API).
+- [severity low] [docs] No other problems found in lines 1-171. Helpers and tests have `///` docs, the tests are deterministic (headless `sim_*` calls with no timing), and no helper can panic except through its own assertions. -> none needed
+
+### tests/m011_table.rs lines 1-242
+- [medium] [bug] `test_table_10k_rows_performance` asserts a 2-second wall-clock bound, which is flaky on loaded or slow debug-build CI (line 226) -> fixed (bound raised to 10 s; it still catches quadratic regressions on 10k rows)
+- [medium] [bug] `test_table_clear` claims to check that the selection is reset, but nothing is selected before the clear, so the assertion passes trivially (lines 188-191) -> fixed (selects a row first and asserts it is selected)
+- [medium] [bug] `test_table_wheel_scroll_bounds` only asserts `top < 100` after scrolling far down, which holds even if the max clamp is broken (lines 139-140) -> fixed (asserts `top > 0` and that further wheel-down leaves the position unchanged)
+- [low] [bug] The two render tests use `assert!(x.is_ok())`, which discards the error message on failure (lines 201-202, 240) -> fixed (use `expect`)
+
+### tests/m011_toast.rs lines 1-130
+- [severity medium] [bug] `toasts_render` is titled "non-empty pixmap" but only asserts the pixmap width and that the rect has a positive width. It would still pass if toasts were never drawn. It now renders a baseline first and asserts the toast frame differs from it (line 117-129) -> fixed
+- [severity low] [bug] The toast fade-in could make a render taken immediately after creation look like the baseline. The test now advances the animation clock before rendering (line 120-125) -> fixed
+- [severity low] [bug] Several tests (`toast_auto_dismisses_after_duration`, `position_variants_place_toasts`) depend on animation durations that I cannot see (a fade-out of at least 100 ms and under 300 ms, and no slide-in offset on a fresh toast). These expectations are plausible and nothing in the chunk shows them to be wrong, so I changed nothing -> not fixed (no evidence of a bug; the expectations are legitimate)
+- [severity low] [docs] Doc comments are present on all functions -> none needed
+
+### tests/m011_tree.rs lines 1-249
+- [medium] [bug] `test_tree_10k_nodes_performance` only asserts `tree_selection(..).is_some()` after End (line 234). The earlier click already selects the first row, so the check passes even if End does nothing -> fixed (record the selection after the click and assert End changes it).
+- [low] [bug] The 2.0 s wall-clock bound on 10k inserts plus expand-all (line 236) is likely flaky in unoptimized builds on loaded CI -> fixed (raised to 10 s, which still catches quadratic blow-ups).
+- [low] [bug] `test_tree_two_roots` is documented as "navigable" but never tests keyboard navigation between roots (lines 246-247) -> fixed (added click + Down/Up assertions).
+- [low] [bug] `test_tree_keyboard_nav`, `test_tree_left_right_semantics` and the 10k test click at a hard-coded `rect.y + 4.0` (lines 68, 92, 232). This assumes the row height is over 8 px, while the other tests use `tree_row_height` -> not fixed (works with the current row height; avoids churn).
+- [low] [docs] `test_tree_renders` only checks `is_ok()` and does not inspect the pixmap -> not fixed (the return type is not visible from this chunk, so a stronger assertion would be a guess).
+
+### tests/m012_charts.rs lines 1-150
+- [severity medium] [bug] `chart_render_not_flat` (lines 135-148) can pass without any chart drawing. Any window background, frame or border already gives more than one colour in the full 320x240 render, so the test asserts nothing about the chart. -> fixed. It now renders a baseline before adding the series and data, then asserts the output changes after the data and a red series colour are set. The existing multi-colour check stays.
+- [severity low] [docs] `sparkline_has_one_series` (lines 98-106) says the series is named `value` but only checks the count. -> not fixed. I can't see a public series-name accessor to assert against, so I won't invent one.
+- [severity low] [bug] The `OKABE_ITO` import from `rtk::chart` (line 3) depends on `chart` re-exporting it. -> not fixed. It may compile fine, but I can't verify it from the given reference. `rtk::OKABE_ITO` is the root re-export if it doesn't.
+
+### tests/m012_dnd.rs lines 1-161
+- none
+
+I found nothing in lines 1–161 that needs fixing, and I made no edits. I could only see the test file and `lib.rs`, not the `dnd` or `Tk` implementation, so the expected return values below are taken on trust.
+
+- **Flakiness:** none. Every test builds its own `Tk` and uses `sim_*` calls, so there are no timers, threads or real windows.
+- **Panics in helpers:** none. The `expect` calls in `nested_frames` and `centre` only fire if layout or construction is broken, which is what a test should surface.
+- **Expectations:** each test checks something meaningful, including both drop paths, unbinding from inside a callback, and a destroyed widget.
+- **Weak spots (low severity, not fixed):**
+  - Line 131 is redundant with line 130 and harmless.
+  - The hover test uses `contains` plus a final-entry check rather than an exact sequence. Tightening it would assume how often the implementation fires `Enter`, which I can't confirm, so I left it.
+- **Docs:** every function, helper and test has a `///` comment.
+
+### tests/m012_golden_charts.rs lines 1-75
+- none
+
+I found nothing in lines 1-75 that needs a fix, though I could only check the file against `lib.rs`, not the `chart`, `testing` or `Tk` sources.
+
+- **Helper panics:** `build_scene` only uses `.expect` and `assert!` on constructors and setters. A failure there is a real test failure, not a helper bug.
+- **Golden names:** `{scale}` formats `1.0_f64` as `1`, so the names come out as `charts_light_1x` and `charts_dark_2x`. They are stable and unique across theme and scale.
+- **Size math:** `(640.0 * scale) as u32` is exact for 1.0 and 2.0.
+- **Layout:** the widgets stack to about 388 px plus padding, which fits the 480 px height, so nothing is clipped.
+- **Flakiness:** the test has no timing, randomness or I/O beyond the golden directory, and the sine and cosine data is deterministic.
+- **Assertions:** `assert_golden` does the pixel comparison and the setter calls are asserted, so the test does check something.
+- **Doc comment:** it says the line chart has a legend, but `build_scene` never enables one. I couldn't confirm whether the legend is on by default, so I left it alone.
+
+### tests/m012_golden_image.rs lines 1-89
+- [severity low] [bug] `Button` is imported unconditionally (line 4) but only used inside the `#[cfg(feature = "svg")]` block, which gives an unused-import warning when `svg` is off (and fails under `-D warnings`) -> fixed
+- [severity low] [bug] The SVG half of the scene is cfg-gated, but the golden PNGs were blessed with it. Without the `svg` feature the scene differs and the goldens would mismatch (lines 28-41) -> not fixed (I can't see whether `svg` is a default feature, and gating the whole test file would be a larger change)
+- [severity low] [bug] The scene is about 96+96+button height plus padding in a 320x240 logical window; I can't confirm from here that the button isn't clipped at 1x, and the goldens would encode that either way (line 50) -> not fixed (needs layout metrics not visible in this chunk)
+- Assertions are meaningful (`assert_golden` plus checked `image_set_*`/`config` return values). No timing dependence, and the helpers can't panic outside of `unwrap`s that signal real failures.
+
+### tests/m012_image.rs lines 1-113
+- [severity medium] [bug] `load_svg_button_icon` never packs the frame or the button, so the render may not draw them. It also asserts only `pixmap.width() == 120`, which is trivially true, so the test would pass even if the icon never rendered (lines 73-78) -> fixed. The frame and button are now packed. The test renders before and after `Opt::Image` and asserts that the pixels differ, and it also asserts the height.
+- Other tests in the chunk (rgba validation, PNG load, SVG red square, invalid SVG, contain aspect, wrong-kind rejection) check meaningful behaviour. I found no flakiness, helper panics or wrong expectations in them.
+
+### tests/m012_tray.rs lines 1-146
+- [low] [docs] The doc comment on the nested `assert_error` helper was copy-pasted from `tray_event_traits` and describes the wrong thing (line 131) -> fixed
+- [low] [bug] `dispatch_without_handler_is_noop` installs a no-op handler, so it never exercises the "no handler" path. Its comment also claims it clears the handler, which it does not (lines 108-116). The public API has no clear function, so a truly empty state cannot be forced -> fixed (comment made accurate, no assertion weakened). The test still cannot prove the empty-handler path; a `tray::clear_handler_for_test` would be needed for that.
+- [low] [bug] The `validate_icon` tests do not cover the exact boundaries or huge-dimension overflow of `w*h*4`. This is only a coverage gap, and the signature of `validate_icon` is not visible here -> not fixed
+- [low] [bug] The `dispatch_*` tests rely on a thread-local handler (implied by the `Rc` captures). With `--test-threads=1`, handlers may leak between tests, but they are all overwritten or harmless -> not fixed (no flakiness in practice)
+
+### tests/m013_a11y.rs lines 1-122
+- none
+
+### tests/m013_damage.rs lines 1-164
+- none
+
+I found nothing in lines 1-164 that needs an edit. I could only read this chunk and `lib.rs`, so I could not check the expectations that depend on `Tk` internals.
+
+- **Timing:** the tests use `sim_advance_time` and the `sim_*` input helpers, so nothing depends on wall-clock time.
+- **Helpers:** none of them can panic outside a genuine test failure. The `expect` calls only fire if a widget rect or the cached frame is missing, which is a real failure.
+- **Assertions:** each test checks something meaningful. They cover `Full` vs `None` vs `Partial`, rect containment, coalescing to one rect, and partial-vs-full pixel equality at scale 1.0 and 1.5.
+- **Unverified expectation (line 90):** the test expects `Full` after clicking the entry, which presumably reflects a focus change forcing a full redraw. I left it because I cannot confirm that from this chunk.
+- **Weak spots, left as is:** `entry_typing_partial` and `partial_matches_full_at_scale` only check that the rects are non-empty. `invalidate_coalesces` only checks the rect count. Tightening them would need renderer details such as rounding and inflation, and a guess there could make a correct test fail.
+
+### tests/m013_hidpi.rs lines 1-330
+- [severity medium] [bug] `label_ink_scales_with_scale_factor` hardcodes the background colour `[217,217,217,255]` and never checks the baseline ink. If that colour is wrong, every pixel counts as ink and the ratio is trivially about `scale²`, so the test passes without checking anything. If the label rendered nothing, a zero baseline would pass too (`0/0` gives NaN, which fails the range check only by accident). Fixed by asserting the ink is non-zero and does not cover the whole label rectangle (lines 261-263).
+- [severity low] [bug] The logical-geometry, hit-testing, dimension and round-trip tests look sound. I found no timing dependence or helper panics. The `Scene.entry` field is never read, which only produces a dead-code warning, so I left it unfixed.
+- NOTE: edits for tests/m013_hidpi.rs:1-330 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n....\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 '
+
+### tests/m013_ime.rs lines 1-165
+- [severity low] [bug] `focus_change_clears_preedit` clicks hard-coded y coordinates (lines 50, 53), so the test breaks if the Entry height changes with theme or font metrics -> fixed (clicks now use `widget_rect` of each entry)
+- [severity low] [docs] Nothing else needs changing. The other tests have meaningful assertions, every fn has a `///` doc comment, and I found no helper panics or timing dependence -> not fixed (nothing to fix)
+
+### tests/m013_theme_goldens.rs lines 1-139
+- none
+
+### tests/m013_themes.rs lines 1-119
+- [severity low] [bug] `unfollow_stops_theme_changes` starts from what is probably the default Light theme. The `assert_eq!(tk.theme(), Theme::Light)` after `sim_system_theme(Light)` (line 100) could pass even if following never applied anything. Starting from Dark makes the first half exercise the follow path. (line 97) -> fixed
+- [severity low] [docs] none found. Every helper and test has a `///` doc comment, and I found no helper panics or timing dependence. -> not fixed (nothing to fix)
+
+### tests/m013_tokens.rs lines 1-114
+- [low] [bug] `okabe_ito_distinct` (line 88) is documented as checking "eight distinct colours" but never checks the length. An empty or shortened palette would pass vacuously. -> fixed (added `assert_eq!(OKABE_ITO.len(), 8)`)
+- [low] [bug] `all_roles_map` (line 112) hardcodes 22 and never relates it to `ColorRole::ALL`, so the count check is weak. `let _ = tk.color(role)` also asserts nothing beyond not panicking. -> fixed (the count is now also checked against `ColorRole::ALL.len()`, and the test now asserts that the Background role matches the palette)
+- [low] [bug] `status_contrast_meets_wcag` (line 42) relaxes the Light/warning threshold to 3.0. This is a deliberate, narrow exception, and loosening or removing it would be wrong. -> not fixed (intentional)
+- [low] [bug] `text_contrast_meets_wcag` (line 20) skips Fluent and Material. -> not fixed (the expected contrast of those themes is unknown, and adding assertions could introduce false failures)
+
+### tests/m0_10_a11y.rs lines 1-129
+- [severity low] [bug] The `slider_increment_action` test (line 90) only asserts `value > 5.0`, which is weak, and it never checks the a11y node's numeric value after the action. I can't verify the step size without the Slider API, so a stricter assertion would be a guess. -> not fixed (the step size is unknown, and a wrong exact-value expectation would be worse than the current check)
+- [severity low] [bug] The `switch_toggle_action` test (line 58) checks the value after the action and re-reads the node, which is meaningful. No flakiness found: tests are headless and use `sim_resize`, with no timing dependence. -> not fixed (nothing to fix)
+- [severity low] [docs] Every helper and test has a `///` doc comment, and the file has a `//!` module doc. -> not fixed (nothing to fix)
+- [severity low] [bug] No panics in the helpers: `setup` uses `expect` on valid construction, and `node_for` returns an `Option`. -> not fixed (nothing to fix)
+
+### tests/m0_10_progress.rs lines 1-159
+- none
+
+I found nothing in lines 1-159 that needs fixing, and I did not run the tests.
+
+- **Goldens:** golden names come out as `ring_light_1x` and similar, because `{scale}` on `1.0_f64` prints `1`, and `(320.0 * scale) as u32` is exact for 1.0 and 2.0.
+- **`progress_get` equality:** `assert_eq!(tk.progress_get(bar), Some(0.4))` compares `40.0 / 100.0` with the literal `0.4`, and both round to the same `f64`, so the comparison is exact.
+- **Timing:** the animation tests advance a simulated clock with `sim_advance_time`, so I see no wall-clock flakiness. I assumed `sim_advance_time` is deterministic and that `assert_golden` renders against that same simulated clock, which I could not confirm from the files given.
+- **Weak spots, left alone:** `progress_polish_apis` only checks that the setters return `true`. `progress_smooth_settles` does not check an intermediate eased value. Neither can be tightened without knowing whether `progress_get` reports the target or the displayed value, so I left both unchanged.
+
+### tests/m0_10_scroll.rs lines 1-292
+- [severity medium] [bug] `scrollarea_hit_test_respects_clip` guards both of its checks with `if` (lines 154 and 161). The filler is a 20-px-wide frame, so the content may not exceed the 100-px viewport. In that case neither branch runs and the test passes without asserting anything. -> fixed. The filler is now 30 labels, so the content is certainly taller than the viewport. Both checks are now unconditional `assert!`s.
+- [severity low] [bug] The second half of the same test clicks at `ar.y + ar.height - 2`, which is inside the area, not on the clipped button. The click can never hit the button, so it does not exercise the clip. -> fixed. It now also clicks at the clipped button's own centre and expects no command to fire.
+- [severity low] [docs] Not changed, no action needed: the magic `48.0` in `hscroll_wheel_x` (line 79) depends on the wheel step size. It looks intentional, and I can't confirm the step constant from here. -> not fixed (cannot verify).
+- NOTE: edits for tests/m0_10_scroll.rs:1-292 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n....\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 '
+
+### tests/m0_10_slider.rs lines 1-192
+- [severity low] [bug] `slider_horizontal_drag` (line 63) only does a down/up click and never moves the pointer while pressed, so it does not exercise dragging. Its ±0.1 tolerance is also loose. -> not fixed (a real drag assertion needs the exact thumb-inset geometry, which is not visible from this chunk, so a tighter assertion could be wrong)
+- [severity low] [docs] The `slider_keys` doc (line 99) mentions the "1% of range if step is 0" behaviour, but the test only covers a step of 0.1. -> not fixed (the expected value for step 0 cannot be confirmed from this chunk)
+- [severity low] [bug] `slider_command_runs_once` (line 157) checks only the call count, not that the value changed. -> not fixed (the count assertion is correct and meaningful as written)
+- [severity low] [bug] `slider_wheel` (line 125) assumes a positive wheel delta increases the value. -> not fixed (this is the toolkit's documented direction as far as can be seen, and no contradiction is visible)
+- No panics, UTF-8 errors, overflow or timing flakiness found in the helpers. The golden name `format!("slider_{theme:?}_{scale}x")` gives `slider_light_1x`, since `1.0_f64` displays as `1`, so it is stable. The pixel size casts are safe.
+
+### tests/m0_10_spinbox.rs lines 1-172
+- none
+
+I found no bugs in this chunk. Nothing here looks flaky or wrongly expected, and every test makes meaningful assertions. I did not run the tests or see the widget implementation, so the points below are unchecked assumptions.
+
+- **Caret position:** the entry tests click at `rect.x + 5.0` and then press Backspace 8 times. This assumes the click leaves the caret at the end of the text or selects all. If the click put the caret at the start, those tests would not clear the buffer.
+- **Weak assertion in the invalid-text test:** `dspin_invalid_text_reverts` only checks `dspin_get`. I considered also asserting `dspin_text == "2.00"`, but I can't confirm the widget reformats the text after a revert, so I left it unchanged rather than risk a wrong expectation.
+- **Golden names:** `{scale}` formats `1.0_f64` as `1`, so the names come out as `dspin_light_1x` and `dspin_light_2x`, which are stable and valid.
+
+### tests/m0_10_switch.rs lines 1-131
+- none
+
+### tests/m0_10_tristate.rs lines 1-244
+- none
+
+I found nothing in lines 1-244 that needs fixing.
+
+- **Helpers:** `build_tristate_scene` has no panic paths beyond `expect` on widget construction, which is appropriate in a test.
+- **Assertions:** the tests assert real behaviour (state transitions, variable sync, command counts, disabled handling, a11y `mixed`/`toggled`). None are vacuous, and no timing or sleeps are involved.
+- **Golden names:** `format!("tristate_{theme:?}_{scale}x").to_lowercase()` gives stable names such as `tristate_highcontrast_2x`.
+- **Docs:** every function has a `///` doc comment.
+- **Not verifiable from this chunk:** whether `assert_golden` takes logical or physical size at 2x. Checking that needs the `testing` module source.
+
+### tests/m0_10_visual_fixes.rs lines 1-120
+- [medium] [bug] `progress_bar_label_contrast` (lines 99-119) claims to sample pixmap colours, but it only checks that the rect is non-empty and discards `golden_dir()` and `GoldenOpts::default()`. The name and doc overstate what it verifies. I renamed the test, corrected its doc and dropped the dummy calls and their now-unused imports. A real pixel assertion needs a headless pixmap-sampling API that is not in the reviewed surface, so the contrast check itself is not fixed. -> fixed (honesty only); contrast assertion not fixed (the API for it is not visible in this chunk)
+- [low] [bug] `progress_bar_fits_label` (lines 66-67) uses loose constants (height >= 12, width >= 60) instead of the measured label text, so it would pass even if the label were clipped. -> not fixed (no text-measure API is visible in this chunk)
+- [low] [bug] `dspin_packed_no_overlap` (lines 26-28, 40-45) gives `b` a suffix and `a` none, while the right-edge alignment check only holds if both have equal widths. The test could fail if the suffix changes the requested width. -> not fixed (it is correct for the intended behaviour, and the DoubleSpinbox sizing code is not visible here)
+- [low] [bug] `scrollarea_content_fills_width` (lines 79-80) packs the vertical scrollbar with default `Side::Top`, so it sits below the area rather than beside it. The expectation still holds because it subtracts the scrollbar's own width. -> not fixed (changing the layout could mask the behaviour under test without being able to run it)
+
+### tests/paint_order.rs lines 1-86
+- none
+
+I found nothing in lines 1-86 that needs an edit. Two observations, neither changed:
+- `placed_overlay_wins_hit_test` is `#[ignore]`d with an explicit reason. Un-ignoring it, or changing its assertion, would be a product decision about whether non-interactive placed frames block hit-testing, so I did not touch it.
+- `render_is_stable` is a weak sanity check on its own, since it only compares two renders of the same scene. The pixel assertion in `placed_overlay_paints_above_packed_sibling` covers actual content, so this is acceptable.
+
+I also checked the rest of the chunk and found no problems:
+- **Helpers:** `scene()` has no panic paths beyond its `expect` calls on construction.
+- **Pixel indexing:** the sampled point lies inside the 200x100 pixmap, and `idx..idx + 4` stays in bounds.
+- **Assertions:** the overlay-size check is exact, because `relwidth` 1.0 × 200 and `relheight` 1.0 × 100 are exact in floating point. There is no timing dependence.
+- **Docs and imports:** every function has a `///` comment and every import is used.
+
+### tests/reentrancy.rs lines 1-106
+- none
+
+### tests/render.rs lines 1-62
+- [severity low] [bug] `hidpi_keeps_logical_geometry_and_scales_pixels` checked only the pixmap width, which is just the requested size, so the test said little about the scaled output (line 59). I added a matching height assertion. A pixel-content assertion would need more API knowledge than this chunk shows, so I did not add one. -> fixed
+- [severity low] [bug] The NaN scale-factor check (line 60) never verifies that the scale stayed at 2.0 after a rejected value. I did not fix this because the scale getter's name is not visible in the supplied reference, so any assertion would be a guess. -> not fixed (the getter API is not visible here)
+- No other problems found in lines 1-62. Each test has a doc comment, the helper-free tests cannot panic apart from their intended `expect` calls, and nothing depends on timing.
+
+### tests/review.rs lines 1-102
+- [severity low] [bug] The `render_to_pixmap` result is discarded with `let _ =` in the scale test (line 15), so a failed layout render is not reported at the point of failure -> fixed
+- [severity low] [bug] The same discarded `render_to_pixmap` result in the press-leave-release test (line 78) -> fixed
+- [severity low] [bug] The first test (line 21) asserts the value is exactly `i64::MIN` after a click 1px from the left edge plus 3 `Left` key presses. This relies on the click clamping to the minimum, which I could not confirm from this chunk, so it may be fragile -> not fixed (the assertion is correct, so I did not weaken it)
+
+### tests/review_fable.rs lines 1-17
+- [severity low] [bug] `inferno_brightens` claims monotonic brightness but only checks three points (1.0, 0.75, 0.25). A fold-back to black near t=0 or a dip at 0.5 would go undetected (line 15) -> fixed: now checks a chain of anchor points 0.0 < 0.25 < 0.5 < 0.75 < 1.0.
+- [severity low] [docs] Viridis test: assertion and doc comment are consistent and meaningful (line 8) -> not fixed (nothing to fix).
+
+### tests/scrollarea_width.rs lines 1-58
+- none
+
+I reviewed lines 1-58 and found nothing that needs changing.
+
+- **Helpers:** The test has no helpers that could panic. The `expect` calls only assert the preconditions it relies on.
+- **Assertions:** The assertions check meaningful values: content width against the expected scrollbar-axis width, and pixmap dimensions. The 0.5 tolerance is reasonable for float layout.
+- **Timing:** There is no timing dependence, so no flakiness risk.
+- **Expectations:** The vertical-only case subtracts the scrollbar width and clamps at zero. The two-axis case expects the full area width. Both match the doc comment.
+
+I could not check the signatures of `Scrollbar::horizontal`, `scrollarea_content_size` or `render_to_pixmap` against the API, because only `lib.rs` was given. They are assumed to exist as used.
+
+### tests/scrolling.rs lines 1-123
+- none
+
+### tests/shortcuts.rs lines 1-137
+- [severity low] [bug] `shift_tab_traverses_backwards` (lines 130-136) creates no widgets, so it only asserts that focus stays `None`. It would pass even if Shift+Tab were not handled at all, and it does not check backward traversal. -> not fixed (a meaningful test needs widget-construction and focus APIs that are not visible in this chunk, and guessing their signatures risks a test that does not compile)
+
+I found no other problems in this chunk. The other tests have meaningful assertions, and they do not depend on timing or on the platform.
+
+### tests/styling.rs lines 350-487
+- none
+
+### tests/styling.rs lines 1-349
+- none
+
+I found nothing in lines 1-349 that needs fixing.
+
+- **Imports:** all of them are used.
+- **Helpers:** none can panic. The corner-pixel index at line 342 stays in bounds because the render size and `geometry` size are both 160×100.
+- **Assertions:** each test checks something specific, and none is weaker than it should be.
+- **Timing:** the transition test uses simulated time through `sim_advance_time`, so it is deterministic and not flaky.
+
+I did not run the tests. The assertions that depend on rendering details I could not see are the `sim_advance_time(60)` boundary at line 189, the `box-shadow` parsing at line 242, and the corner-pixel position at line 340.
+
+### tests/timers.rs lines 1-31
+- none
+
+The two tests look correct and deterministic. They use simulated time through `sim_advance_timers`, so there is no wall-clock flakiness. The first test's assertions are meaningful: the fire count of 4, the widget text "4", `after_cancel` returning true, no further firings after cancel, and no pending timers. The second test asserts the quit flag after the timer fires. I can't see the `Tk` implementation, so I'm assuming `every` and `after` have the signatures these calls use.
+
+### tests/tk_review_regressions.rs lines 1-119
+- [medium] [bug] `f2_opt_text_with_multibyte_does_not_panic` only asserted `is_char_boundary(0)` and `is_char_boundary(len)` on a `String` (line 49). Both are always true for any valid `String`, so the test only caught panics and checked nothing about the text. I replaced them with assertions that the final text holds exactly the two characters typed after the last `Opt::Text`. This holds whether the cursor lands before or after the `a`. -> fixed
+- [low] [bug] `f3_canvas_add_many_items_is_fast` uses a wall-clock bound (line 65). The 10 s limit is loose enough against flakiness for 20k trivial inserts, and it still catches quadratic behaviour. -> not fixed (acceptable as is)
+- [low] [bug] `f3_canvas_delete_then_add_reuses_slot` does not directly observe slot reuse (lines 70-81). It checks only the item counts, because the id semantics are not visible from this chunk. -> not fixed (no safe stronger assertion without knowing the id scheme)
+
+### tests/tk_review_regressions_2.rs lines 1-152
+- [severity low] [docs] The module doc gives `ask_directory(tk, start_dir, cb)`, but the test calls it with title, start dir and callback (line 13) -> fixed
+- [severity low] [bug] `Opt` is imported only to be used by a dummy `let _ = Opt::Text(...)` that silences the unused-import warning (lines 15, 150) -> fixed (removed both)
+- [severity medium] [bug] The F6 temp directory is cleaned up only on the success path, so any failed assertion leaks `rtk_f6_<pid>` in the temp dir (lines 121-149) -> fixed (RAII guard)
+- [severity low] [bug] The F6 final loop `while dialog::is_open { close }` would spin forever if `close` ever failed to pop (line 146) -> not fixed (that would itself be a real bug in the stack, so the hang exposes it)
+- [severity low] [bug] The F6 assertion accepts either navigation or completion, so it is looser than the test name suggests (line 145) -> not fixed (either outcome is valid Enter behaviour, and I can't tell from this chunk which one the dialog implements)
+
+### tests/treeview_notebook.rs lines 1-80
+- [medium] [bug] The final assertion compares pixels against `palette.bg`, but the tree widget paints its own surface colour. A blank tree box therefore passes, and the test can't catch the regression it exists for (lines 62-78) -> fixed. It now takes the dominant colour inside the inset tree area as the tree background and requires a meaningful number of differing pixels (row text and selection) from the interior only.
+- [low] [bug] The test never checks that the page really became selected, because the `notebook_select` result is ignored (line 50) -> not fixed. The row-count and render assertions cover it indirectly, and I can't confirm the return type from here.
+- [low] [bug] A `u32` multiplication in the pixel index could overflow only for absurd sizes. The 400x300 pixmap is far below that, so no change (line 71) -> not fixed.
+
+### tests/v08_extras.rs lines 1-258
+- [severity low] [bug] The file-dialog test uses a fixed shared temp directory name, `rtk_test_file_dialog` (line 156). Concurrent `cargo test` runs, or a stale directory left by another user, can collide and cause flaky failures or deletion of foreign data. -> fixed (the name now includes the process id)
+- [severity low] [bug] Line 197 passes `tmp` by value to `remove_dir_all`. This is harmless, but I made no change. -> not fixed (correct as written)
+- [severity low] [docs] The icon list in `all_icons_render_and_register` is hand-maintained (line 240), so a newly added `Icon` variant would go untested. -> not fixed (I can't see the `Icon` definition and have no way to enumerate its variants)
+- Other tests: assertions are meaningful, there are no timing dependencies, and the helpers don't panic.
+
+### tests/v08_widgets.rs lines 1-279
+- [severity low] [bug] `test_monospace_font_option` only asserts `pm.is_ok()`, so a render failure reports nothing about its cause (lines 198-199) -> fixed (the error is now surfaced via `expect`)
+- [severity low] [bug] `test_progressbar_f64_and_indeterminate` binds the f64 var (0.75) but never checks the bound value, so the "f64" half of the test is weak (lines 174-175) -> not fixed (no progress value getter is visible in the provided API, so I can't add a correct assertion)
+- [severity low] [bug] `test_tooltips` relies on a tooltip delay between 200 ms and 550 ms of simulated time. This is deterministic because it uses `sim_advance_time`, not wall-clock time, so it is not flaky (lines 216-219) -> not fixed (no change needed)
+- [severity low] [docs] `test_notebook_and_geometry_forget` mixes notebook and `pack_forget` checks. The coverage is fine and the doc comment is accurate -> not fixed (no change needed)
+
+### tests/vars.rs lines 1-54
+- none
+
+I checked the file against the public API shown in `lib.rs` only, because the `Var` and `Tk` implementations were not in the chunk. I found no fault in the tests, but two points I could not confirm:
+- `equal_set_does_not_dirty` (lines 18-29) binds the variable to no widget. The `is_dirty()` assertion at line 28 therefore depends on `Var::set` marking the toolkit dirty even when no widget uses the variable. I did not change it, because I cannot see whether that is the intended behaviour.
+- `trace_that_sets_itself_terminates` (lines 31-42) expects the value 2. That is only right if a trace that fires while its own trace is already running is suppressed. I read the expectation as intentional and left it.
+
+### tests/window_api.rs lines 1-142
+- none
+
+I found nothing in lines 1-142 that needs fixing. Specifically:
+- Every helper and test has a `///` doc comment.
+- No assertion is vacuous or contradicts the API.
+- The tests are deterministic, with no timing dependence or real window needed.
+- The `tiny_skia` PNG round-trip builds valid premultiplied pixels (alpha 255), so the `unwrap()` calls cannot panic.
+- The close-protocol tests cover veto, allow, default and re-entrancy, and each checks both the return value and `is_quit_requested()`.
+
+I did not add new tests, such as overflowing dimensions or an over-long buffer. I couldn't confirm what those calls return, so an added test might assert the wrong thing.
+
+### tests/window_pinning.rs lines 1-50
+- [severity medium] [bug] Lines 14-18, 25-31: the dirty assertions probably prove nothing. `let _ = tk.is_dirty();` is not documented to clear the flag, since the name suggests a pure getter. If so, `sim_resize` leaves the toolkit dirty and `assert!(tk.is_dirty())` passes whether or not `resizable()`, `minsize()` or `maxsize()` mark it dirty. The second dirty assertion at line 31 would be vacuous even if the first were meaningful. -> not fixed (the reference shows no API that clears or consumes the dirty flag, such as `take_dirty` or `clear_dirty`, and I won't invent one that may not compile. Once such an API exists, call it after `sim_resize` and before each setter, and assert `!is_dirty()` first to prove the baseline is clean.)
+- [severity low] [bug] Lines 32-35: `clear_minsize()` and `clear_maxsize()` are checked only for round-trip, not for requesting a redraw. A missed redraw would leave the OS window constraints stale. -> not fixed (this depends on the same missing dirty-clear primitive).
+- [severity low] [docs] Line 14: the comment "Clear any pending dirty state" is misleading because the line below it does not clear anything. -> not fixed (the right fix depends on the dirty-clearing API above).
+- [severity low] [bug] Lines 38-49: `render_after_constraint_change_succeeds` checks only the pixmap dimensions. The constraints are not applied in a headless render, so it cannot show they have any effect. -> not fixed (the assertions are correct as written and the test is deterministic, so there is nothing to weaken or change).
+
+- RECOVERED: examples/gallery.rs 1-309. DeepSeek fixed the clippy clone-on-Copy (recover-gallery).
+- RECOVERED: tests/gallery_smoke.rs. The test now validates the PNG header and size. DeepSeek fixed a stray brace (recover-gallery-smoke).
+- RECOVERED: tests/m013_hidpi.rs and tests/m0_10_scroll.rs. Sonnet's stricter assertions exposed that `label_ink_scales_with_scale_factor` hard-coded a wrong background colour (the old test was meaningless), and that the scroll test only clicked conditionally. DeepSeek and Sol (hidpi-bg-fix) now sample the background from the pixmap and scroll by the real content height. The assertions are unconditional and green.
+

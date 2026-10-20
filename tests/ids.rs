@@ -40,7 +40,7 @@ fn destroying_parent_removes_descendants_and_focus() {
     let nested = Frame::new(&mut tk, parent).expect("nested");
     let entry = Entry::new(&mut tk, nested).expect("entry");
     for id in [parent, nested, entry] {
-        tk.pack(id, PackOpts::default());
+        assert!(tk.pack(id, PackOpts::default()));
     }
     tk.sim_key(rtk::Key::Tab);
     assert_eq!(tk.focused_widget(), Some(entry));

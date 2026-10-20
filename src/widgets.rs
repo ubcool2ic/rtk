@@ -160,6 +160,8 @@ pub type Command = Box<dyn FnMut(&mut Tk)>;
 pub type CanvasDragCallback = Box<dyn FnMut(&mut Tk, f32, f32, DragPhase)>;
 /// Boxed Listbox selection callback: `(tk, selected_index)`.
 pub type ListSelectCallback = Box<dyn FnMut(&mut Tk, Option<usize>)>;
+/// Boxed Listbox activation callback: `(tk, activated_index)`.
+pub type ListActivateCallback = Box<dyn FnMut(&mut Tk, usize)>;
 /// Boxed Notebook tab-change callback: `(tk, selected_index)`.
 pub type NotebookChangedCallback = Box<dyn FnMut(&mut Tk, usize)>;
 /// Boxed Combobox selection callback: `(tk, index, text)`.
@@ -739,6 +741,14 @@ pub(crate) struct WidgetNode {
     // Listbox callback
     pub list_select_cb: Option<ListSelectCallback>,
     pub list_select_running: bool,
+    /// Callback fired when a Listbox row is activated (Enter or double-click).
+    pub list_activate_cb: Option<ListActivateCallback>,
+    /// Reentrancy guard for [`WidgetNode::list_activate_cb`].
+    pub list_activate_running: bool,
+    /// Time (ms) of the last mouse-down on the listbox, for double-click detection.
+    pub list_last_click_ms: u64,
+    /// Row index of the last mouse-down on the listbox, for double-click detection.
+    pub list_last_click_row: Option<usize>,
     // Combobox
     pub combo_values: Vec<String>,
     pub combo_var: Option<Var<i64>>,
@@ -868,6 +878,10 @@ impl WidgetNode {
             text_max_lines: None,
             list_select_cb: None,
             list_select_running: false,
+            list_activate_cb: None,
+            list_activate_running: false,
+            list_last_click_ms: 0,
+            list_last_click_row: None,
             combo_values: Vec::new(),
             combo_var: None,
             combo_open: false,

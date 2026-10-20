@@ -109,6 +109,35 @@ impl Tk {
         true
     }
 
+    /// Binds a callback invoked with the row index when a Listbox row is
+    /// *activated*: Enter/Return pressed while the listbox is focused and has a
+    /// selection, or a double-click on a row (second mouse-down on the same row
+    /// within 400 ms). Unlike [`Tk::listbox_bind_select`] this does not fire on
+    /// plain selection changes (single clicks, arrow keys).
+    pub fn listbox_bind_activate(&mut self, id: WidgetId, cb: impl FnMut(&mut Tk, usize) + 'static) -> bool {
+        let Some(node) = self.node_mut(id) else { return false };
+        if node.kind != Kind::Listbox {
+            return false;
+        }
+        node.list_activate_cb = Some(Box::new(cb));
+        true
+    }
+
+    /// Invokes the listbox activation callback with `index`, guarding against reentrancy.
+    pub(crate) fn dispatch_list_activate(&mut self, id: WidgetId, index: usize) {
+        let Some(node) = self.node_mut(id) else { return };
+        if node.list_activate_running { return; }
+        let Some(mut cb) = node.list_activate_cb.take() else { return };
+        node.list_activate_running = true;
+        cb(self, index);
+        if let Some(node) = self.node_mut(id) {
+            node.list_activate_running = false;
+            if node.list_activate_cb.is_none() {
+                node.list_activate_cb = Some(cb);
+            }
+        }
+    }
+
     /// Invokes the listbox selection callback with the new selection, guarding against reentrancy.
     pub(crate) fn dispatch_list_select(&mut self, id: WidgetId, sel: Option<usize>) {
         let Some(node) = self.node_mut(id) else { return };

@@ -265,6 +265,14 @@ fn golden_m011_scenes_render() {
     assert!(tk.render_to_pixmap(360, 240).is_ok());
 
     let mut tk = Tk::new();
+    build_menu_scene(&mut tk);
+    assert!(tk.render_to_pixmap(360, 240).is_ok());
+
+    let mut tk = Tk::new();
+    build_modal_scene(&mut tk);
+    assert!(tk.render_to_pixmap(480, 320).is_ok());
+
+    let mut tk = Tk::new();
     let root = tk.root();
     let frame = Frame::new(&mut tk, root).expect("frame");
     tk.pack(frame, PackOpts::default());
