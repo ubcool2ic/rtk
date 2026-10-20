@@ -59,7 +59,9 @@ fn external_changes_controls_and_large_input_are_safe() {
     tk.sim_text(&"界".repeat(30_000));
     let text = tk.entry_get(entry).expect("text");
     assert!(text.len() <= 65_536);
-    assert!(text.is_char_boundary(text.len()));
+    assert!(text.len() > 1_000, "large input should be accepted up to the cap");
+    assert!(text.starts_with('a'));
+    assert!(text["a".len()..].chars().all(|c| c == '界'));
     tk.sim_key(Key::End);
     for _ in 0..20 {
         tk.sim_key(Key::Left);

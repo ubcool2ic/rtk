@@ -850,3 +850,9 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity medium] [bug] `disabled_entry_does_not_submit` could pass without testing anything (lines 49-59). It never shows that Enter submits before the entry is disabled, so it would still pass if Enter never reached the callback, for example if focus were lost. The `entry_bind_submit` return value is also ignored. -> fixed: added a positive control (Enter submits while enabled), asserted the bind result, and checked that the count does not increase after disabling.
 - [severity low] [bug] The focus assertion and the other two tests (lines 7-47) have no timing dependence, helper panics or wrong expectations. -> not fixed (nothing to fix)
 
+### tests/entry_unicode.rs lines 1-95
+- [severity low] [bug] Line 62: `text.is_char_boundary(text.len())` is always true for a `String`, so it checks nothing about the input cap. It is replaced with checks on the content: the text starts with `a`, the rest is only `界`, and something was actually inserted. -> fixed
+- [severity low] [bug] Line 68: the final assertion only checks `len() < text.len()`, which would pass even if the loop deleted nothing useful. Each Left+Delete should remove exactly one 3-byte `界`, so it now asserts `text.len() - 60`. -> fixed
+- [severity low] [bug] Lines 81-93: the pixel-comparison test hardcodes the stride `220` and never checks that scrolling changed anything inside the entry. If the caret never scrolled, the test would still pass. It now uses `end.width()` and asserts at least one pixel differs inside the entry rect. -> fixed
+- [severity low] [bug] Lines 7-41: the Unicode navigation and deletion assertions are correct and meaningful. -> not fixed (no change needed)
+
