@@ -46,6 +46,7 @@ mod tooltip;
 mod theme;
 mod ime;
 mod damage;
+mod a11y;
 
 pub use damage::FrameDamage;
 
@@ -215,6 +216,10 @@ pub struct Tk {
     pub(crate) frame: Option<Pixmap>,
     /// Reusable offscreen pixmap for partial redraws (allocated per size).
     pub(crate) scratch: Option<Pixmap>,
+    /// Accessibility label overrides keyed by widget.
+    pub(crate) a11y_labels: BTreeMap<WidgetId, String>,
+    /// Last accessibility tree snapshot, used by `a11y_tree_changed`.
+    pub(crate) a11y_last_tree: Option<Vec<crate::a11y::A11yNode>>,
 }
 
 impl Default for Tk {
@@ -286,6 +291,8 @@ impl Tk {
             coalesced: false,
             frame: None,
             scratch: None,
+            a11y_labels: BTreeMap::new(),
+            a11y_last_tree: None,
         }
     }
 

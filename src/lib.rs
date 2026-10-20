@@ -1,6 +1,9 @@
 //! A small, software-rendered, tkinter-style GUI.
 
 mod app;
+pub mod a11y;
+#[cfg(feature = "accesskit")]
+mod a11y_accesskit;
 pub mod colormap;
 pub mod dialog;
 pub mod fonts;
@@ -15,6 +18,7 @@ mod tk;
 mod var;
 mod widgets;
 
+pub use a11y::{A11yAction, A11yNode, A11yRole};
 pub use colormap::Colormap;
 pub use dialog::MessageKind;
 pub use fonts::DefaultFont;

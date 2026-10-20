@@ -10,12 +10,30 @@ use crate::style::{ImageId, StyleSpec, TransitionState};
 use crate::{RtkError, Tk, Var};
 
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct WidgetId {
     /// Slot index in the widget arena.
     pub index: u32,
     /// Generation of the slot when the handle was issued; stale handles are rejected.
     pub gen: u32,
+}
+
+impl WidgetId {
+    /// Packs the handle into a single `u64` key for external consumers such as
+    /// AccessKit node IDs: `(index << 32) | gen`.
+    #[allow(dead_code)]
+    pub(crate) fn a11y_key(self) -> u64 {
+        (u64::from(self.index) << 32) | u64::from(self.gen)
+    }
+
+    /// Reconstructs a handle from a key produced by [`WidgetId::a11y_key`].
+    #[allow(dead_code)]
+    pub(crate) fn from_a11y_key(key: u64) -> Self {
+        Self {
+            index: (key >> 32) as u32,
+            gen: key as u32,
+        }
+    }
 }
 
 /// An 8-bit-per-channel, straight-alpha colour.
