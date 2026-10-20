@@ -522,3 +522,7 @@ No other defects found in this chunk:
 - Reentrant writes and traces that replace or destroy their own variable are handled correctly.
 - The borrow flow in `set` is sound, and every fn has a `///` doc.
 
+### src/fonts.rs lines 1-187
+- [severity low] [api] Public enum `DefaultFont` lacked `#[non_exhaustive]`, so adding a variant later would be a breaking change (line 36) -> fixed
+- No other bugs found in this chunk. The fallback logic, `has_face` and `has_family` are sound, with no panics or UTF-8 hazards. The `warn_once` guard is correct, and every fn has a doc comment.
+

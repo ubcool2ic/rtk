@@ -34,6 +34,7 @@ const PLATFORM_SANS: [&str; 10] = [
 
 /// Which family became the default sans-serif.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DefaultFont {
     /// The bundled Noto Sans (normal case).
     Bundled,
