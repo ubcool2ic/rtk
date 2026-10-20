@@ -633,3 +633,5 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 - [low] [bug] `tooltip` and `tooltip_remove` change what is displayed without requesting a redraw or damage (lines 14, 23) -> not fixed. The redraw/invalidation mechanism is not visible in this chunk, so I can't safely call it. If the tooltip text changes or is removed while shown, the caller should invalidate.
 - [low] [docs] The `bool` return values (false when the widget id is not live) are undocumented (lines 11, 18) -> fixed.
 
+- RECOVERED: src/widgets.rs 1-339 edits re-applied (they include `#[non_exhaustive]` on a public enum). DeepSeek added the wildcard arm that examples/gallery.rs then needed (recover-widgets). Green.
+

@@ -74,6 +74,7 @@ impl Color {
 
 /// Built-in visual themes selectable at runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum Theme {
     /// Classic light grey Tk look (default).
     #[default]
@@ -94,6 +95,7 @@ pub enum Theme {
 
 /// Placement of an image relative to text inside Buttons and Labels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum Compound {
     /// Image drawn to the left of text with an 8 px gap (default).
     #[default]
@@ -108,6 +110,7 @@ pub enum Compound {
 
 /// Phase of a canvas drag gesture reported to a [`CanvasDragCallback`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DragPhase {
     /// Left button pressed inside the canvas.
     Press,
@@ -161,6 +164,7 @@ pub type ListSelectCallback = Box<dyn FnMut(&mut Tk, Option<usize>)>;
 pub type NotebookChangedCallback = Box<dyn FnMut(&mut Tk, usize)>;
 
 /// Configuration options accepted by `Tk::config` (tkinter `widget.config(...)`).
+#[non_exhaustive]
 pub enum Opt {
     /// Caption text (tkinter `text`).
     Text(String),
