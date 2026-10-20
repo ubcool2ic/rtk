@@ -1090,3 +1090,8 @@ I also checked the rest of the chunk and found no problems:
 ### tests/reentrancy.rs lines 1-106
 - none
 
+### tests/render.rs lines 1-62
+- [severity low] [bug] `hidpi_keeps_logical_geometry_and_scales_pixels` checked only the pixmap width, which is just the requested size, so the test said little about the scaled output (line 59). I added a matching height assertion. A pixel-content assertion would need more API knowledge than this chunk shows, so I did not add one. -> fixed
+- [severity low] [bug] The NaN scale-factor check (line 60) never verifies that the scale stayed at 2.0 after a rejected value. I did not fix this because the scale getter's name is not visible in the supplied reference, so any assertion would be a guess. -> not fixed (the getter API is not visible here)
+- No other problems found in lines 1-62. Each test has a doc comment, the helper-free tests cannot panic apart from their intended `expect` calls, and nothing depends on timing.
+
