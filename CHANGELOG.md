@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.2
+- **Fix: garbled button labels on Windows.** `TButton`, `Ghost.TButton`, `Sidebar.TButton` and `Chip.*` used font weight 500. Windows' default sans-serif (Arial) has no 500 face, so the matcher picked an unrelated face and labels drew as boxes/symbols. These styles now use 400 (bold variants stay 700). A unit test checks that every built-in theme style and state map uses only 400 or 700.
+
 ## 0.8.1
 
 - Code review with claude-fable-5.1 (see docs/REVIEW_FABLE_5_1.md). Fixes: Notebook pages now get layout; UTF-8-safe Text cursor; O(1) canvas item insertion; destroy() clears modal/notebook/scrollbar state; Combobox toggles closed when clicked; yview works on Text; text_set_max_lines(0) means unlimited; consistent dark palette; bounded process_posted; poisoned-mutex recovery; Labels/Frames with tooltips are hoverable; non-finite sizes sanitized; correct colormap tables; Var no longer uses unsafe and gained Eq/Hash; more docs.
