@@ -654,3 +654,9 @@ I found no bugs or API problems in lines 1-172 of `src/tk/tristate.rs`.
 I did not check whether `inputs` is dropped when a widget is destroyed, because that code is outside this chunk.
 
 - NOTE: the first Sonnet call writing tests/tk_review_regressions.rs used all 32k max_tokens on reasoning, ignoring the 16k budget, and returned no code ($0.37). Per the rules it was not retried at the same settings. The work was split into two smaller tasks with max_tokens 40k.
+
+### Fable regression tests
+- tests/tk_review_regressions.rs (Sonnet): Fable F1-F4. All pass.
+- tests/tk_review_regressions_2.rs (Sonnet; compile errors fixed by DeepSeek and Sol): F6-F8, F20, pass-3 F5 (passes; nested dialogs were fixed in 0.11), pass-3 F6 (**failed: real bug**).
+- **pass-3 F6 fixed** (DeepSeek, f6-ask-directory and listbox-activate, with Sol fixing the new test): `ask_directory` now navigates into a sub-directory or `..` on Enter or double-click, and Enter otherwise accepts. This added `Tk::listbox_bind_activate`, which fires on Enter or double-click but not on selection changes, plus tests/listbox_activate.rs.
+

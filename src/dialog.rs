@@ -789,6 +789,35 @@ pub fn ask_directory(
     };
     refresh_dirs(tk);
 
+    // Enter / double-click on a selected entry navigates into a sub-directory
+    // (or up via ".."); the Select Folder button accepts the current directory.
+    let activate = {
+        let cur_dir = cur_dir.clone();
+        let refresh_dirs = refresh_dirs.clone();
+        move |t: &mut Tk| {
+            let sel = t.listbox_curselection(listbox);
+            let items = t.listbox_get(listbox);
+            let Some(idx) = sel else { return };
+            let Some(item) = items.get(idx).cloned() else { return };
+            if item == ".." {
+                if let Some(parent) = cur_dir.borrow().parent().map(|p| p.to_path_buf()) {
+                    *cur_dir.borrow_mut() = parent.clone();
+                    t.config(path_lbl, Opt::Text(parent.display().to_string()));
+                    refresh_dirs(t);
+                }
+            } else if item.ends_with('/') {
+                let child = cur_dir.borrow().join(&item[..item.len() - 1]);
+                *cur_dir.borrow_mut() = child.clone();
+                t.config(path_lbl, Opt::Text(child.display().to_string()));
+                refresh_dirs(t);
+            }
+        }
+    };
+
+    let activate_enter = activate.clone();
+    tk.listbox_bind_activate(listbox, move |t, _idx| activate_enter(t));
+    tk.focused = Some(listbox);
+
     let btn_row = Frame::new(tk, card).unwrap();
     let bp = PackOpts {
         side: Side::Top,
@@ -818,6 +847,16 @@ pub fn ask_directory(
             f(t, Some(path));
         }
     });
+
+    let cur_dir_accept = cur_dir.clone();
+    let cb_accept = cb.clone();
+    tk.modal_accept = Some(Box::new(move |t| {
+        let path = cur_dir_accept.borrow().clone();
+        if let Some(f) = cb_accept.borrow_mut().take() {
+            finish_modal(t, scrim);
+            f(t, Some(path));
+        }
+    }));
 
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
