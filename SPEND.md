@@ -321,3 +321,24 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-examples r1 | 18312 (0 cached) | 212 (0 reasoning) | 0.0016 | 0.0363 |
 
 Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were needed. Glue fixes done by hand are listed in the commit messages.
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-file_dialog | 7725 (0 cached) | 3326 (2287 reasoning) | 0.0487 | 6.0794 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-render | 5456 (0 cached) | 2217 (1781 reasoning) | 0.0331 | 6.1125 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-file_dialog | 7725 (0 cached) | 3266 (2121 reasoning) | 0.0481 | 6.1606 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | dialog-shots-1.0.1 r0 | 22624 (0 cached) | 1399 (0 reasoning) | 0.0023 | 0.2534 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-glue | 17248 (0 cached) | 4649 (4127 reasoning) | 0.0810 | 6.2416 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-combobox | 12708 (0 cached) | 3423 (2646 reasoning) | 0.0596 | 6.3013 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet-1.0.1-review-render | 5456 (0 cached) | 2288 (1743 reasoning) | 0.0338 | 6.3351 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-fd r0 | 35004 (0 cached) | 3531 (0 reasoning) | 0.0042 | 0.2576 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-fd r1 | 36395 (1024 cached) | 705 (0 reasoning) | 0.0028 | 0.2605 |
+| 2026-10-20 | openai/gpt-6.1-sol | ds-1.0.1-fd r2 [Sol fix] | 38254 (0 cached) | 1984 (1258 reasoning) | 0.1155 | 1.8608 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-cb r0 | 37450 (7424 cached) | 4726 (0 reasoning) | 0.0045 | 0.2650 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-cb r1 | 37913 (9728 cached) | 2129 (0 reasoning) | 0.0031 | 0.2681 |
+| 2026-10-20 | openai/gpt-6.1-sol | ds-1.0.1-cb r2 [Sol fix] | 38026 (0 cached) | 480 (195 reasoning) | 0.0999 | 1.9607 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-render r0 | 51937 (10496 cached) | 3853 (0 reasoning) | 0.0049 | 0.2730 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-render r1 | 53360 (9728 cached) | 10850 (1 reasoning) | 0.0086 | 0.2816 |
+| 2026-10-20 | openai/gpt-6.1-sol | ds-1.0.1-render r2 [Sol fix] | 49466 (0 cached) | 921 (646 reasoning) | 0.1329 | 2.0935 |
+| 2026-10-20 | openai/gpt-6.1-sol | ds-1.0.1-render r3 [Sol fix] | 49461 (0 cached) | 330 (209 reasoning) | 0.1270 | 2.2205 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-render2 r0 | 25237 (3840 cached) | 1196 (0 reasoning) | 0.0021 | 0.2837 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-render2 r1 | 25972 (22016 cached) | 278 (0 reasoning) | 0.0006 | 0.2843 |
+| 2026-10-20 | note | 1.0.1 review driver bug | Sonnet replies for `file_dialog` ($0.0487) and `render` ($0.0331) were billed but lost (unpack error in rev101.py before saving); both re-run once. Two calls killed mid-stream (an early `combobox` call and a duplicate `glue` call from an overlapping loop), cost not logged, est. <= $0.10 | | | |
+| 2026-10-20 | note | hand glue (1.0.1) | Moved PR #9's three CHANGELOG bullets into a new `## 1.0.1` section + version bump; kept `clear_input` crate-private and added `Tk::sim_window_focus_lost` (calls it) for the review test instead of DeepSeek's `pub #[doc(hidden)] clear_input` | | | |

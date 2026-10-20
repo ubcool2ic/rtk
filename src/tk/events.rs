@@ -137,7 +137,16 @@ impl Tk {
                     || (node.kind == Kind::Combobox && node.combo_editable))
                     && !node.disabled
             }) {
-                self.drag_text_selection(id, x, y);
+                // A press that began in the editable combobox arrow zone must
+                // not extend a text selection.
+                let in_arrow = self.node(id).is_some_and(|node| {
+                    node.kind == Kind::Combobox
+                        && node.combo_editable
+                        && self.pointer.0 >= node.rect.x + node.rect.width - 22.0
+                });
+                if !in_arrow {
+                    self.drag_text_selection(id, x, y);
+                }
             }
         }
     }
@@ -214,10 +223,17 @@ impl Tk {
             let rows = self.combo_rows(combo_id);
             if let Some(cnode) = self.node(combo_id) {
                 let item_h = (cnode.style.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (rows.len() as f32 * item_h).max(item_h).min(240.0);
+                let drop_h = (rows.len() as f32 * item_h).max(item_h).min(crate::render::COMBO_POPUP_MAX_H);
                 let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
                 if drop_rect.contains(x, y) {
-                    let pos = ((y - drop_rect.y) / item_h).floor() as usize;
+                    // Apply the same scroll offset as the drawing code so a
+                    // click selects the row that is actually drawn.
+                    let first = crate::render::combo_popup_first_row(
+                        cnode.combo_highlight,
+                        rows.len(),
+                        crate::render::combo_popup_rows_visible(item_h),
+                    );
+                    let pos = first + ((y - drop_rect.y) / item_h).floor() as usize;
                     if let Some(&idx) = rows.get(pos) {
                         self.combo_select_value(combo_id, idx);
                     }
@@ -451,6 +467,8 @@ impl Tk {
                         } else {
                             self.combobox_close(id);
                         }
+                        // The arrow is a click target, not a text-drag origin.
+                        self.pressed = None;
                     } else {
                         // Place the caret in the text area like an Entry.
                         let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
@@ -899,7 +917,15 @@ impl Tk {
     }
 
 
+    /// Headless test helper: simulates the window losing OS focus, which clears
+    /// focus, press, hover and drag state and closes any open combobox dropdown.
+    pub fn sim_window_focus_lost(&mut self) {
+        self.clear_input();
+    }
+
     /// Clears all transient input state such as focus, press, hover and drag, and marks the toolkit dirty.
+    ///
+    /// Also closes any open combobox dropdown (clearing its highlight).
     pub(crate) fn clear_input(&mut self) {
         self.focused = None;
         self.pressed = None;
@@ -910,6 +936,7 @@ impl Tk {
         if let Some(combo_id) = self.open_combobox.take() {
             if let Some(node) = self.node_mut(combo_id) {
                 node.combo_open = false;
+                node.combo_highlight = None;
             }
         }
         self.dirty = true;

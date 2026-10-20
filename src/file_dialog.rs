@@ -41,7 +41,10 @@ use crate::Tk;
 /// A named extension filter for a file dialog.
 ///
 /// Extensions are stored without a leading dot; `FileFilter::new("Text",
-/// &[".txt", "md"])` yields `["txt", "md"]`.
+/// &[".txt", "md"])` yields `["txt", "md"]`. Construct one with
+/// [`FileFilter::new`]; the struct is `#[non_exhaustive]` so fields may be
+/// added without a breaking change.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileFilter {
     /// Human-readable filter name, e.g. `"Images"`.
@@ -95,7 +98,9 @@ impl FileDialogKind {
 
 /// A description of a file dialog request.
 ///
-/// Build one with [`FileDialog::new`] and the chainable setters.
+/// Build one with [`FileDialog::new`] and the chainable setters. The struct is
+/// `#[non_exhaustive]` so fields may be added without a breaking change.
+#[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileDialog {
     /// Window title; a per-kind default is used when `None`.
@@ -170,8 +175,10 @@ pub trait FileDialogBackend {
 /// Returns true when `path` satisfies `filters`.
 ///
 /// An empty filter list matches everything, as does any filter containing the
-/// `"*"` extension. Otherwise the path's extension must match one of the
-/// listed extensions, compared case-insensitively.
+/// `"*"` extension. Otherwise a filter matches when the path's extension equals
+/// one of its extensions, or when the lowercased file name ends with
+/// `"." + lowercased extension` (so a `"tar.gz"` filter matches `a.tar.gz`).
+/// Comparisons are case-insensitive.
 #[must_use]
 pub fn matches_filters(path: &Path, filters: &[FileFilter]) -> bool {
     if filters.is_empty() {
@@ -183,20 +190,35 @@ pub fn matches_filters(path: &Path, filters: &[FileFilter]) -> bool {
     {
         return true;
     }
-    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-        return false;
-    };
+    let ext = path.extension().and_then(|e| e.to_str());
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_lowercase);
     filters.iter().any(|f| {
-        f.extensions
-            .iter()
-            .any(|candidate| candidate.eq_ignore_ascii_case(ext))
+        f.extensions.iter().any(|candidate| {
+            if let Some(ext) = ext {
+                if candidate.eq_ignore_ascii_case(ext) {
+                    return true;
+                }
+            }
+            match &file_name {
+                Some(name) => {
+                    let suffix = format!(".{}", candidate.to_lowercase());
+                    name.ends_with(&suffix)
+                }
+                None => false,
+            }
+        })
     })
 }
 
 /// The default backend: reuses the in-app modal choosers from [`crate::dialog`].
 ///
 /// The in-app chooser is single-select, so [`FileDialogKind::OpenFiles`]
-/// returns a one-element vector.
+/// returns a one-element vector. The in-app save chooser does not offer
+/// extension filters, so [`FileDialog::filters`] is ignored for
+/// [`FileDialogKind::SaveFile`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct InAppFileDialog;
 
@@ -369,7 +391,8 @@ impl FileDialogBackend for NativeFileDialog {
 impl Tk {
     /// Installs a custom file dialog backend.
     pub fn set_file_dialog_backend(&mut self, backend: impl FileDialogBackend + 'static) {
-        self.file_dialog_backend = Some(Box::new(backend));
+        let boxed: Box<dyn FileDialogBackend> = Box::new(backend);
+        self.file_dialog_backend = Some(Rc::new(RefCell::new(boxed)));
     }
 
     /// Removes any custom backend, restoring the default.
@@ -388,30 +411,53 @@ impl Tk {
 
     /// Presents a file dialog of `kind` and reports the result through `done`.
     ///
-    /// The backend is temporarily removed from `Tk` while it runs so that a
-    /// callback may install a new backend; a custom backend is restored
-    /// afterwards only if the field is still empty.
+    /// The installed backend stays in place while it runs, so a callback may
+    /// open another dialog (which reuses the same backend) or call
+    /// [`Tk::reset_file_dialog_backend`] / [`Tk::set_file_dialog_backend`] and
+    /// have that change stick. A backend must not re-enter itself
+    /// synchronously (i.e. call `Tk::file_dialog` from inside its own `show`);
+    /// in that case the default backend is used for the nested call instead of
+    /// panicking.
     pub fn file_dialog(
         &mut self,
         kind: FileDialogKind,
         opts: &FileDialog,
         done: impl FnOnce(&mut Tk, FileDialogResult) + 'static,
     ) {
-        let custom = self.file_dialog_backend.take();
-        let was_custom = custom.is_some();
-        let mut backend: Box<dyn FileDialogBackend> =
-            custom.unwrap_or_else(Self::default_file_dialog_backend);
-        let mut done = Some(Box::new(done) as FileDialogDone);
+        let done: FileDialogDone = Box::new(done);
+        let showing = Rc::new(std::cell::Cell::new(true));
+        let pending = Rc::new(RefCell::new(None));
+        let showing_for_done = Rc::clone(&showing);
+        let pending_for_done = Rc::clone(&pending);
         let wrapped: FileDialogDone = Box::new(move |t, result| {
-            if let Some(f) = done.take() {
-                f(t, result);
+            if showing_for_done.get() {
+                // Deliver synchronous completions after the backend borrow ends.
+                *pending_for_done.borrow_mut() = Some((done, result));
+            } else {
+                done(t, result);
             }
         });
-        backend.show(self, kind, opts, wrapped);
-        // Only a custom backend goes back; the default is rebuilt per call so
-        // `file_dialog_uses_native` stays accurate.
-        if was_custom && self.file_dialog_backend.is_none() {
-            self.file_dialog_backend = Some(backend);
+
+        // Keep the installed backend in place, including during callbacks.
+        let custom = self.file_dialog_backend.clone();
+        if let Some(shared) = custom {
+            match shared.try_borrow_mut() {
+                Ok(mut backend) => backend.show(self, kind, opts, wrapped),
+                Err(_) => {
+                    // Direct re-entry from inside `show` uses the default.
+                    let mut fallback = Self::default_file_dialog_backend();
+                    fallback.show(self, kind, opts, wrapped);
+                }
+            };
+        } else {
+            let mut backend = Self::default_file_dialog_backend();
+            backend.show(self, kind, opts, wrapped);
+        }
+
+        showing.set(false);
+        let completed = pending.borrow_mut().take();
+        if let Some((done, result)) = completed {
+            done(self, result);
         }
     }
 
@@ -485,6 +531,16 @@ fn first_path(result: FileDialogResult) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `"tar.gz"` filter matches a compound extension.
+    #[test]
+    fn compound_extension_matches() {
+        let filters = vec![FileFilter::new("Archive", &["tar.gz"])];
+        assert!(matches_filters(Path::new("/a/b.tar.gz"), &filters));
+        assert!(matches_filters(Path::new("/a/B.TAR.GZ"), &filters));
+        assert!(!matches_filters(Path::new("/a/b.gz"), &filters));
+        assert!(!matches_filters(Path::new("/a/b.tar"), &filters));
+    }
 
     /// `FileFilter::new` strips a single leading dot from each extension.
     #[test]

@@ -25,6 +25,28 @@ impl Tk {
         node.combo_highlight = None;
         self.dirty = true;
         self.combo_recompute_filter(id);
+        let (editable, text, filtered_empty, var) = match self.node(id) {
+            Some(n) => (
+                n.combo_editable,
+                n.text.clone(),
+                n.combo_filtered.is_empty(),
+                n.combo_var,
+            ),
+            None => return false,
+        };
+        if editable {
+            // Re-sync the bound index to the value equal to the current text.
+            let index = self
+                .node(id)
+                .and_then(|n| n.combo_values.iter().position(|v| *v == text))
+                .map_or(-1, |i| i as i64);
+            if let Some(var) = var {
+                var.set(self, index);
+            }
+        }
+        if filtered_empty {
+            self.combobox_close(id);
+        }
         true
     }
 
@@ -81,12 +103,16 @@ impl Tk {
             node.text = cleaned.clone();
             node.cursor = cleaned.len();
             node.selection_anchor = None;
+            node.combo_highlight = None;
         }
         let index = values.iter().position(|v| *v == cleaned).map_or(-1, |i| i as i64);
         if let Some(var) = var {
             var.set(self, index);
         }
         self.combo_recompute_filter(id);
+        if self.node(id).is_some_and(|n| n.combo_filtered.is_empty()) {
+            self.combobox_close(id);
+        }
         self.dirty = true;
         true
     }
@@ -159,11 +185,26 @@ impl Tk {
                 return;
             }
         }
+        self.combo_close_other(id);
         if let Some(node) = self.node_mut(id) {
             node.combo_open = true;
         }
         self.open_combobox = Some(id);
         self.dirty = true;
+    }
+
+    /// Closes any open combobox other than `keep`, clearing its highlight and
+    /// the shared `open_combobox` overlay slot.
+    fn combo_close_other(&mut self, keep: WidgetId) {
+        if let Some(other) = self.open_combobox {
+            if other != keep {
+                if let Some(node) = self.node_mut(other) {
+                    node.combo_open = false;
+                    node.combo_highlight = None;
+                }
+                self.open_combobox = None;
+            }
+        }
     }
 
     /// Closes the dropdown for a combobox and clears the highlighted row.
@@ -235,6 +276,9 @@ impl Tk {
         self.combo_recompute_filter(id);
         let filtered_len = self.node(id).map(|n| n.combo_filtered.len()).unwrap_or(0);
         let should_open = !text.is_empty() && filtered_len > 0;
+        if should_open {
+            self.combo_close_other(id);
+        }
         if let Some(node) = self.node_mut(id) {
             node.combo_highlight = None;
             node.combo_open = should_open;
@@ -294,17 +338,10 @@ impl Tk {
                 node.text = value.clone();
                 node.cursor = value.len();
                 node.selection_anchor = None;
-                node.combo_open = false;
-                node.combo_highlight = None;
-            }
-            if self.open_combobox == Some(id) {
-                self.open_combobox = None;
             }
             self.combo_recompute_filter(id);
-        } else if let Some(node) = self.node_mut(id) {
-            node.combo_open = false;
-            node.combo_highlight = None;
         }
+        self.combobox_close(id);
         if let Some(var) = var {
             var.set(self, index as i64);
         }

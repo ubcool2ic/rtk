@@ -218,6 +218,39 @@ impl TextEngine {
 /// Alpha multiplier applied to indicator colours of disabled widgets.
 const DISABLED_ALPHA: f32 = 0.38;
 
+/// Maximum height of a combobox dropdown popup, in logical px.
+pub(crate) const COMBO_POPUP_MAX_H: f32 = 240.0;
+
+/// Returns how many dropdown rows fit inside the popup's maximum height.
+///
+/// `item_h` is the row height in logical px (see the combobox drawing code);
+/// the result is at least 1 so a single row is always addressable.
+pub(crate) fn combo_popup_rows_visible(item_h: f32) -> usize {
+    if !item_h.is_finite() || item_h <= 0.0 {
+        return 1;
+    }
+    ((COMBO_POPUP_MAX_H / item_h).floor() as usize).max(1)
+}
+
+/// Returns the index of the first dropdown row to draw for `rows` total rows.
+///
+/// The popup scrolls just enough to keep the keyboard-highlighted row visible:
+/// when the highlight is at or past the last visible row the window starts at
+/// `highlight + 1 - rows_visible`. Without a highlight the list starts at 0.
+pub(crate) fn combo_popup_first_row(
+    highlight: Option<usize>,
+    rows: usize,
+    rows_visible: usize,
+) -> usize {
+    let rows_visible = rows_visible.max(1);
+    let Some(highlight) = highlight else { return 0 };
+    if highlight < rows_visible {
+        return 0;
+    }
+    let first = highlight + 1 - rows_visible;
+    first.min(rows.saturating_sub(1))
+}
+
 /// Returns `c` with its alpha channel multiplied by `f` (clamped to `[0, 1]`).
 fn with_alpha(c: Color, f: f32) -> Color {
     let a = (c.a as f32 * f.clamp(0.0, 1.0)).round().clamp(0.0, 255.0) as u8;
@@ -668,7 +701,11 @@ impl Tk {
                         let cursor = cursor_boundary(&text, node.cursor);
                         let old_scroll_x = node.scroll_x;
                         let caret = self.measure_with(text.get(..cursor).unwrap_or_default(), &resolved).width;
-                        let available = (inner.width - 1.0).max(0.0);
+                        // Text is drawn at `inner.x - scroll + 6.0` and clipped to
+                        // `inner`, so reserve 6 px on each side plus 1 px for the
+                        // caret; otherwise the caret at the end of overflowing text
+                        // would land outside the clip and disappear.
+                        let available = (inner.width - 13.0).max(0.0);
                         let mut scroll = old_scroll_x.max(0.0);
                         if caret < scroll {
                             scroll = caret;
@@ -1434,9 +1471,20 @@ impl Tk {
                 let sel_idx = cnode.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let (px, py) = self.pointer;
 
-                for (pos, &idx) in rows.iter().enumerate() {
+                // Scroll the popup so the keyboard-highlighted row is always
+                // visible; the same offset is used by hit testing so clicks pick
+                // the drawn row.
+                let first = combo_popup_first_row(
+                    cnode.highlight,
+                    rows.len(),
+                    combo_popup_rows_visible(item_h),
+                );
+                for (pos, &idx) in rows.iter().enumerate().skip(first) {
                     let Some(val) = cnode.combo_values.get(idx) else { continue };
-                    let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + pos as f32 * item_h, drop_rect.width - 2.0, item_h);
+                    // `pos` indexes `rows`; the drawn slot is relative to the
+                    // first visible row so a scrolled popup stays inside its box.
+                    let slot = (pos - first) as f32;
+                    let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + slot * item_h, drop_rect.width - 2.0, item_h);
                     if row_rect.y >= drop_rect.y + drop_rect.height - 1.0 {
                         // Remaining rows would fall outside the popup box.
                         break;
@@ -1447,11 +1495,14 @@ impl Tk {
                     } else {
                         idx as i64 == sel_idx
                     };
+                    // In editable mode a keyboard highlight wins over hover so
+                    // only one row looks active.
+                    let hover_active = is_hovered && !(cnode.editable && cnode.highlight.is_some());
 
-                    if is_hovered || is_sel {
-                        let hl = if is_hovered && high_contrast {
+                    if hover_active || is_sel {
+                        let hl = if hover_active && high_contrast {
                             self.style_engine.tokens().palette.selection_bg
-                        } else if is_hovered {
+                        } else if hover_active {
                             if dark_mode { Color::rgb(60, 60, 60) } else { Color::rgb(230, 230, 230) }
                         } else {
                             self.style_engine.tokens().palette.select_bg
@@ -1459,7 +1510,7 @@ impl Tk {
                         fill(pixmap, row_rect.scaled(scale), drop_clip, hl);
                     }
 
-                    let fg_col = if (is_sel && !is_hovered) || (is_hovered && high_contrast) {
+                    let fg_col = if (is_sel && !hover_active) || (hover_active && high_contrast) {
                         self.style_engine.tokens().palette.select_fg
                     } else {
                         resolved.fg
