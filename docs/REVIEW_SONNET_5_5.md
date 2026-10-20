@@ -446,3 +446,9 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [api] `text_size` and `canvas_items` (which returns a count) do not follow `<widget>_<verb>` naming exactly (lines 200, 207) -> not fixed (renaming public methods breaks callers outside this chunk; left for a deliberate API decision)
 - [low] [bug] Non-finite or huge `size`, `width` and coordinates in the `canvas_create_*` and `canvas_move` functions are stored unvalidated (lines 123-197) -> not fixed (the renderer is outside this chunk; tiny-skia rejects non-finite geometry)
 
+### src/tk/damage.rs lines 1-251
+- [medium] [bug] `invalidate_rect` coalescing clears `self.damage` and pushes the union only if it passes a validity check. If the check failed (for example `x + width` overflowing to infinity or rounding to `x`), the damage was silently dropped while `partial_dirty` stayed set, so `render_frame` returned `None` and the screen went stale. Now falls back to a full redraw (`self.dirty = true`). (lines 67-69) -> fixed
+- [low] [bug] The scratch-allocation-failure fallback in `render_frame` did not reset `self.coalesced`. After the full render, new damage would then keep taking the coalescing path even with an empty list. (line 213) -> fixed
+- [info] Coalescing otherwise never drops damage and is bounded. The list is folded into its union at 16 rects. While `coalesced` is set, every new rect merges into that single union, so the list never exceeds one rect. `coalesced` is reset on every path that clears the damage list. -> no change needed
+- NOTE: edits for src/tk/damage.rs:1-251 were REVERTED (checks failed or SEARCH mismatch): 'EDIT src/tk/damage.rs: SEARCH text not found:\n        let Some(mut scratch) = self.scratch.take() else {\n            // Scratch allocation failed; fall back to a full render.\n            let pixmap = self.render_to_pixmap(width, height)?;\n            self.frame = Some(pixmap);\n            self.damag'
+
