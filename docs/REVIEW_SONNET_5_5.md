@@ -173,3 +173,29 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 
 - RECOVERED: src/render/data.rs 287-670 edits re-applied from the saved Sonnet replies, plus DeepSeek recover-data round 0 (build fix). Later DeepSeek and Sol rounds chased a golden "failure" that was a genuine fix and were discarded. **Bug found:** menus and toasts at 2x were clipped or missing (the old 2x goldens were wrong). The m011_menu_*_2x and m011_toast_*_2x goldens were re-blessed and checked visually. Hand glue: removed the now-dead `TreeSnapshot.top` field (clippy dead_code).
 
+### src/app.rs lines 651-925
+- [severity medium] [bug] `sync_window_props` pins a non-resizable axis to `inner_size()`, which is 0×0 while the window is minimized (Windows, some X11 WMs). That sets min = max = 0 and leaves the window unusable or mis-sized on restore. (line 786) -> fixed (pinning is skipped when the size is zero)
+- [severity low] [bug] The logical size is derived from `self.tk.scale_factor`, not the window's own scale factor. A zero or non-finite value gives `inf` or `NaN`, which saturate to `u32::MAX` or 0 in `as u32`. Using `window.scale_factor()` matches the units winit applies to `LogicalSize`, with a finite-and-positive guard. (line 780) -> fixed
+- [severity low] [bug] `sync_ime` caches `ime_allowed`, so it must be reset when the window is destroyed or re-created, otherwise IME stays disabled on the new window. The reset would live in `open` or the destroy path, which are outside this chunk. (line 751) -> not fixed (outside chunk)
+- [severity low] [bug] F16/F17 (per-frame title/env calls, redraws while occluded): nothing in this chunk does either. `apply_window_props` is dirty-flag gated. `pump_a11y` calls `request_redraw` only after handled actions, so the occlusion check belongs in `schedule` or `RedrawRequested`. -> not fixed (not present in this chunk)
+- [severity low] [api] No public API is touched in this chunk. Every fn has a `///` comment. -> none
+
+### src/app.rs lines 308-650
+- [medium] [bug] `draw()` called `set_title` on every frame, and `RTK_STATS` was read from the environment on every present (F16) (lines 311, 394) -> fixed. The title is now cached in a thread-local and pushed only when it changes. `RTK_STATS` is read once through a `OnceLock`. The title cache is reset before the window is (re)opened.
+- [medium] [bug] Damage rects were converted with raw `as u32` casts and `rect.x + rect.width.get()` (lines 353-372). Negative or oversized rects could overflow u32 (a debug panic) or be passed outside the surface to `present_with_damage`. Fractional rects were also truncated, which under-covered them. -> fixed. Rects are now floor/ceil-ed and clamped to the surface size, and empty results are dropped.
+- [medium] [bug] `suspended()` did not reset `occluded`, `modifiers` or `dirty` (line 444). If the window was suspended while occluded, the recreated window would never draw. -> fixed.
+- [medium] [bug] `Focused(false)` cleared input but left `self.modifiers` as it was (line 637). A modifier released while another window had focus stayed "held" and made `accepts_key_input` reject typing. -> fixed. Modifiers are reset on focus loss.
+- [low] [bug] `ThemeChanged` requested a redraw while occluded (line 484, F17) -> fixed. The `Occluded(false)` event already sets `dirty`, so the redraw happens on un-occlusion.
+- [low] [bug] `DroppedFile` calls `sim_file_drop` once per file (line 630), so a multi-file drop fires the drop callback several times instead of once with the whole batch -> not fixed. Batching needs state outside this chunk.
+- [low] [bug] The `RedrawRequested` error path sets `dirty = false`, so the "will retry" message only holds once another event arrives (line 643) -> not fixed. It deliberately avoids a busy loop on a persistent surface error.
+- [low] [bug] The per-frame `apply_window_props` and `sync_ime` calls, and any redraw scheduling while occluded, live outside this chunk (lines 312-313) -> not fixed. `draw()` already returns early when occluded.
+- [low] [bug] The AltGr handling (ctrl+alt treated as a shortcut) depends on `accepts_key_input`, which is outside this chunk -> not fixed.
+
+### src/app.rs lines 1-307
+- [medium] [bug] `open` reads the OS theme from `self.window`, which is still `None` at that point, so `follow_system_theme` never receives the initial light/dark preference (line 221) -> fixed (now reads the new window).
+- [medium] [bug] F17: while animating, `schedule` requested redraws and woke at ~60 Hz even when the window was occluded (lines 262-275) -> fixed (the animating branch is skipped while occluded, so it falls through to the idle/Wait branches; `last_frame` is reset there so no time jump on un-occlude).
+- [medium] [bug] `start + Duration::from_millis(due)` can panic on `Instant` overflow if a timer is scheduled with a huge delay (line 299) -> fixed (`checked_add`).
+- [low] [bug] `mainloop` leaves the dead event loop's proxy in `proxy_shared.waker` after `run_app` returns, so later `TkProxy::post` calls target a closed loop (lines 134, 161) -> fixed (waker cleared after the loop exits, on both success and error).
+- [low] [docs] `App` and its non-feature-gated fields are undocumented (lines 105-116) -> not fixed (private items, so `missing_docs` does not apply; no behaviour impact).
+- [low] [bug] F16 (per-frame window title/env calls): none present in lines 1-307. `sync_window_props` is called once from `open`, and its body is outside this chunk -> not fixed (not in this chunk).
+

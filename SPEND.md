@@ -123,3 +123,6 @@
 | 2026-10-20 | openai/gpt-6.1-sol | recover-data r2 [Sol fix] | 13992 (0 cached) | 1347 (1262 reasoning) | 0.0484 | 1.0336 |
 | 2026-10-20 | openai/gpt-6.1-sol | recover-data r3 [Sol fix] | 14029 (0 cached) | 1975 (1873 reasoning) | 0.0548 | 1.0885 |
 | hand glue | lead | Sonnet recovery of src/render/data.rs: removed dead TreeSnapshot.top field + initializer (clippy dead_code); re-blessed m011_menu 2x goldens after visual check (old goldens had a clipped 2x menu) | $0 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/app.rs:651-925 | 7107 (0 cached) | 3110 (2281 reasoning) | 0.0453 | 0.9908 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/app.rs:308-650 | 8580 (0 cached) | 10883 (8430 reasoning) | 0.1260 | 1.1168 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/app.rs:1-307 | 7251 (0 cached) | 3932 (2722 reasoning) | 0.0538 | 1.1706 |

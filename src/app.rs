@@ -158,7 +158,12 @@ impl Tk {
                 actions: VecDeque::new(),
             })),
         };
-        event_loop.run_app(&mut app)?;
+        let result = event_loop.run_app(&mut app);
+        // The loop is gone: drop its proxy so later posts don't target a dead loop.
+        if let Ok(mut w) = app.tk.proxy_shared.waker.lock() {
+            *w = None;
+        }
+        result?;
         match app.error {
             Some(error) => Err(error),
             None => Ok(()),
@@ -218,7 +223,7 @@ impl App {
         let size = window.inner_size();
         self.tk.sim_resize(size.width, size.height);
         // Report the OS light/dark preference so `follow_system_theme` can act.
-        if let Some(system) = self.window.as_ref().and_then(|w| w.theme()) {
+        if let Some(system) = window.theme() {
             self.tk.sim_system_theme(map_winit_theme(system));
         }
         self.window = Some(window);
@@ -259,7 +264,7 @@ impl App {
 
         // Cap redraws at ~60 Hz: many input events can arrive per frame.
         let next_frame = self.last_draw + FRAME_INTERVAL;
-        if self.tk.is_animating() {
+        if self.tk.is_animating() && !self.occluded {
             let elapsed = now.duration_since(self.last_frame).as_millis().min(1000) as u32;
             if elapsed > 0 {
                 self.tk.sim_advance_time(elapsed);
@@ -296,19 +301,29 @@ impl App {
 
         // Sleep no later than the next timer deadline (no busy-waiting).
         if let Some(due) = self.tk.next_timer_due_ms() {
-            let deadline = start + Duration::from_millis(due);
-            let wake = match event_loop.control_flow() {
-                ControlFlow::WaitUntil(t) => t.min(deadline),
-                _ => deadline,
-            };
-            event_loop.set_control_flow(ControlFlow::WaitUntil(wake));
+            if let Some(deadline) = start.checked_add(Duration::from_millis(due)) {
+                let wake = match event_loop.control_flow() {
+                    ControlFlow::WaitUntil(t) => t.min(deadline),
+                    _ => deadline,
+                };
+                event_loop.set_control_flow(ControlFlow::WaitUntil(wake));
+            }
         }
     }
 
     /// Draws the current frame to the window surface, skipping work when occluded or zero-sized.
     fn draw(&mut self) -> Result<(), Box<dyn Error>> {
         let Some(window) = self.window.clone() else { return Ok(()) };
-        window.set_title(&self.tk.window_title);
+        {
+            let title: &str = &self.tk.window_title;
+            LAST_TITLE.with(|last| {
+                let mut last = last.borrow_mut();
+                if last.as_deref() != Some(title) {
+                    window.set_title(title);
+                    *last = Some(title.to_owned());
+                }
+            });
+        }
         self.apply_window_props();
         self.sync_ime(&window);
         let size = window.inner_size();
@@ -350,11 +365,18 @@ impl App {
                 rects
                     .iter()
                     .filter_map(|r| {
-                        let w = NonZeroU32::new(r.width as u32)?;
-                        let h = NonZeroU32::new(r.height as u32)?;
+                        // Clamp to the surface so nothing overflows or lands out of bounds.
+                        let sw = f64::from(size.width);
+                        let sh = f64::from(size.height);
+                        let x0 = (r.x as f64).floor().clamp(0.0, sw);
+                        let y0 = (r.y as f64).floor().clamp(0.0, sh);
+                        let x1 = ((r.x + r.width) as f64).ceil().clamp(0.0, sw);
+                        let y1 = ((r.y + r.height) as f64).ceil().clamp(0.0, sh);
+                        let w = NonZeroU32::new((x1 - x0) as u32)?;
+                        let h = NonZeroU32::new((y1 - y0) as u32)?;
                         Some(softbuffer::Rect {
-                            x: r.x as u32,
-                            y: r.y as u32,
+                            x: x0 as u32,
+                            y: y0 as u32,
                             width: w,
                             height: h,
                         })
@@ -391,7 +413,8 @@ impl App {
                 buffer.present()?;
             }
         }
-        if std::env::var_os("RTK_STATS").is_some() {
+        static STATS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *STATS.get_or_init(|| std::env::var_os("RTK_STATS").is_some()) {
             eprintln!(
                 "rtk: frame render {:.2} ms, convert+present {:.2} ms, {damaged_pixels} damaged px",
                 render_time.as_secs_f64() * 1000.0,
@@ -414,6 +437,11 @@ impl App {
     }
 }
 
+thread_local! {
+    /// Last title pushed to the window, so `set_title` is only called when it changes.
+    static LAST_TITLE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
 impl ApplicationHandler<RtkUserEvent> for App {
     /// Handles a user event by processing posted tasks and accessibility updates, then rescheduling.
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: RtkUserEvent) {
@@ -430,6 +458,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
             return;
         }
         if self.window.is_none() {
+            LAST_TITLE.with(|last| *last.borrow_mut() = None);
             if let Err(error) = self.open(event_loop) {
                 eprintln!("rtk: cannot create window: {error}");
                 self.error = Some(error);
@@ -445,6 +474,9 @@ impl ApplicationHandler<RtkUserEvent> for App {
         self.surface = None;
         self.context = None;
         self.window = None;
+        self.occluded = false;
+        self.modifiers = Default::default();
+        self.tk.dirty = true;
         self.tk.clear_input();
     }
 
@@ -480,7 +512,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
             }
             WindowEvent::ThemeChanged(theme) => {
                 self.tk.sim_system_theme(map_winit_theme(theme));
-                if let Some(window) = &self.window {
+                if let Some(window) = self.window.as_ref().filter(|_| !self.occluded) {
                     window.request_redraw();
                 }
             }
@@ -634,7 +666,11 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     }
                 }
             }
-            WindowEvent::Focused(false) => self.tk.clear_input(),
+            WindowEvent::Focused(false) => {
+                // Modifier releases are delivered to whichever window has focus.
+                self.modifiers = Default::default();
+                self.tk.clear_input();
+            }
             WindowEvent::RedrawRequested => {
                 self.last_frame = Instant::now();
                 if let Err(error) = self.draw() {
@@ -777,13 +813,18 @@ impl App {
     fn sync_window_props(&mut self) {
         let Some(window) = self.window.clone() else { return };
         window.set_window_icon(build_icon(&self.tk));
-        let scale = f64::from(self.tk.scale_factor);
+        let scale = window.scale_factor();
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
         let to_logical = |(w, h): (u32, u32)| LogicalSize::new(f64::from(w), f64::from(h));
         let (rw, rh) = self.tk.is_resizable();
         window.set_resizable(rw || rh);
         // Pin the non-resizable axis to the current window size, keeping the
         // other axis free within the user's min/max constraints.
         let size = window.inner_size();
+        if (!rw || !rh) && (size.width == 0 || size.height == 0) {
+            // Minimized: the reported size is meaningless, so don't pin to it.
+            return;
+        }
         let cur = (
             (f64::from(size.width) / scale).round() as u32,
             (f64::from(size.height) / scale).round() as u32,
