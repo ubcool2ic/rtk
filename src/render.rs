@@ -389,8 +389,8 @@ fn render_styled_box(
 impl Tk {
     /// Renders the whole scene at `width`×`height` into a fresh pixmap.
     ///
-    /// Always performs a full render; the output is identical to
-    /// [`Tk::paint_scene`] with `only = None`.
+    /// Always performs a full render; the output is identical to the internal
+    /// scene painter with no damage restriction.
     pub fn render_to_pixmap(&mut self, width: u32, height: u32) -> Result<Pixmap, RtkError> {
         self.sim_resize(width, height);
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 16_777_216 {
@@ -1373,6 +1373,9 @@ impl Tk {
 
     }
 
+    /// Renders the scene at `width`×`height` and writes it to `path` as a PNG.
+    ///
+    /// Returns an error when the size is invalid or the file cannot be written.
     pub fn save_png(
         &mut self,
         path: impl AsRef<Path>,

@@ -3,7 +3,7 @@
 //! Dialogs are stacked: opening a dialog while another is already presented
 //! pushes the outer dialog's state onto `Tk::modal_stack`, so the inner dialog
 //! can be dismissed without orphaning the outer one. All teardown funnels
-//! through [`finish_modal`], which restores the previous frame.
+//! through a single internal helper that restores the previous frame.
 
 use std::cell::RefCell;
 use std::fs;

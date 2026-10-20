@@ -1,5 +1,7 @@
 //! A small, software-rendered, tkinter-style GUI.
 
+#![deny(missing_docs)]
+
 mod app;
 pub mod a11y;
 #[cfg(feature = "accesskit")]

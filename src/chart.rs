@@ -1,5 +1,5 @@
 //! Pure chart logic: series palette, axis tick generation, time-axis labels and
-//! the display-list builder that turns a [`ChartState`] into canvas items.
+//! the display-list builder that turns the chart state into canvas items.
 //!
 //! Nothing in this module touches [`crate::Tk`]; it is deterministic and unit
 //! testable. Rendering happens in `render.rs` through the Canvas item path.
@@ -181,9 +181,9 @@ const TIME_STEPS: [f64; 20] = [
 
 /// Computes time-axis ticks `(unix_seconds, label)` inside `[min, max]`.
 ///
-/// Chooses the smallest step from [`TIME_STEPS`] that yields at most
-/// `max_ticks` ticks (falling back to the largest step). Same empty rules as
-/// [`nice_ticks`].
+/// Chooses the smallest step from the built-in time-step table that yields at
+/// most `max_ticks` ticks (falling back to the largest step). Same empty rules
+/// as [`nice_ticks`].
 pub fn time_ticks(min: f64, max: f64, max_ticks: usize) -> Vec<(f64, String)> {
     if !min.is_finite() || !max.is_finite() || max_ticks == 0 || min > max {
         return Vec::new();

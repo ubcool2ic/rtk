@@ -1,6 +1,6 @@
 //! Image widget data model: RGBA and SVG sources, fit modes, and draw-item
 //! generation. The rendering itself happens in `render.rs`; this module only
-//! turns an [`ImageData`] into positioned [`CanvasItemKind::Image`] items.
+//! turns the image state into positioned canvas image items.
 
 use crate::widgets::CanvasItemKind;
 

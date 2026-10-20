@@ -34,9 +34,8 @@ const WIDGET_INFLATE: f32 = 4.0;
 impl Tk {
     /// Marks a logical-pixel rectangle as damaged, requesting a partial redraw.
     ///
-    /// Empty or non-finite rectangles are ignored. When more than
-    /// [`MAX_DAMAGE_RECTS`] rectangles accumulate they are replaced by their
-    /// union bounding box.
+    /// Empty or non-finite rectangles are ignored. When too many rectangles
+    /// accumulate they are replaced by their union bounding box.
     pub fn invalidate_rect(&mut self, rect: Rect) {
         if !rect.x.is_finite()
             || !rect.y.is_finite()
@@ -75,10 +74,10 @@ impl Tk {
     /// Marks the visible area of widget `id` as damaged.
     ///
     /// For widgets without a shadow this uses `node.clip ∩ node.rect` inflated
-    /// by [`WIDGET_INFLATE`] logical px to cover focus rings. For widgets whose
-    /// resolved style carries a drop shadow the base is `node.rect` (the shadow
-    /// is drawn without clipping) inflated by [`WIDGET_INFLATE`] plus the
-    /// shadow's blur and offset so the whole shadow is repainted. Widgets that
+    /// by a few logical px to cover focus rings. For widgets whose resolved
+    /// style carries a drop shadow the base is `node.rect` (the shadow is drawn
+    /// without clipping) inflated by that same margin plus the shadow's blur
+    /// and offset so the whole shadow is repainted. Widgets that
     /// draw overlays outside their own rect (Combobox dropdowns, Notebook tabs,
     /// Canvas content) fall back to a full redraw.
     pub fn invalidate_widget(&mut self, id: WidgetId) {
