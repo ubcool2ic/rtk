@@ -898,3 +898,8 @@ I found nothing in lines 1-131 that needs a fix.
 - **Assertions:** Both tests assert meaningful properties. The pathological-index test covers `usize::MAX` for row, column and spans, with an empty column-weight list.
 - **Parent bounds in `check()` (line 37-38):** I could not check this because the layout engine source was not provided. For a NaN or negative parent size, `check()` compares against a non-finite or inverted bound, so the test only passes if `pack` and `grid` return no rects in that case. I left the assertions as they are, since loosening them would weaken a correct check.
 
+### tests/listbox_activate.rs lines 1-66
+- [low] [bug] `double_click_activates_row` guesses the row height (`16.0.max(height/5.0)`) and never checks that the first click landed on row 1, so a geometry mismatch fails with a misleading "activated wrong row" error (lines 58-64) -> fixed (added an assertion that the first click selects row 1)
+- [low] [bug] `double_click_activates_row` depends on `sim_click` treating two back-to-back clicks as a double-click. This is not visible from this chunk, and I could not change it from this file -> not fixed (the dependency lives in the toolkit's click handling, not in this file)
+- [low] [bug] The other tests (lines 28-51) assert something meaningful: the final selection is checked and the activation log is compared exactly -> not fixed (nothing to fix)
+

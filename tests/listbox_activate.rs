@@ -59,6 +59,7 @@ fn double_click_activates_row() {
     let x = rect.x + rect.width / 2.0;
     let y = rect.y + line_h * 1.5;
     tk.sim_click(x, y);
+    assert_eq!(tk.listbox_curselection(lb), Some(1), "first click must select row 1");
     assert!(log.borrow().is_empty(), "single click must not activate");
     tk.sim_click(x, y);
     assert_eq!(&*log.borrow(), &[1], "double click must activate the clicked row");

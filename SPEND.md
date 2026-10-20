@@ -253,3 +253,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/golden_widgets.rs:1-140 | 4645 (0 cached) | 1005 (631 reasoning) | 0.0193 | 4.8738 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/ids.rs:1-88 | 3913 (0 cached) | 1078 (757 reasoning) | 0.0186 | 4.8924 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/layout_fuzz.rs:1-131 | 4343 (0 cached) | 1308 (987 reasoning) | 0.0218 | 4.9142 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/listbox_activate.rs:1-66 | 3412 (0 cached) | 1208 (762 reasoning) | 0.0189 | 4.9331 |
