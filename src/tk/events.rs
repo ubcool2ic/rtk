@@ -59,14 +59,17 @@ impl Tk {
             self.tooltip_visible = false;
             let prev = self.hovered;
             self.hovered = hovered;
-            self.dirty = true;
             if let Some(prev_id) = prev {
                 // It was hovered until a moment ago.
                 self.check_state_transition(prev_id, self.widget_state(prev_id) | State::HOVER);
+                self.invalidate_widget(prev_id);
             }
             if let Some(new_id) = hovered {
                 self.check_state_transition(new_id, self.widget_state(new_id).without(State::HOVER));
+                self.invalidate_widget(new_id);
             }
+            // Hover changes only repaint the affected widgets; a full redraw is
+            // requested by `invalidate_widget` itself for overlay widgets.
         } else if moved && !self.tooltip_visible {
             self.hover_timer_ms = 0;
         }
@@ -202,10 +205,14 @@ impl Tk {
         self.pressed = hit;
         if let Some(prev) = prev_pressed {
             self.check_state_transition(prev, self.widget_state(prev) | State::PRESSED);
+            self.invalidate_widget(prev);
         }
         if let Some(cur) = hit {
             self.check_state_transition(cur, self.widget_state(cur).without(State::PRESSED));
+            self.invalidate_widget(cur);
         }
+        // Pressed-state changes are covered by the per-widget invalidations
+        // above; the full redraw below is still needed for focus/overlay state.
 
         if hit.is_some_and(|id| self.is_focusable(id)) {
             let prev_focus = self.focused;
@@ -213,9 +220,11 @@ impl Tk {
             if prev_focus != hit {
                 if let Some(pf) = prev_focus {
                     self.check_state_transition(pf, self.widget_state(pf) | State::FOCUSED);
+                    self.invalidate_widget(pf);
                 }
                 if let Some(nf) = hit {
                     self.check_state_transition(nf, self.widget_state(nf).without(State::FOCUSED));
+                    self.invalidate_widget(nf);
                 }
             }
         }
@@ -380,8 +389,11 @@ impl Tk {
             }
             // It was pressed until `take()` above.
             self.check_state_transition(id, self.widget_state(id) | State::PRESSED);
+            self.invalidate_widget(id);
         }
         self.hovered = hit.filter(|id| self.node(*id).is_some());
+        // Activation may have changed focus, variables or overlays; keep the
+        // full redraw request here.
         self.dirty = true;
     }
 
@@ -673,6 +685,7 @@ impl Tk {
         self.hovered = None;
         self.drag_active = None;
         self.scrollbar_drag = None;
+        self.ime_preedit = None;
         self.dirty = true;
     }
 

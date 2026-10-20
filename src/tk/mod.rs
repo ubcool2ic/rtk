@@ -26,6 +26,9 @@ use crate::widgets::{
 use crate::{Opt, RtkError, WidgetId};
 
 
+/// Active IME composition: target widget, preedit text and byte cursor range.
+pub(crate) type ImePreedit = (WidgetId, String, Option<(usize, usize)>);
+
 mod style;
 mod window;
 mod tree;
@@ -44,6 +47,11 @@ mod shortcuts;
 mod clipboard;
 mod edit;
 mod theme;
+mod ime;
+mod damage;
+mod a11y;
+
+pub use damage::FrameDamage;
 mod chart;
 mod image;
 mod dnd;
@@ -207,6 +215,32 @@ pub struct Tk {
     pub(crate) close_callback: Option<CloseCallback>,
     /// True when window properties (icon, size constraints) need re-applying.
     pub(crate) window_props_dirty: bool,
+    /// Whether the colourblind-safe palette override is active.
+    pub(crate) colorblind_safe: bool,
+    /// The theme's own `danger` colour, captured before the colourblind-safe
+    /// override replaced it, so turning the mode off can restore it.
+    pub(crate) base_danger: Option<Color>,
+    /// Last system light/dark preference reported by the window backend.
+    pub(crate) system_theme: Option<crate::theme::SystemTheme>,
+    /// When following the system theme, the `(light, dark)` theme pair to use.
+    pub(crate) follow_system: Option<(Theme, Theme)>,
+    /// Active IME composition: `(widget, text, byte cursor range)`.
+    pub(crate) ime_preedit: Option<ImePreedit>,
+    /// Damaged logical-pixel rectangles awaiting a partial redraw.
+    pub(crate) damage: Vec<Rect>,
+    /// True when at least one damaged rectangle needs repainting.
+    pub(crate) partial_dirty: bool,
+    /// True when `damage` has been folded into a single union rectangle and
+    /// further invalidations must keep merging into it.
+    pub(crate) coalesced: bool,
+    /// Last presented full frame, used as the base for partial redraws.
+    pub(crate) frame: Option<Pixmap>,
+    /// Reusable offscreen pixmap for partial redraws (allocated per size).
+    pub(crate) scratch: Option<Pixmap>,
+    /// Accessibility label overrides keyed by widget.
+    pub(crate) a11y_labels: BTreeMap<WidgetId, String>,
+    /// Last accessibility tree snapshot, used by `a11y_tree_changed`.
+    pub(crate) a11y_last_tree: Option<Vec<crate::a11y::A11yNode>>,
     /// Modifiers of the most recent key press.
     pub(crate) mods: crate::shortcut::Modifiers,
     /// Bound keyboard shortcuts, in binding order.
@@ -281,6 +315,18 @@ impl Tk {
             window_resizable: (true, true),
             close_callback: None,
             window_props_dirty: false,
+            colorblind_safe: false,
+            base_danger: None,
+            system_theme: None,
+            follow_system: None,
+            ime_preedit: None,
+            damage: Vec::new(),
+            partial_dirty: false,
+            coalesced: false,
+            frame: None,
+            scratch: None,
+            a11y_labels: BTreeMap::new(),
+            a11y_last_tree: None,
             mods: crate::shortcut::Modifiers::NONE,
             shortcuts: Vec::new(),
             next_shortcut_id: 1,
@@ -403,9 +449,13 @@ impl Tk {
     }
 
     /// Replaces the design tokens without changing `theme()`.
-    /// Replaces the design tokens without changing `theme()`.
+    ///
+    /// Fresh tokens carry the theme's own `danger` colour, so the captured
+    /// pre-colourblind danger is dropped and re-derived from the new tokens.
     pub fn set_tokens(&mut self, tokens: Tokens) {
         self.style_engine.set_tokens(tokens);
+        self.base_danger = None;
+        self.apply_colorblind_palette();
         self.dirty = true;
     }
 
@@ -429,6 +479,10 @@ impl Tk {
             Theme::ModernLight => Tokens::modern_light(),
         };
         self.style_engine.set_tokens(tokens);
+        // Fresh tokens carry the theme's own danger colour; drop the captured
+        // pre-colourblind value so it is re-derived, then re-apply the override.
+        self.base_danger = None;
+        self.apply_colorblind_palette();
 
         let is_dark = matches!(theme, Theme::Dark | Theme::ModernDark);
         let is_hc = theme == Theme::HighContrast;

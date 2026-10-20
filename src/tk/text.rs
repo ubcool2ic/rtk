@@ -166,7 +166,8 @@ impl Tk {
                 node.cursor = cursor;
                 node.selection_anchor = None;
             }
-            self.dirty = true;
+            // Only this widget's caret/selection changed.
+            self.invalidate_widget(id);
             return;
         }
 
@@ -181,7 +182,9 @@ impl Tk {
                 node.text_scroll_row = cur_line + 1 - vis_rows;
             }
         }
-        self.dirty = true;
+        // Scrolling and text/caret changes are confined to the widget's own
+        // rect, so a partial redraw of just this widget suffices.
+        self.invalidate_widget(id);
     }
 
 
