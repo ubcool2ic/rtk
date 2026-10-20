@@ -71,3 +71,4 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot3, PR #6] 0.10 progress and inputs: 23+ calls (itemized in PR #6) | — | — | 0.174 | (BizyBot3 DeepSeek 0.174) |
 | 2026-10-20 | openai/gpt-6.1-sol | [BizyBot3, PR #6] Sol fixes (itemized in PR #6) | — | — | 0.563 | (BizyBot3 Sol fixes 0.563) |
 | 2026-10-20 | (no model) | fix010-visual: the driver wrongly refused DeepSeek's round-1 rewrite of its own new test file (overwrite guard bug), so the two Sol rounds lacked context. I applied the refused DeepSeek output from the log and fixed the guard. ScrollArea got one DeepSeek self-fix, then Sol fixed it | — | — | 0 | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot4, PR #7] 0.11 table, tree, menus, toasts, modal stack (itemized in PR #7) | — | — | 0.1011 | (BizyBot4 DeepSeek 0.1011; Sol 0.00) |
