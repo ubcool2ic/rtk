@@ -201,6 +201,9 @@ impl Tk {
     pub(crate) fn tree_clamp_top(&mut self, id: WidgetId) {
         self.ensure_layout();
         let visible = self.tree_visible_rows(id);
+        if let Some(state) = self.tree_state_mut(id) {
+            state.ensure_visible_robust();
+        }
         let total = self.tree_state(id).map(|s| s.visible.len()).unwrap_or(0);
         let max_top = total.saturating_sub(visible.max(1));
         if let Some(state) = self.tree_state_mut(id) {
@@ -412,7 +415,8 @@ impl Tk {
     /// Scrolls so node `key` is visible.
     pub fn tree_see(&mut self, id: WidgetId, key: usize) -> bool {
         self.ensure_layout();
-        let visible = self.tree_visible_rows(id).max(1);
+        let rows = self.tree_visible_rows(id);
+        let visible = rows.max(1);
         let Some(state) = self.tree_state_mut(id) else { return false };
         state.ensure_visible_robust();
         let Some(display) = state.display_of(key) else { return false };
@@ -427,7 +431,11 @@ impl Tk {
         if let Some(state) = self.tree_state_mut(id) {
             state.top = new_top;
         }
-        self.tree_clamp_top(id);
+        // Without laid-out rows (e.g. unselected Notebook page) clamping would
+        // push `top` past the end and render an empty body; defer to render.
+        if rows > 0 {
+            self.tree_clamp_top(id);
+        }
         self.dirty = true;
         true
     }
@@ -463,7 +471,7 @@ impl Tk {
         let Some(state) = self.tree_state_mut(id) else { return false };
         state.ensure_visible_robust();
         let top = state.top;
-        let display = top + (y / row_h).floor().max(0.0) as usize;
+        let display = top.saturating_add((y / row_h).floor().max(0.0) as usize);
         let Some(&(key, depth)) = state.visible.get(display) else { return true };
         let has_children = state.get(key).is_some_and(|n| !n.children.is_empty());
         let indent = depth as f32 * 16.0;
@@ -486,7 +494,7 @@ impl Tk {
         let Some(state) = self.tree_state_mut(id) else { return };
         state.ensure_visible_robust();
         let delta = lines.round() as i64;
-        let new_top = (state.top as i64 + delta).max(0) as usize;
+        let new_top = (state.top as i64).saturating_add(delta).max(0) as usize;
         state.top = new_top;
         self.tree_clamp_top(id);
         self.dirty = true;

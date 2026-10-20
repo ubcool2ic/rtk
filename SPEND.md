@@ -135,3 +135,5 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/menu.rs:693-698 | 2178 (0 cached) | 347 (140 reasoning) | 0.0078 | 1.3840 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/menu.rs:345-692 | 7648 (0 cached) | 5165 (3672 reasoning) | 0.0669 | 1.4510 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/menu.rs:1-344 | 7807 (0 cached) | 2656 (2066 reasoning) | 0.0422 | 1.4932 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/treeview.rs:350-595 | 5899 (0 cached) | 4035 (2889 reasoning) | 0.0521 | 1.5453 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/treeview.rs:1-349 | 7753 (0 cached) | 2402 (1683 reasoning) | 0.0395 | 1.5848 |
