@@ -41,6 +41,7 @@ mod notebook;
 mod progress;
 mod tooltip;
 mod chart;
+mod image;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;

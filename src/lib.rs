@@ -6,6 +6,7 @@ pub mod colormap;
 pub mod dialog;
 pub mod fonts;
 pub mod icons;
+pub mod image;
 pub mod layout;
 mod render;
 pub mod style;
@@ -20,6 +21,7 @@ pub use colormap::Colormap;
 pub use dialog::MessageKind;
 pub use fonts::DefaultFont;
 pub use icons::Icon;
+pub use image::ImageFit;
 pub use layout::{Anchor, Fill, GridOpts, PackOpts, PlaceOpts, Rect, Side, Sticky};
 pub use style::{Edges, ImageId, LinearGradient, Palette, Radius, ResolvedStyle, Shadow, State, StyleError, StyleSpec, Tokens, TypeScale};
 pub use timer::TimerId;
@@ -27,8 +29,8 @@ pub use tk::{Key, ScrollUnit, Tk, TkProxy};
 pub use var::Var;
 pub use widgets::{
     Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,
-    Compound, DragPhase, Entry, Frame, Label, Listbox, Notebook, Opt, ProgressBar, Radiobutton,
-    Scale, Scrollbar, Sparkline, Spinbox, Text, Theme, WidgetId,
+    Compound, DragPhase, Entry, Frame, Image, Label, Listbox, Notebook, Opt, ProgressBar,
+    Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Text, Theme, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

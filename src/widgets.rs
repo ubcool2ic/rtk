@@ -208,6 +208,8 @@ pub struct Notebook;
 pub struct Chart;
 /// Constructor namespace for inline sparklines.
 pub struct Sparkline;
+/// Constructor namespace for image widgets (PNG/RGBA/SVG).
+pub struct Image;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -470,6 +472,18 @@ impl Sparkline {
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
+impl Image {
+    /// Creates an image widget with the requested logical size (negative/NaN → 0).
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Image, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+        }
+        Ok(id)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Frame,
@@ -488,6 +502,7 @@ pub(crate) enum Kind {
     Combobox,
     Notebook,
     Chart,
+    Image,
 }
 
 impl Kind {
@@ -606,6 +621,8 @@ pub(crate) struct WidgetNode {
     pub monospace: bool,
     // Chart
     pub chart: Option<Box<crate::chart::ChartState>>,
+    // Image widget
+    pub image_data: Option<Box<crate::image::ImageData>>,
     // Advanced styling layer fields
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
@@ -684,6 +701,7 @@ impl WidgetNode {
             tooltip: None,
             monospace: false,
             chart: None,
+            image_data: None,
             named_style: None,
             style_override: None,
             disabled: false,

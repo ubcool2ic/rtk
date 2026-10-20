@@ -718,13 +718,15 @@ impl Tk {
                         origin, clip, resolved.opacity,
                     );
                 }
-                Kind::Canvas | Kind::Chart => {
+                Kind::Canvas | Kind::Chart | Kind::Image => {
                     let w = rect.width.round() as u32;
                     let h = rect.height.round() as u32;
                     if w > 0 && h > 0 {
                         if let Some(mut sub) = Pixmap::new(w, h) {
                             let sub_bg = if kind == Kind::Chart {
                                 self.style_engine.tokens().palette.surface
+                            } else if kind == Kind::Image {
+                                self.style_engine.tokens().palette.bg
                             } else {
                                 draw_bg
                             };
@@ -737,6 +739,16 @@ impl Tk {
                                         logical.height,
                                         &self.style_engine.tokens().palette,
                                         resolved.font_size,
+                                    ),
+                                    None => Vec::new(),
+                                }
+                            } else if kind == Kind::Image {
+                                match node.image_data.as_deref() {
+                                    Some(data) => crate::image::build_items(
+                                        data,
+                                        logical.width,
+                                        logical.height,
+                                        scale,
                                     ),
                                     None => Vec::new(),
                                 }
