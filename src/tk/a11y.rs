@@ -55,6 +55,7 @@ impl Tk {
             let value = self.a11y_value(id);
             let numeric = self.a11y_numeric(id);
             let toggled = self.a11y_toggled(id);
+            let mixed = self.checkbutton_is_mixed(id);
             let disabled = node.disabled;
             let focused = self.focused == Some(id);
             let bounds = node.rect;
@@ -67,6 +68,7 @@ impl Tk {
                 value,
                 numeric,
                 toggled,
+                mixed,
                 disabled,
                 focused,
                 bounds,

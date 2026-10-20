@@ -28,6 +28,22 @@ pub enum Orient {
     Vertical,
 }
 
+/// The three states of a tri-state [`crate::Checkbutton`].
+///
+/// A regular (non-tri-state) check box only ever reports [`CheckState::Checked`]
+/// or [`CheckState::Unchecked`]; [`CheckState::Mixed`] is only reachable when
+/// tri-state mode is enabled with [`crate::Tk::checkbutton_set_tristate`].
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckState {
+    /// The box is empty and its bound variable is `false`.
+    Unchecked,
+    /// The box is filled and its bound variable is `true`.
+    Checked,
+    /// The box shows a dash (indeterminate); the bound variable is unchanged.
+    Mixed,
+}
+
 /// State shared by the milestone 0.10 input widgets.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct InputsState {
@@ -88,4 +104,12 @@ pub(crate) struct InputsState {
     pub(crate) scroll_area_content: Option<crate::WidgetId>,
     /// Current scroll offset `(x, y)` of a ScrollArea in logical px.
     pub(crate) scroll_area_offset: (f32, f32),
+
+    // ---- Tri-state Checkbutton ----
+    /// Whether the check box supports the mixed (indeterminate) state.
+    pub(crate) check_tristate: bool,
+    /// Whether the check box currently shows the mixed (dash) state.
+    pub(crate) check_mixed: bool,
+    /// Whether user activation cycles through Mixed (Unchecked -> Checked -> Mixed -> Unchecked).
+    pub(crate) check_cycle_mixed: bool,
 }
