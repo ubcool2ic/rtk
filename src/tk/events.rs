@@ -67,14 +67,17 @@ impl Tk {
             self.tooltip_visible = false;
             let prev = self.hovered;
             self.hovered = hovered;
-            self.dirty = true;
             if let Some(prev_id) = prev {
                 // It was hovered until a moment ago.
                 self.check_state_transition(prev_id, self.widget_state(prev_id) | State::HOVER);
+                self.invalidate_widget(prev_id);
             }
             if let Some(new_id) = hovered {
                 self.check_state_transition(new_id, self.widget_state(new_id).without(State::HOVER));
+                self.invalidate_widget(new_id);
             }
+            // Hover changes only repaint the affected widgets; a full redraw is
+            // requested by `invalidate_widget` itself for overlay widgets.
         } else if moved && !self.tooltip_visible {
             self.hover_timer_ms = 0;
         }
@@ -105,8 +108,57 @@ impl Tk {
         if let Some(id) = self.pressed {
             if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
                 self.drag_scale(id, x);
+            } else if self.node(id).is_some_and(|node| matches!(node.kind, Kind::Entry | Kind::Text) && !node.disabled) {
+                self.drag_text_selection(id, x, y);
             }
         }
+    }
+
+    /// Extends the selection of an Entry/Text while the pointer is dragged.
+    fn drag_text_selection(&mut self, id: WidgetId, x: f32, y: f32) {
+        let Some(node) = self.node(id) else { return };
+        let kind = node.kind;
+        let rect = node.rect;
+        let scroll_x = node.scroll_x;
+        let font = self.resolved_style(id).unwrap_or_default();
+        let text = node.text.clone();
+        let cursor = match kind {
+            Kind::Entry => {
+                let target = (x - rect.x - 6.0 + scroll_x).max(0.0);
+                let boundaries = clusters(&text);
+                let (mut low, mut high) = (0, boundaries.len());
+                while low < high {
+                    let mid = low + (high - low) / 2;
+                    let end = boundaries.get(mid).copied().unwrap_or(text.len());
+                    let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
+                    if width < target {
+                        low = mid + 1;
+                    } else {
+                        high = mid;
+                    }
+                }
+                let right = boundaries.get(low).copied().unwrap_or(text.len());
+                let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
+                let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
+                let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
+                if (rw - target).abs() < (lw - target).abs() { right } else { left }
+            }
+            Kind::Text => {
+                let line_h = (font.font_size * 1.3 + 4.0).max(16.0);
+                let row = node.text_scroll_row + ((y - rect.y - 4.0) / line_h).max(0.0) as usize;
+                let lines: Vec<&str> = text.split('\n').collect();
+                let target_line = row.min(lines.len().saturating_sub(1));
+                lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>()
+            }
+            _ => return,
+        };
+        if let Some(node) = self.node_mut(id) {
+            if node.selection_anchor.is_none() {
+                node.selection_anchor = Some(node.cursor);
+            }
+            node.cursor = cursor.min(node.text.len());
+        }
+        self.dirty = true;
     }
 
     /// Headless harness: presses the primary mouse button at the current pointer.
@@ -171,10 +223,14 @@ impl Tk {
         self.pressed = hit;
         if let Some(prev) = prev_pressed {
             self.check_state_transition(prev, self.widget_state(prev) | State::PRESSED);
+            self.invalidate_widget(prev);
         }
         if let Some(cur) = hit {
             self.check_state_transition(cur, self.widget_state(cur).without(State::PRESSED));
+            self.invalidate_widget(cur);
         }
+        // Pressed-state changes are covered by the per-widget invalidations
+        // above; the full redraw below is still needed for focus/overlay state.
 
         if hit.is_some_and(|id| self.is_focusable(id)) {
             let prev_focus = self.focused;
@@ -182,9 +238,11 @@ impl Tk {
             if prev_focus != hit {
                 if let Some(pf) = prev_focus {
                     self.check_state_transition(pf, self.widget_state(pf) | State::FOCUSED);
+                    self.invalidate_widget(pf);
                 }
                 if let Some(nf) = hit {
                     self.check_state_transition(nf, self.widget_state(nf).without(State::FOCUSED));
+                    self.invalidate_widget(nf);
                 }
             }
         }
@@ -212,7 +270,15 @@ impl Tk {
                     let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
                     let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
                     let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                    let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
+                        if shift {
+                            if node.selection_anchor.is_none() {
+                                node.selection_anchor = Some(node.cursor);
+                            }
+                        } else {
+                            node.selection_anchor = Some(cursor);
+                        }
                         node.cursor = cursor;
                     }
                 }
@@ -280,7 +346,15 @@ impl Tk {
                     let lines: Vec<&str> = node.text.split('\n').collect();
                     let target_line = row.min(lines.len().saturating_sub(1));
                     let byte_offset = lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>();
+                    let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
+                        if shift {
+                            if node.selection_anchor.is_none() {
+                                node.selection_anchor = Some(node.cursor);
+                            }
+                        } else {
+                            node.selection_anchor = Some(byte_offset.min(node.text.len()));
+                        }
                         node.cursor = byte_offset.min(node.text.len());
                     }
                 }
@@ -348,8 +422,11 @@ impl Tk {
             }
             // It was pressed until `take()` above.
             self.check_state_transition(id, self.widget_state(id) | State::PRESSED);
+            self.invalidate_widget(id);
         }
         self.hovered = hit.filter(|id| self.node(*id).is_some());
+        // Activation may have changed focus, variables or overlays; keep the
+        // full redraw request here.
         self.dirty = true;
     }
 
@@ -471,8 +548,18 @@ impl Tk {
 
     /// Headless harness: delivers a non-text key to the focused widget (or to the
     /// modal/combobox/focus-traversal handlers that intercept it).
+    ///
+    /// Equivalent to [`Tk::sim_key_with`] with no modifiers held.
     #[doc(hidden)]
     pub fn sim_key(&mut self, key: Key) {
+        self.sim_key_with(key, crate::shortcut::Modifiers::NONE);
+    }
+
+    /// Delivers a non-text key to the focused widget, ignoring bound shortcuts.
+    ///
+    /// This is the internal dispatch path used by [`Tk::sim_key_with`] once
+    /// shortcut matching has been ruled out.
+    pub(crate) fn sim_key_raw(&mut self, key: Key) {
         self.ensure_layout();
         if self.menu_key(key) {
             return;
@@ -541,6 +628,7 @@ impl Tk {
             }
             return;
         }
+        let extend = self.mods.shift;
         match node.kind {
             Kind::Entry => {
                 if key == Key::Space {
@@ -549,14 +637,14 @@ impl Tk {
                     // Submit callback from `entry_bind_submit` (no-op if none).
                     self.run_command(id);
                 } else {
-                    self.edit_entry(id, Some(key), "");
+                    self.edit_entry_ext(id, Some(key), "", extend);
                 }
             }
             Kind::Text => {
                 if key == Key::Space {
                     self.sim_text(" ");
                 } else {
-                    self.edit_text(id, Some(key), "");
+                    self.edit_text_ext(id, Some(key), "", extend);
                 }
             }
             Kind::Combobox => {
@@ -639,6 +727,7 @@ impl Tk {
         self.hovered = None;
         self.drag_active = None;
         self.scrollbar_drag = None;
+        self.ime_preedit = None;
         self.dirty = true;
     }
 

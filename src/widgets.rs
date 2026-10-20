@@ -10,12 +10,30 @@ use crate::style::{ImageId, StyleSpec, TransitionState};
 use crate::{RtkError, Tk, Var};
 
 /// A generational arena handle. Do not transfer widget IDs between toolkits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct WidgetId {
     /// Slot index in the widget arena.
     pub index: u32,
     /// Generation of the slot when the handle was issued; stale handles are rejected.
     pub gen: u32,
+}
+
+impl WidgetId {
+    /// Packs the handle into a single `u64` key for external consumers such as
+    /// AccessKit node IDs: `(index << 32) | gen`.
+    #[allow(dead_code)]
+    pub(crate) fn a11y_key(self) -> u64 {
+        (u64::from(self.index) << 32) | u64::from(self.gen)
+    }
+
+    /// Reconstructs a handle from a key produced by [`WidgetId::a11y_key`].
+    #[allow(dead_code)]
+    pub(crate) fn from_a11y_key(key: u64) -> Self {
+        Self {
+            index: (key >> 32) as u32,
+            gen: key as u32,
+        }
+    }
 }
 
 /// An 8-bit-per-channel, straight-alpha colour.
@@ -208,6 +226,12 @@ pub struct Notebook;
 pub struct Table;
 /// Constructor namespace for hierarchical, virtualized tree views.
 pub struct TreeView;
+/// Constructor namespace for line/area/bar charts.
+pub struct Chart;
+/// Constructor namespace for inline sparklines.
+pub struct Sparkline;
+/// Constructor namespace for image widgets (PNG/RGBA/SVG).
+pub struct Image;
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -454,6 +478,26 @@ impl Table {
 }
 
 #[allow(clippy::new_ret_no_self)]
+impl Chart {
+    /// Creates a chart of the given kind with the requested logical size.
+    pub fn new(
+        tk: &mut Tk,
+        parent: WidgetId,
+        w: f32,
+        h: f32,
+        kind: crate::chart::ChartKind,
+    ) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let state = crate::chart::ChartState { kind, ..Default::default() };
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
 impl TreeView {
     /// Creates an empty hierarchical tree view showing `height_rows` rows (at least 1).
     pub fn new(tk: &mut Tk, parent: WidgetId, height_rows: usize) -> Result<WidgetId, RtkError> {
@@ -461,6 +505,33 @@ impl TreeView {
         if let Some(node) = tk.node_mut(id) {
             node.tree = Some(Box::new(crate::tk::TreeState::new()));
             node.tree_height_rows = height_rows.max(1);
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Sparkline {
+    /// Creates a sparkline with a single series named `value`.
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Chart, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
+            let mut state = crate::chart::ChartState { sparkline: true, legend: false, ..Default::default() };
+            state.series.push(crate::chart::SeriesData::new("value".to_string()));
+            node.chart = Some(Box::new(state));
+        }
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl Image {
+    /// Creates an image widget with the requested logical size (negative/NaN → 0).
+    pub fn new(tk: &mut Tk, parent: WidgetId, w: f32, h: f32) -> Result<WidgetId, RtkError> {
+        let id = tk.add(Kind::Image, parent, String::new())?;
+        if let Some(node) = tk.node_mut(id) {
+            node.canvas_size = (w.max(0.0), h.max(0.0));
         }
         Ok(id)
     }
@@ -486,6 +557,8 @@ pub(crate) enum Kind {
     Table,
     TreeView,
     Menubar,
+    Chart,
+    Image,
 }
 
 impl Kind {
@@ -604,6 +677,10 @@ pub(crate) struct WidgetNode {
     pub tooltip: Option<String>,
     // Monospace
     pub monospace: bool,
+    // Chart
+    pub chart: Option<Box<crate::chart::ChartState>>,
+    // Image widget
+    pub image_data: Option<Box<crate::image::ImageData>>,
     // Advanced styling layer fields
     pub named_style: Option<String>,
     pub style_override: Option<StyleSpec>,
@@ -620,6 +697,26 @@ pub(crate) struct WidgetNode {
     pub tree_height_rows: usize,
     // Menubar
     pub menubar_titles: Vec<(String, crate::tk::menu::MenuId)>,
+    // Selection (Entry/Text): anchor byte index; selection = anchor..cursor.
+    pub selection_anchor: Option<usize>,
+    // Undo/redo history for Entry/Text.
+    pub undo_stack: Vec<EditSnapshot>,
+    pub redo_stack: Vec<EditSnapshot>,
+    /// Time (ms) of the last coalescable edit, for typing coalescing.
+    pub last_edit_ms: u64,
+    /// True when the last edit was a single-character insertion (coalescable).
+    pub last_edit_typing: bool,
+}
+
+/// A snapshot of editable text state for undo/redo.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditSnapshot {
+    /// The full text at the time of the snapshot.
+    pub text: String,
+    /// Cursor byte offset.
+    pub cursor: usize,
+    /// Selection anchor byte offset, if any.
+    pub anchor: Option<usize>,
 }
 
 impl WidgetNode {
@@ -689,6 +786,8 @@ impl WidgetNode {
             notebook_changed_running: false,
             tooltip: None,
             monospace: false,
+            chart: None,
+            image_data: None,
             named_style: None,
             style_override: None,
             disabled: false,
@@ -701,6 +800,11 @@ impl WidgetNode {
             tree: None,
             tree_height_rows: 5,
             menubar_titles: Vec::new(),
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            last_edit_ms: 0,
+            last_edit_typing: false,
         }
     }
 }

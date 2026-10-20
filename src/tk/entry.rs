@@ -54,30 +54,85 @@ pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
 
 impl Tk {
     pub(crate) fn edit_entry(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
+        self.edit_entry_ext(id, key, inserted, false);
+    }
+
+    /// Edits an Entry, optionally extending the selection (Shift held).
+    pub(crate) fn edit_entry_ext(&mut self, id: WidgetId, key: Option<Key>, inserted: &str, extend: bool) {
         let Some(text) = self.entry_get(id) else { return };
         let Some(node) = self.node(id) else { return };
         let boundaries = clusters(&text);
         let mut cursor = cursor_boundary(&text, node.cursor);
         let previous = boundaries.iter().copied().take_while(|b| *b < cursor).last().unwrap_or(0);
         let next = boundaries.iter().copied().find(|b| *b > cursor).unwrap_or(text.len());
+        let selection = self.selection_of(id);
+
+        // Plain cursor moves with an active selection collapse to its edge.
         let mut replacement = None;
         match key {
-            Some(Key::Left) => cursor = previous,
-            Some(Key::Right) => cursor = next,
-            Some(Key::Home) => cursor = 0,
-            Some(Key::End) => cursor = text.len(),
-            Some(Key::Backspace) if cursor > 0 => {
-                replacement = Some(join_text(&text, previous, cursor, ""));
+            Some(Key::Left) => {
+                if extend {
+                    self.extend_selection_to(id, previous);
+                    return;
+                }
+                if let Some((s, _)) = selection {
+                    self.move_cursor_to(id, s);
+                    return;
+                }
                 cursor = previous;
             }
-            Some(Key::Delete) if cursor < text.len() => {
-                replacement = Some(join_text(&text, cursor, next, ""));
+            Some(Key::Right) => {
+                if extend {
+                    self.extend_selection_to(id, next);
+                    return;
+                }
+                if let Some((_, e)) = selection {
+                    self.move_cursor_to(id, e);
+                    return;
+                }
+                cursor = next;
+            }
+            Some(Key::Home) => {
+                if extend {
+                    self.extend_selection_to(id, 0);
+                    return;
+                }
+                cursor = 0;
+            }
+            Some(Key::End) => {
+                if extend {
+                    self.extend_selection_to(id, text.len());
+                    return;
+                }
+                cursor = text.len();
+            }
+            Some(Key::Backspace) => {
+                if selection.is_some() {
+                    self.delete_selection(id);
+                    return;
+                }
+                if cursor > 0 {
+                    self.push_undo(id, false);
+                    replacement = Some(join_text(&text, previous, cursor, ""));
+                    cursor = previous;
+                }
+            }
+            Some(Key::Delete) => {
+                if selection.is_some() {
+                    self.delete_selection(id);
+                    return;
+                }
+                if cursor < text.len() {
+                    self.push_undo(id, false);
+                    replacement = Some(join_text(&text, cursor, next, ""));
+                }
             }
             None => {
                 let value = clean_entry_limit(inserted, MAX_ENTRY_BYTES.saturating_sub(text.len()));
                 if !value.is_empty() {
-                    replacement = Some(join_text(&text, cursor, cursor, &value));
-                    cursor += value.len();
+                    let typing = value.chars().count() == 1;
+                    self.replace_selection_with(id, &value, typing);
+                    return;
                 }
             }
             _ => {}
@@ -86,12 +141,15 @@ impl Tk {
             cursor = cursor_boundary(&new_text, cursor);
             if let Some(node) = self.node_mut(id) {
                 node.cursor = cursor;
+                node.selection_anchor = None;
             }
             self.write_entry(id, new_text);
         } else if let Some(node) = self.node_mut(id) {
             node.cursor = cursor;
+            node.selection_anchor = None;
         }
-        self.dirty = true;
+        // Only the entry's own contents/caret changed; repaint just its area.
+        self.invalidate_widget(id);
     }
 
 }

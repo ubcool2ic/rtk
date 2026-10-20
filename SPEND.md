@@ -31,3 +31,29 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-2-golden r1 | 31027 (0 cached) | 1688 (0 reasoning) | 0.0030 | 0.0266 |
 | 2026-10-20 | openai/gpt-6.1-sol | 09-2-golden r2 [Sol fix] | 5156 (0 cached) | 660 (215 reasoning) | 0.0195 | 0.1043 |
 | 2026-10-20 | openai/gpt-6.1-sol | 09-2-golden r3 [Sol fix] | 3539 (0 cached) | 979 (698 reasoning) | 0.0186 | 0.1229 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-3-window-ci r0 | 10365 (256 cached) | 5807 (0 reasoning) | 0.0036 | 0.0302 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-3-window-ci r1 | 12135 (1280 cached) | 1067 (0 reasoning) | 0.0013 | 0.0315 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-3-window-ci r2 [Sol fix] | 6200 (0 cached) | 281 (192 reasoning) | 0.0183 | 0.1412 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-3-window-ci r3 [Sol fix] | 5588 (0 cached) | 221 (0 reasoning) | 0.0162 | 0.1574 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-3b-window-fix r0 | 7606 (256 cached) | 3527 (0 reasoning) | 0.0023 | 0.0338 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-3b-window-fix r1 | 9049 (1536 cached) | 726 (0 reasoning) | 0.0009 | 0.0347 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-4-shortcuts r0 | 20759 (0 cached) | 8539 (0 reasoning) | 0.0057 | 0.0404 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-4-shortcuts r1 | 22594 (0 cached) | 5625 (1 reasoning) | 0.0044 | 0.0448 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-4-shortcuts r2 [Sol fix] | 20394 (0 cached) | 2071 (1963 reasoning) | 0.0717 | 0.2291 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-4-shortcuts r3 [Sol fix] | 20899 (0 cached) | 3855 (1811 reasoning) | 0.0908 | 0.3199 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-4b-clippy r0 | 6832 (768 cached) | 388 (0 reasoning) | 0.0006 | 0.0454 |
+| 2026-10-20 | (hand glue, no model) | 09-4 shortcuts: after GPT-6.1 Sol's 2nd fix dropped `ShortcutId::from_raw`, changed one call site to the tuple constructor (`ShortcutId(id)`); Sol stopped on this item per rule, the rest was green | — | — | 0 | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5-edit r0 | 53985 (0 cached) | 60000 (0 reasoning) | 0.0338 | 0.0792 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5-edit r1 | 57952 (256 cached) | 793 (0 reasoning) | 0.0044 | 0.0836 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5-edit r2 [Sol fix] | 4884 (0 cached) | 255 (0 reasoning) | 0.0148 | 0.3347 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5-edit r3 [Sol fix] | 4862 (0 cached) | 935 (812 reasoning) | 0.0215 | 0.3562 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5b-edit-tests r0 | 38996 (0 cached) | 2996 (0 reasoning) | 0.0042 | 0.0879 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 09-5b-edit-tests r1 | 40231 (35840 cached) | 3008 (0 reasoning) | 0.0021 | 0.0899 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5b-edit-tests r2 [Sol fix] | 6530 (0 cached) | 1117 (714 reasoning) | 0.0275 | 0.3837 |
+| 2026-10-20 | openai/gpt-6.1-sol | 09-5b-edit-tests r3 [Sol fix] | 3768 (0 cached) | 422 (349 reasoning) | 0.0136 | 0.3973 |
+| 2026-10-20 | (no model) | 09-5: GPT-6.1 Sol stopped after 2 tries on the first test file (truncated DeepSeek output); DeepSeek rewrote the tests as a new scoped item. The last failure was a stale golden PNG written during an earlier round, so it was re-blessed and checked by eye (no code change) | — | — | 0 | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot6, PR #2] 13-1-tokens r0 + r1 self-fix | 64314 | 5989 | 0.0075 | (BizyBot6 DeepSeek total 0.0075; Sol 0.00) |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | 10-docs-a r0 | 36574 (0 cached) | 9703 (0 reasoning) | 0.0074 | 0.0974 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot5, PR #4] 0.12 charts, image/SVG, drag-and-drop, tray: all calls (itemized in PR #4) | — | — | 0.0448 | (BizyBot5 DeepSeek total 0.0448; Sol 0.00) |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet smoke | 17 (0 cached) | 4 (0 reasoning) | 0.0001 | 0.0001 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot6, PR #5] 0.13 themes, a11y, IME, HiDPI, damage redraw: 25 calls (itemized in PR #5) | — | — | 0.0943 | (BizyBot6 DeepSeek total 0.1018 incl. PR #2; Sol 0.00) |

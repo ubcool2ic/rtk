@@ -119,6 +119,10 @@ pub struct Palette {
     pub select_bg: Color,
     pub select_fg: Color,
     pub shadow: Color,
+    /// Background of a text selection inside Entry/Text widgets.
+    pub selection_bg: Color,
+    /// Foreground of selected text inside Entry/Text widgets.
+    pub selection_fg: Color,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -153,16 +157,20 @@ impl Tokens {
                 surface: Color::rgb(255, 255, 255),
                 surface2: Color::rgb(238, 238, 238),
                 fg: Color::rgb(30, 30, 30),
-                muted: Color::rgb(115, 115, 115),
+                // WCAG AA: darkened from (115,115,115) so muted/bg >= 4.5.
+                muted: Color::rgb(95, 95, 95),
                 accent: Color::rgb(0, 103, 192),
                 accent_fg: Color::WHITE,
                 border: Color::rgb(209, 209, 209),
                 focus: Color::rgb(0, 103, 192),
-                danger: Color::rgb(209, 52, 56),
+                // WCAG AA: darkened from (209,52,56) so danger/bg >= 4.5.
+                danger: Color::rgb(185, 28, 28),
                 field_bg: Color::rgb(255, 255, 255),
                 select_bg: Color::rgb(0, 103, 192),
                 select_fg: Color::WHITE,
                 shadow: Color::rgba(0, 0, 0, 35),
+                selection_bg: Color::rgb(0, 103, 192),
+                selection_fg: Color::WHITE,
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 3.0, md: 5.0, lg: 8.0 },
@@ -188,6 +196,8 @@ impl Tokens {
                 select_bg: Color::rgb(96, 205, 255),
                 select_fg: Color::rgb(15, 15, 15),
                 shadow: Color::rgba(0, 0, 0, 80),
+                selection_bg: Color::rgb(96, 205, 255),
+                selection_fg: Color::rgb(15, 15, 15),
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 3.0, md: 5.0, lg: 8.0 },
@@ -212,7 +222,8 @@ impl Tokens {
                 surface: Color::rgb(238, 232, 244),
                 surface2: Color::rgb(226, 218, 236),
                 fg: Color::rgb(29, 27, 32),
-                muted: Color::rgb(121, 116, 126),
+                // WCAG AA: darkened from (121,116,126) so muted/surface >= 4.5.
+                muted: Color::rgb(100, 95, 105),
                 accent: Color::rgb(103, 80, 164),
                 accent_fg: Color::WHITE,
                 border: Color::rgb(202, 196, 208),
@@ -222,6 +233,8 @@ impl Tokens {
                 select_bg: Color::rgb(103, 80, 164),
                 select_fg: Color::WHITE,
                 shadow: Color::rgba(0, 0, 0, 50),
+                selection_bg: Color::rgb(103, 80, 164),
+                selection_fg: Color::WHITE,
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 4.0, md: 10.0, lg: 20.0 },
@@ -247,6 +260,8 @@ impl Tokens {
                 select_bg: Color::rgb(26, 235, 255),
                 select_fg: Color::BLACK,
                 shadow: Color::rgba(0, 0, 0, 0),
+                selection_bg: Color::rgb(255, 255, 0),
+                selection_fg: Color::BLACK,
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 0.0, md: 0.0, lg: 0.0 },
@@ -266,7 +281,9 @@ impl Tokens {
                 fg: Color::rgb(230, 232, 238),
                 muted: Color::rgb(154, 163, 178),
                 accent,
-                accent_fg: Color::WHITE,
+                // WCAG AA: a dark on-accent colour reaches >= 4.5 against the
+                // mid-tone accent; white only reaches ~3.2.
+                accent_fg: Color::rgb(15, 17, 21),
                 border: Color::rgb(42, 48, 64),
                 focus: accent,
                 danger: Color::rgb(248, 113, 113),
@@ -274,6 +291,8 @@ impl Tokens {
                 select_bg: Color::rgba(accent.r, accent.g, accent.b, 64),
                 select_fg: Color::rgb(230, 232, 238),
                 shadow: Color::rgba(0, 0, 0, 110),
+                selection_bg: Color::rgba(accent.r, accent.g, accent.b, 128),
+                selection_fg: Color::rgb(230, 232, 238),
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 6.0, md: 10.0, lg: 14.0 },
@@ -282,25 +301,32 @@ impl Tokens {
         }
     }
 
-    /// Modern light theme tokens (#F5F7FB bg, #FFFFFF surface, #4F8CFF accent).
+    /// Modern light theme tokens (#F5F7FB bg, #FFFFFF surface, #2563EB accent).
+    ///
+    /// The accent is a darker blue than [`Tokens::modern_dark`] so that it
+    /// reaches WCAG AA contrast against the light background.
     pub fn modern_light() -> Self {
-        let accent = Color::rgb(79, 140, 255);
+        let accent = Color::rgb(37, 99, 235);
         Self {
             palette: Palette {
                 bg: Color::rgb(245, 247, 251),
                 surface: Color::rgb(255, 255, 255),
                 surface2: Color::rgb(235, 239, 248),
                 fg: Color::rgb(27, 31, 42),
-                muted: Color::rgb(122, 132, 150),
+                // WCAG AA: darkened from (122,132,150) so muted/bg >= 4.5.
+                muted: Color::rgb(90, 100, 118),
                 accent,
                 accent_fg: Color::WHITE,
                 border: Color::rgb(226, 230, 239),
                 focus: accent,
-                danger: Color::rgb(220, 53, 69),
+                // WCAG AA: darkened from (220,53,69) so danger/bg >= 4.5.
+                danger: Color::rgb(185, 28, 28),
                 field_bg: Color::rgb(255, 255, 255),
                 select_bg: Color::rgba(accent.r, accent.g, accent.b, 64),
                 select_fg: Color::rgb(27, 31, 42),
                 shadow: Color::rgba(0, 0, 0, 25),
+                selection_bg: Color::rgba(accent.r, accent.g, accent.b, 128),
+                selection_fg: Color::rgb(27, 31, 42),
             },
             spacing: [4.0, 8.0, 12.0, 16.0, 24.0],
             radius: Radius { sm: 6.0, md: 10.0, lg: 14.0 },

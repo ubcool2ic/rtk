@@ -313,6 +313,47 @@ availability and platform-specific minimize behavior still require interactive
 smoke tests on supported operating systems.
 
 
+## Accessibility
+
+Enable the optional `accesskit` feature to expose the widget tree to platform
+screen readers:
+
+```toml
+rtk = { version = "0.8", features = ["accesskit"] }
+```
+
+With the feature on, rtk bridges its accessibility tree to AccessKit, which
+speaks Windows UIA, macOS NSAccessibility and Linux AT-SPI (via
+`accesskit_unix`). Each widget is exposed with its role (button, check box,
+text input, slider, …), label, current value, numeric range, toggled state,
+disabled/focused flags, logical-pixel bounds and supported actions (click,
+focus, set value, increment/decrement). Screen-reader actions are routed back
+to the widgets, and the tree is re-published whenever it changes.
+
+The dependency-free `Tk::accessibility_tree()` snapshot and the
+`Tk::a11y_do_action()` / `Tk::a11y_set_label()` APIs work without the feature,
+so accessibility behaviour is fully testable headlessly.
+
+## Accessibility
+
+Enable the optional `accesskit` feature to expose the widget tree to platform
+screen readers:
+
+```toml
+[dependencies]
+rtk = { version = "0.8", features = ["accesskit"] }
+```
+
+With the feature on, `rtk` bridges its accessibility tree to AccessKit, which
+in turn drives Windows UIA, macOS NSAccessibility, and Linux AT-SPI (via
+`accesskit_unix`). Widgets expose their role, label, value, numeric range,
+toggled state, disabled/focused flags, bounds, and supported actions (click,
+focus, set-value, increment/decrement). Assistive-technology action requests
+are dispatched back into the toolkit through `Tk::a11y_do_action`.
+
+The headless `Tk::accessibility_tree()` snapshot works without the feature and
+is what the integration tests exercise.
+
 ## License
 
 MIT OR Apache-2.0.

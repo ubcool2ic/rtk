@@ -201,7 +201,7 @@ impl Tk {
                     let measured = self.measure_with(&text, &resolved);
                     Size::new(specified.unwrap_or(measured.width) + 32.0 + pad_w + image_extra_w, measured.height.max(16.0) + 8.0 + pad_h)
                 }
-                Kind::Canvas => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
+                Kind::Canvas | Kind::Chart | Kind::Image => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
                 Kind::Spinbox => {
                     let text = format!("{}", node_snap.scale.and_then(|v| v.get(self)).unwrap_or(node_snap.range.0));
                     let m = self.measure_with(&text, &resolved);
@@ -381,11 +381,13 @@ impl Tk {
     }
 
     /// Laid-out rectangle in logical px of a mapped widget (runs layout if dirty).
+    /// Laid-out rectangle in logical px of a mapped widget (runs layout if dirty).
     pub fn widget_rect(&mut self, id: WidgetId) -> Option<Rect> {
         self.ensure_layout();
         self.node(id).filter(|node| node.visible).map(|node| node.rect)
     }
 
+    /// Widget holding keyboard focus (tkinter `focus_get`).
     /// Widget holding keyboard focus (tkinter `focus_get`).
     pub fn focused_widget(&self) -> Option<WidgetId> {
         self.focused.filter(|id| self.node(*id).is_some())
@@ -400,10 +402,12 @@ impl Tk {
     }
 
 
+    /// Unmaps a widget managed by place (tkinter `place_forget`).
     pub fn place_forget(&mut self, id: WidgetId) -> bool {
         self.pack_forget(id)
     }
 
+    /// Returns true if the widget is currently laid out and visible (tkinter `winfo_ismapped`).
     pub fn is_mapped(&mut self, id: WidgetId) -> bool {
         self.ensure_layout();
         self.node(id).is_some_and(|n| n.visible)
