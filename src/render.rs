@@ -1108,6 +1108,7 @@ impl Tk {
             }
         }
 
+        data::draw_toast_overlay(self, &mut pixmap, scale);
         data::draw_menu_overlay(self, &mut pixmap, scale);
 
         if self.tooltip_visible {

@@ -332,13 +332,18 @@ impl Tk {
                 }
             }
         }
+
+        if self.toasts.advance(ms) {
+            self.dirty = true;
+        }
     }
 
-    /// True while any style transition or indeterminate progress bar needs frames.
+    /// True while any style transition, indeterminate progress bar or toast needs frames.
     pub fn is_animating(&self) -> bool {
-        self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
-            n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
-        })
+        self.toasts.is_animating()
+            || self.nodes.iter().filter_map(|s| s.node.as_ref()).any(|n| {
+                n.transition.is_some() || (n.kind == Kind::ProgressBar && n.progress_indeterminate && n.visible)
+            })
     }
 
 

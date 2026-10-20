@@ -119,6 +119,9 @@ impl Tk {
         if self.menu_click(x, y) {
             return;
         }
+        if self.toast_click(x, y) {
+            return;
+        }
         if let Some((bar, index)) = self.menubar_hit(x, y) {
             self.menubar_open(bar, index);
             return;

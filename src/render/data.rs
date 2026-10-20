@@ -149,6 +149,133 @@ impl TreeSnapshot {
     }
 }
 
+/// Draws the toast stack as an overlay (before menus, after the tooltip).
+pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
+    if tk.toasts.list.is_empty() {
+        return;
+    }
+    let rects = tk.toast_layout();
+    let style = tk.resolved_style(tk.root()).unwrap_or_default();
+    let palette = tk.style_engine.tokens().palette;
+    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32 / scale, pixmap.height() as f32 / scale);
+    let font_size = style.font_size;
+    let radius = style.radius.max(6.0);
+
+    // Owned snapshot so the immutable borrow of `tk.toasts` ends before drawing.
+    let rows: Vec<(Rect, String, crate::tk::ToastKind, f32)> = tk
+        .toasts
+        .list
+        .iter()
+        .zip(rects.iter())
+        .map(|(t, r)| (*r, t.text.clone(), t.kind, t.alpha()))
+        .collect();
+
+    for (rect, text, kind, alpha) in rows {
+        if alpha <= 0.0 {
+            continue;
+        }
+        let scaled = rect.scaled(scale);
+        let clip = full_clip.intersection(scaled);
+        if clip.width <= 0.0 || clip.height <= 0.0 {
+            continue;
+        }
+        let bg = palette.surface2;
+        let bg_alpha = (bg.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+        if let Some(path) = crate::style::build_rounded_rect_path(scaled, radius * scale) {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(bg.r, bg.g, bg.b, bg_alpha);
+            paint.anti_alias = true;
+            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            let border = palette.border;
+            let border_alpha = (border.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+            if border_alpha > 0 {
+                let mut stroke_paint = Paint::default();
+                stroke_paint.set_color_rgba8(border.r, border.g, border.b, border_alpha);
+                stroke_paint.anti_alias = true;
+                let stroke = tiny_skia::Stroke { width: scale, ..tiny_skia::Stroke::default() };
+                pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+            }
+        }
+
+        // Leading kind icon.
+        let icon_color = crate::tk::toast::kind_color(tk, kind);
+        let icon_alpha = (icon_color.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+        let cx = (rect.x + crate::tk::toast::TOAST_PAD_X + crate::tk::toast::TOAST_ICON_W / 2.0) * scale;
+        let cy = (rect.y + rect.height / 2.0) * scale;
+        let r = 6.0 * scale;
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(icon_color.r, icon_color.g, icon_color.b, icon_alpha);
+        paint.anti_alias = true;
+        match kind {
+            crate::tk::ToastKind::Info => {
+                if let Some(path) = PathBuilder::from_circle(cx, cy, r) {
+                    pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                }
+            }
+            crate::tk::ToastKind::Success => {
+                let mut pb = PathBuilder::new();
+                pb.move_to(cx - r * 0.8, cy);
+                pb.line_to(cx - r * 0.2, cy + r * 0.6);
+                pb.line_to(cx + r * 0.9, cy - r * 0.7);
+                if let Some(path) = pb.finish() {
+                    let stroke = tiny_skia::Stroke {
+                        width: 2.0 * scale,
+                        line_cap: tiny_skia::LineCap::Round,
+                        line_join: tiny_skia::LineJoin::Round,
+                        ..tiny_skia::Stroke::default()
+                    };
+                    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                }
+            }
+            crate::tk::ToastKind::Warning => {
+                let mut pb = PathBuilder::new();
+                pb.move_to(cx, cy - r);
+                pb.line_to(cx + r, cy + r * 0.8);
+                pb.line_to(cx - r, cy + r * 0.8);
+                pb.close();
+                if let Some(path) = pb.finish() {
+                    pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                }
+            }
+            crate::tk::ToastKind::Error => {
+                let mut pb = PathBuilder::new();
+                pb.move_to(cx - r * 0.7, cy - r * 0.7);
+                pb.line_to(cx + r * 0.7, cy + r * 0.7);
+                pb.move_to(cx + r * 0.7, cy - r * 0.7);
+                pb.line_to(cx - r * 0.7, cy + r * 0.7);
+                if let Some(path) = pb.finish() {
+                    let stroke = tiny_skia::Stroke {
+                        width: 2.0 * scale,
+                        line_cap: tiny_skia::LineCap::Round,
+                        ..tiny_skia::Stroke::default()
+                    };
+                    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                }
+            }
+        }
+
+        // Message text.
+        let fg = palette.fg;
+        let text_x = rect.x + crate::tk::toast::TOAST_PAD_X + crate::tk::toast::TOAST_ICON_W + 8.0;
+        let origin = (text_x * scale, (rect.y + (rect.height - font_size * 1.3) / 2.0) * scale);
+        let text_clip = clip.intersection(
+            Rect::new(text_x, rect.y, (rect.x + rect.width - crate::tk::toast::TOAST_PAD_X - text_x).max(0.0), rect.height)
+                .scaled(scale),
+        );
+        tk.text_engine.draw_styled(
+            pixmap,
+            &text,
+            (font_size * scale, fg),
+            style.font_family.as_deref(),
+            400,
+            style.italic,
+            origin,
+            text_clip,
+            alpha,
+        );
+    }
+}
+
 /// Draws all open menus (menubar dropdowns, popups, submenus) as an overlay.
 pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
     if tk.menus.open.is_empty() {
