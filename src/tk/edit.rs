@@ -113,7 +113,10 @@ impl Tk {
     pub(crate) fn selection_of(&self, id: WidgetId) -> Option<(usize, usize)> {
         let node = self.node(id)?;
         let anchor = node.selection_anchor?;
-        let cursor = node.cursor;
+        let len = node.text.len();
+        // Clamp: the text may have changed externally since the selection was made.
+        let anchor = floor_char_boundary(&node.text, anchor.min(len));
+        let cursor = floor_char_boundary(&node.text, node.cursor.min(len));
         if anchor == cursor {
             return None;
         }
@@ -219,11 +222,15 @@ impl Tk {
     /// `typing` marks a single-character insertion eligible for coalescing.
     pub(crate) fn replace_selection_with(&mut self, id: WidgetId, value: &str, typing: bool) {
         let Some(node) = self.node(id) else { return };
-        let (start, end) = match self.selection_of(id) {
+        let selection = self.selection_of(id);
+        let (start, end) = match selection {
             Some((s, e)) => (s, e),
-            None => (node.cursor, node.cursor),
+            None => {
+                let c = floor_char_boundary(&node.text, node.cursor.min(node.text.len()));
+                (c, c)
+            }
         };
-        self.push_undo(id, typing);
+        self.push_undo(id, typing && selection.is_none());
         if let Some(node) = self.node_mut(id) {
             let mut new_text = String::with_capacity(node.text.len() + value.len());
             new_text.push_str(node.text.get(..start).unwrap_or_default());
@@ -275,14 +282,11 @@ impl Tk {
 
     /// After an edit, syncs a Var-bound Entry and clamps the cursor.
     pub(crate) fn sync_after_edit(&mut self, id: WidgetId) {
-        let Some(node) = self.node(id) else { return };
-        let kind = node.kind;
-        let text = node.text.clone();
-        let cursor = node.cursor.min(text.len());
-        if let Some(node) = self.node_mut(id) {
-            node.cursor = cursor;
-        }
-        if kind == Kind::Entry {
+        let Some(node) = self.node_mut(id) else { return };
+        let len = node.text.len();
+        node.cursor = floor_char_boundary(&node.text, node.cursor.min(len));
+        if node.kind == Kind::Entry {
+            let text = node.text.clone();
             self.write_entry(id, text);
         }
     }
@@ -293,7 +297,8 @@ impl Tk {
         if node.selection_anchor.is_none() {
             node.selection_anchor = Some(node.cursor);
         }
-        node.cursor = new_cursor.min(node.text.len());
+        let len = node.text.len();
+        node.cursor = floor_char_boundary(&node.text, new_cursor.min(len));
         // Only this widget's selection/caret changed.
         self.invalidate_widget(id);
     }
@@ -301,7 +306,8 @@ impl Tk {
     /// Moves the cursor of `id` to `new_cursor`, clearing any selection.
     pub(crate) fn move_cursor_to(&mut self, id: WidgetId, new_cursor: usize) {
         let Some(node) = self.node_mut(id) else { return };
-        node.cursor = new_cursor.min(node.text.len());
+        let len = node.text.len();
+        node.cursor = floor_char_boundary(&node.text, new_cursor.min(len));
         node.selection_anchor = None;
         // Only this widget's caret/selection changed.
         self.invalidate_widget(id);

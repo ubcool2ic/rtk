@@ -398,3 +398,12 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [docs] The module example binds `let _tray = Tray::new(...)` inside the `after_idle` closure, so the tray is dropped immediately when the closure ends. It also has an unused `proxy` variable. The example now says to keep the `Tray` alive and drops the unused variable (lines 27-38) -> fixed
 - [low] [bug] The event handlers are global in `tray_icon`, so a second `Tray` replaces the first one's handlers, and dropping either `Tray` clears them. Fixing this would need a redesign, so only one `Tray` at a time is supported (lines 241-272) -> not fixed (design limitation)
 
+### src/tk/edit.rs lines 1-310
+- [high] [bug] `extend_selection_to` and `move_cursor_to` clamp only to the text length, not to a char boundary. A cursor inside a multi-byte char later makes `replace_range` in `delete_selection` panic, or makes `selected_text_of` return `None` (lines 296, 304) -> fixed
+- [high] [bug] `selection_of` does not clamp a stale anchor or cursor to the current text. If the text was replaced externally (Var or set), `delete_selection` panics in `replace_range` with an out-of-range or non-boundary index (lines 113-121) -> fixed
+- [medium] [bug] `replace_selection_with` uses the raw cursor as the insertion point. A stale or non-boundary cursor makes `get(..start)` return `None`, which silently drops the whole text (lines 221-225) -> fixed
+- [low] [bug] `replace_selection_with` coalesces typing even when it replaces a selection. The replacement should be its own undo step (line 226) -> fixed
+- [low] [bug] `sync_after_edit` clones the full text for every widget kind and clamps the cursor without checking char boundaries. It now clones only for Entry and floors the cursor to a boundary (lines 277-288) -> fixed
+- [low] [api] `selection_clear` breaks the `<widget>_<verb>` naming pattern, while the sibling methods are `edit_*`, `entry_*` and `text_*`. A rename would break callers outside this chunk -> not fixed (the call sites are not visible here)
+- [low] [bug] After an external text set, `last_edit_typing` is not reset, so the next typing may coalesce into a stale undo step. The setter lives outside this chunk -> not fixed
+
