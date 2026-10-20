@@ -438,3 +438,11 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [bug] `text_set` does not clamp `text_scroll_row`, so replacing the text with a shorter one can leave the view scrolled past the end (lines 203-216) -> fixed
 - [medium] [bug] Caret-only moves (Left/Right/Up/Down/Home/End) return before the scroll-follow logic, so the caret can leave the visible rows (lines 166-174) -> fixed (scroll adjusted on that path too)
 
+### src/tk/canvas.rs lines 1-255
+- [medium] [bug] `canvas_create_image_rgba` computes `src_w * src_h * 4` in `usize` without overflow checks. Huge dimensions (e.g. `u32::MAX` squared) panic in debug builds and can wrap in release, or on 32-bit targets, so a mismatched buffer could pass validation (line 227) -> fixed (`checked_mul`)
+- [medium] [bug] `canvas_update_image` has the same unchecked size multiplication (line 235) -> fixed
+- [low] [bug] `text_size` passes the raw `size` to the text engine. NaN, zero or negative sizes are not sanitized, unlike `canvas_create_text_ex`, which clamps with `size.max(1.0)` (line 202) -> fixed (same clamp)
+- [low] [bug] `canvas_add_item` scans all slots twice per insert (`max` over `seq` and a free-slot search), so filling a canvas is O(n²) up to the 1M-item cap (lines 73-74) -> not fixed (a counter would need a new `Node` field outside this chunk; correct as is)
+- [low] [api] `text_size` and `canvas_items` (which returns a count) do not follow `<widget>_<verb>` naming exactly (lines 200, 207) -> not fixed (renaming public methods breaks callers outside this chunk; left for a deliberate API decision)
+- [low] [bug] Non-finite or huge `size`, `width` and coordinates in the `canvas_create_*` and `canvas_move` functions are stored unvalidated (lines 123-197) -> not fixed (the renderer is outside this chunk; tiny-skia rejects non-finite geometry)
+
