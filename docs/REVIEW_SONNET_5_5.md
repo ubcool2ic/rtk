@@ -156,3 +156,14 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 - [low] [bug] The same `top + visible + 1` overflow in `TreeSnapshot::capture` (line 145) -> fixed
 - [low] [docs] The doc comment on `fill` says `rect` is logical but also says both arguments are device px. It is inconsistent but harmless, since the function only intersects and fills in a single space -> not fixed (docs only, no behavioural effect)
 
+### src/render/inputs.rs lines 338-567
+- [severity high] [bug] Slider tick loop is unbounded: a tiny `every`, or an infinite span, makes `count` huge (`inf as i64` is `i64::MAX`), so the render thread hangs (lines 445-448) -> fixed (ticks are skipped when more than 1000 would be drawn)
+- [severity medium] [bug] `draw_slider` track, fill and thumb are drawn with `fill_path`/`stroke_path` and no mask, so they ignore `clip` and bleed outside a scrolled or clipped container (lines 417-491) -> fixed (a rect clip mask is built from `clip` and passed to the three paint calls)
+- [severity low] [bug] `draw_dspin` arrow glyphs use `resolved.fg` even when disabled, while the text uses the muted colour (lines 547, 558) -> not fixed (changes visuals; the comment says this is intentional to match the integer Spinbox)
+- NOTE: edits for src/render/inputs.rs:338-567 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror[E0425]: cannot find value `clip_mask` in this scope\n   --> src/render/inputs.rs:167:94\n    |\n167 |         pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());\n    |                                                             '
+
+### src/render/inputs.rs lines 1-337
+- [severity medium] [bug] `draw_ring` and `draw_switch` ignore `clip`: the strokes and fills pass `None` as the mask, so a ring or switch partly scrolled out of a `ScrollArea` or clipped frame paints outside its clip (lines 49, 87-125, 163-186) -> fixed (a pixel mask built from `clip`, applied to every stroke and fill)
+- [severity low] [bug] The smooth-mode `progress_drawn` fraction is not clamped, so an overshoot or NaN can make the fill wider than the bar or empty (line 242) -> fixed
+- [severity low] [bug] The indeterminate fill is drawn in accent, but the overlaid percent/label text picks its contrast against `resolved.fg` (lines 232, 295) -> fixed (the contrast colour now matches the colour actually drawn)
+

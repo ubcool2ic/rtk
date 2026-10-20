@@ -4,7 +4,7 @@
 //! This is a child module of `render`, so it can reuse the private helpers
 //! (`fill`, `outline`) via `super::`.
 
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 use super::{fill, outline};
 use crate::layout::Rect;
@@ -35,8 +35,21 @@ fn arc_path(cx: f32, cy: f32, radius: f32, start: f32, sweep: f32) -> Option<tin
     pb.finish()
 }
 
-/// Strokes `path` with a round-capped line of `width` px in `color`.
-fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Color) {
+/// Builds a pixel mask covering `clip` (physical px); `None` if the clip is empty.
+fn clip_mask(pixmap: &Pixmap, clip: Rect) -> Option<Mask> {
+    let r = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height)?;
+    let mut mask = Mask::new(pixmap.width(), pixmap.height())?;
+    mask.fill_path(
+        &PathBuilder::from_rect(r),
+        tiny_skia::FillRule::Winding,
+        false,
+        Transform::identity(),
+    );
+    Some(mask)
+}
+
+/// Strokes `path` with a round-capped line of `width` px in `color`, limited to `mask`.
+fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Color, mask: &Mask) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.r, color.g, color.b, color.a);
     paint.anti_alias = true;
@@ -46,7 +59,7 @@ fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Co
         line_join: tiny_skia::LineJoin::Round,
         ..Stroke::default()
     };
-    pixmap.stroke_path(path, &paint, &stroke, Transform::identity(), None);
+    pixmap.stroke_path(path, &paint, &stroke, Transform::identity(), Some(mask));
 }
 
 /// Draws a ProgressRing (percent arc or rotating spinner) with optional text.
@@ -82,10 +95,11 @@ pub(super) fn draw_ring(
     if radius <= 0.0 {
         return;
     }
+    let Some(mask) = clip_mask(pixmap, clip) else { return };
 
     // Full track circle.
     if let Some(path) = arc_path(cx, cy, radius, 0.0, std::f32::consts::TAU) {
-        stroke_arc(pixmap, &path, stroke_w, track);
+        stroke_arc(pixmap, &path, stroke_w, track, &mask);
     }
 
     match mode {
@@ -94,7 +108,7 @@ pub(super) fn draw_ring(
                 // Start at 12 o'clock (-PI/2) and sweep clockwise.
                 let sweep = fraction * std::f32::consts::TAU;
                 if let Some(path) = arc_path(cx, cy, radius, -std::f32::consts::FRAC_PI_2, sweep) {
-                    stroke_arc(pixmap, &path, stroke_w, accent);
+                    stroke_arc(pixmap, &path, stroke_w, accent, &mask);
                 }
             }
             if show_text {
@@ -121,7 +135,7 @@ pub(super) fn draw_ring(
             let sweep = std::f32::consts::FRAC_PI_2;
             let start = -std::f32::consts::FRAC_PI_2 + phase * std::f32::consts::TAU;
             if let Some(path) = arc_path(cx, cy, radius, start, sweep) {
-                stroke_arc(pixmap, &path, stroke_w, accent);
+                stroke_arc(pixmap, &path, stroke_w, accent, &mask);
             }
         }
     }
@@ -147,6 +161,7 @@ pub(super) fn draw_switch(
     let disabled = node.disabled;
     let text = node.text.clone();
     let palette = tk.style_engine.tokens().palette;
+    let Some(mask) = clip_mask(pixmap, clip) else { return };
 
     let track_w = 36.0;
     let track_h = 20.0;
@@ -164,7 +179,7 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), Some(&mask));
     }
 
     // Knob: 16 px diameter, travels from 2 px to track_w - 18 px.
@@ -183,7 +198,7 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(knob_color.r, knob_color.g, knob_color.b, knob_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), Some(&mask));
     }
 
     if !text.is_empty() {
@@ -229,6 +244,7 @@ pub(super) fn draw_progress_bar(
 
     // The filled rectangle in logical px, used both for drawing the fill and
     // for clipping the accent-coloured text overlay.
+    let fill_color = if node.progress_indeterminate { accent } else { resolved.fg };
     let filled_rect = if node.progress_indeterminate {
         let block_w = (inner.width * 0.3).max(10.0);
         let travel = inner.width + block_w;
@@ -246,6 +262,7 @@ pub(super) fn draw_progress_bar(
         } else {
             (node.scale.and_then(|v| v.get(tk)).unwrap_or(0).clamp(0, 100) as f32) / 100.0
         };
+        let frac = if frac.is_nan() { 0.0 } else { frac.clamp(0.0, 1.0) };
         let filled_w = inner.width * frac;
         let r = Rect::new(inner.x, inner.y, filled_w, inner.height);
         if filled_w > 0.0 {
@@ -292,7 +309,7 @@ pub(super) fn draw_progress_bar(
             // (resolved.fg), clipped to the filled rectangle so the text stays
             // readable where it overlaps the fill.
             if filled_clip.width > 0.0 && filled_clip.height > 0.0 {
-                let fill_text = readable_on(resolved.fg, palette.fg, palette.bg);
+                let fill_text = readable_on(fill_color, palette.fg, palette.bg);
                 tk.text_engine.draw_styled_pub(
                     pixmap,
                     &text,
