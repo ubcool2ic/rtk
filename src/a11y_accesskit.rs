@@ -131,7 +131,7 @@ pub(crate) fn map_action(req: &ActionRequest) -> Option<(u64, A11yAction, Option
         Some(ActionData::Value(v)) => Some(v.to_string()),
         _ => None,
     };
-    Some((req.target.0, action, value))
+    Some((req.target_node.0, action, value))
 }
 
 /// Resolves a widget key produced by [`WidgetId::a11y_key`] back to a handle.
@@ -150,15 +150,19 @@ mod tests {
         let mut tk = Tk::new();
         let root = tk.root();
         let frame = Frame::new(&mut tk, root).unwrap();
-        let _label = Label::new(&mut tk, frame, "Hello").unwrap();
-        let _button = Button::new(&mut tk, frame, "Go").unwrap();
-        let _entry = Entry::new(&mut tk, frame).unwrap();
+        let label = Label::new(&mut tk, frame, "Hello").unwrap();
+        let button = Button::new(&mut tk, frame, "Go").unwrap();
+        let entry = Entry::new(&mut tk, frame).unwrap();
         let var = tk.bool_var(true);
-        let _check = Checkbutton::new(&mut tk, frame, "On", var).unwrap();
+        let check = Checkbutton::new(&mut tk, frame, "On", var).unwrap();
         let scale_var = tk.int_var(5);
-        let _scale = Scale::new(&mut tk, frame, 0, 10, scale_var).unwrap();
+        let scale = Scale::new(&mut tk, frame, 0, 10, scale_var).unwrap();
         let prog_var = tk.int_var(50);
-        let _prog = ProgressBar::new(&mut tk, frame, 100.0, prog_var).unwrap();
+        let prog = ProgressBar::new(&mut tk, frame, 100.0, prog_var).unwrap();
+        tk.pack(frame, crate::PackOpts::default());
+        for id in [label, button, entry, check, scale, prog] {
+            tk.pack(id, crate::PackOpts::default());
+        }
         tk.sim_resize(640, 480);
         let update = tree_update(&tk, 1.0);
         assert!(update.nodes.len() >= 8);
@@ -176,19 +180,22 @@ mod tests {
     fn map_action_translates_requests() {
         let req = ActionRequest {
             action: Action::Click,
-            target: NodeId(42),
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(42),
             data: None,
         };
         assert_eq!(map_action(&req), Some((42, A11yAction::Click, None)));
         let req = ActionRequest {
             action: Action::SetValue,
-            target: NodeId(7),
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(7),
             data: Some(ActionData::Value("hi".into())),
         };
         assert_eq!(map_action(&req), Some((7, A11yAction::SetValue, Some("hi".into()))));
         let req = ActionRequest {
             action: Action::ScrollDown,
-            target: NodeId(1),
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(1),
             data: None,
         };
         assert_eq!(map_action(&req), None);

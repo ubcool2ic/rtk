@@ -1,7 +1,16 @@
+//! Real window backend: winit event loop, softbuffer presentation (full or
+//! damage-rect), keyboard/mouse/IME translation, system theme and the optional
+//! AccessKit adapter. Everything else in rtk is backend-independent.
+
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+#[cfg(feature = "accesskit")]
+use std::collections::VecDeque;
+#[cfg(feature = "accesskit")]
+use std::sync::Mutex;
 
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
@@ -14,6 +23,83 @@ use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
 use crate::tk::RtkUserEvent;
 use crate::theme::SystemTheme;
 use crate::{FrameDamage, Key, Tk};
+
+#[cfg(feature = "accesskit")]
+use crate::TkProxy;
+
+/// Shared state between the AccessKit adapter handlers and the main loop.
+///
+/// The handlers run on the platform accessibility thread and only record
+/// requests; the main loop drains them in [`App::pump_a11y`].
+#[cfg(feature = "accesskit")]
+struct A11yShared {
+    /// Whether the platform has activated the accessibility tree.
+    active: bool,
+    /// Whether the platform asked for the initial tree since the last pump.
+    initial_requested: bool,
+    /// Action requests queued by assistive technology.
+    actions: VecDeque<accesskit::ActionRequest>,
+}
+
+/// AccessKit activation handler: records activation and wakes the main loop.
+#[cfg(feature = "accesskit")]
+struct A11yActivation {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+    /// Proxy used to wake the event loop.
+    proxy: TkProxy,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::ActivationHandler for A11yActivation {
+    /// Marks the tree active, requests the initial tree and wakes the loop.
+    fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
+        {
+            let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.active = true;
+            shared.initial_requested = true;
+        }
+        self.proxy.post(|_| {});
+        None
+    }
+}
+
+/// AccessKit action handler: queues action requests and wakes the main loop.
+#[cfg(feature = "accesskit")]
+struct A11yActionHandler {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+    /// Proxy used to wake the event loop.
+    proxy: TkProxy,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::ActionHandler for A11yActionHandler {
+    /// Queues an action request and wakes the loop to process it.
+    fn do_action(&mut self, request: accesskit::ActionRequest) {
+        {
+            let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.actions.push_back(request);
+        }
+        self.proxy.post(|_| {});
+    }
+}
+
+/// AccessKit deactivation handler: marks the tree inactive.
+#[cfg(feature = "accesskit")]
+struct A11yDeactivation {
+    /// Shared state with the main loop.
+    shared: Arc<Mutex<A11yShared>>,
+}
+
+#[cfg(feature = "accesskit")]
+impl accesskit::DeactivationHandler for A11yDeactivation {
+    /// Marks the accessibility tree inactive.
+    fn deactivate_accessibility(&mut self) {
+        let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+        shared.active = false;
+    }
+}
 
 struct App {
     tk: Tk,
@@ -29,6 +115,12 @@ struct App {
     last_draw: Instant,
     /// Last value pushed to `Window::set_ime_allowed`, to avoid redundant calls.
     ime_allowed: bool,
+    /// AccessKit adapter bridging the toolkit to platform accessibility APIs.
+    #[cfg(feature = "accesskit")]
+    a11y_adapter: Option<accesskit_winit::Adapter>,
+    /// Shared state between the AccessKit handlers and the main loop.
+    #[cfg(feature = "accesskit")]
+    a11y_shared: Arc<Mutex<A11yShared>>,
 }
 
 impl Tk {
@@ -56,6 +148,14 @@ impl Tk {
             first_frame_done: false,
             last_draw: now,
             ime_allowed: false,
+            #[cfg(feature = "accesskit")]
+            a11y_adapter: None,
+            #[cfg(feature = "accesskit")]
+            a11y_shared: Arc::new(Mutex::new(A11yShared {
+                active: false,
+                initial_requested: false,
+                actions: VecDeque::new(),
+            })),
         };
         event_loop.run_app(&mut app)?;
         match app.error {
@@ -82,7 +182,36 @@ impl App {
         }
         let (rw, rh) = self.tk.is_resizable();
         attributes = attributes.with_resizable(rw || rh);
+        // With AccessKit, create the window hidden so the adapter can attach
+        // before the platform first queries the accessibility tree.
+        #[cfg(feature = "accesskit")]
+        {
+            attributes = attributes.with_visible(false);
+        }
         let window = Arc::new(event_loop.create_window(attributes)?);
+        #[cfg(feature = "accesskit")]
+        {
+            let proxy = self.tk.proxy();
+            let activation = A11yActivation {
+                shared: self.a11y_shared.clone(),
+                proxy: proxy.clone(),
+            };
+            let action = A11yActionHandler {
+                shared: self.a11y_shared.clone(),
+                proxy,
+            };
+            let deactivation = A11yDeactivation {
+                shared: self.a11y_shared.clone(),
+            };
+            self.a11y_adapter = Some(accesskit_winit::Adapter::with_direct_handlers(
+                event_loop,
+                &window,
+                activation,
+                action,
+                deactivation,
+            ));
+            window.set_visible(true);
+        }
         self.tk.sim_scale_factor(window.scale_factor());
         let size = window.inner_size();
         self.tk.sim_resize(size.width, size.height);
@@ -284,6 +413,8 @@ impl App {
 impl ApplicationHandler<RtkUserEvent> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: RtkUserEvent) {
         self.tk.process_posted();
+        #[cfg(feature = "accesskit")]
+        self.pump_a11y();
         self.schedule(event_loop);
     }
 
@@ -318,6 +449,10 @@ impl ApplicationHandler<RtkUserEvent> for App {
     ) {
         if self.window.as_ref().map(|window| window.id()) != Some(window_id) {
             return;
+        }
+        #[cfg(feature = "accesskit")]
+        if let (Some(adapter), Some(window)) = (&mut self.a11y_adapter, &self.window) {
+            adapter.process_event(window, &event);
         }
         match event {
             WindowEvent::CloseRequested => {
@@ -442,6 +577,8 @@ impl ApplicationHandler<RtkUserEvent> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.tk.process_posted();
+        #[cfg(feature = "accesskit")]
+        self.pump_a11y();
         self.schedule(event_loop);
     }
 }
@@ -481,6 +618,48 @@ fn build_icon(tk: &Tk) -> Option<Icon> {
 }
 
 impl App {
+    /// Drains queued AccessKit action requests into the toolkit and pushes a
+    /// fresh accessibility tree to the platform when it changed.
+    ///
+    /// Called from `user_event` and `about_to_wait`; a no-op without the
+    /// `accesskit` feature.
+    #[cfg(feature = "accesskit")]
+    fn pump_a11y(&mut self) {
+        let Some(adapter) = self.a11y_adapter.as_mut() else { return };
+        let (actions, initial_requested) = {
+            let mut shared = self.a11y_shared.lock().unwrap_or_else(|e| e.into_inner());
+            let actions: Vec<accesskit::ActionRequest> = shared.actions.drain(..).collect();
+            let initial = shared.initial_requested;
+            shared.initial_requested = false;
+            (actions, initial)
+        };
+        let mut redraw = false;
+        for request in &actions {
+            let Some((key, action, value)) = crate::a11y_accesskit::map_action(request) else {
+                continue;
+            };
+            let id = crate::a11y_accesskit::widget_from_key(key);
+            if self.tk.a11y_do_action(id, action, value.as_deref()) {
+                redraw = true;
+            }
+        }
+        if redraw {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+        let changed = initial_requested || self.tk.a11y_tree_changed();
+        if !changed {
+            return;
+        }
+        let scale = self
+            .window
+            .as_ref()
+            .map_or(1.0, |window| window.scale_factor());
+        let tk = &self.tk;
+        adapter.update_if_active(|| crate::a11y_accesskit::tree_update(tk, scale));
+    }
+
     /// Re-applies window properties (icon, size constraints, resizable) to the
     /// real window when the toolkit reports they changed.
     fn apply_window_props(&mut self) {
