@@ -1038,3 +1038,10 @@ I found nothing in lines 1-159 that needs fixing, and I did not run the tests.
 - [severity low] [docs] Not changed, no action needed: the magic `48.0` in `hscroll_wheel_x` (line 79) depends on the wheel step size. It looks intentional, and I can't confirm the step constant from here. -> not fixed (cannot verify).
 - NOTE: edits for tests/m0_10_scroll.rs:1-292 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s\n\n\n....\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 '
 
+### tests/m0_10_slider.rs lines 1-192
+- [severity low] [bug] `slider_horizontal_drag` (line 63) only does a down/up click and never moves the pointer while pressed, so it does not exercise dragging. Its ±0.1 tolerance is also loose. -> not fixed (a real drag assertion needs the exact thumb-inset geometry, which is not visible from this chunk, so a tighter assertion could be wrong)
+- [severity low] [docs] The `slider_keys` doc (line 99) mentions the "1% of range if step is 0" behaviour, but the test only covers a step of 0.1. -> not fixed (the expected value for step 0 cannot be confirmed from this chunk)
+- [severity low] [bug] `slider_command_runs_once` (line 157) checks only the call count, not that the value changed. -> not fixed (the count assertion is correct and meaningful as written)
+- [severity low] [bug] `slider_wheel` (line 125) assumes a positive wheel delta increases the value. -> not fixed (this is the toolkit's documented direction as far as can be seen, and no contradiction is visible)
+- No panics, UTF-8 errors, overflow or timing flakiness found in the helpers. The golden name `format!("slider_{theme:?}_{scale}x")` gives `slider_light_1x`, since `1.0_f64` displays as `1`, so it is stable. The pixel size casts are safe.
+
