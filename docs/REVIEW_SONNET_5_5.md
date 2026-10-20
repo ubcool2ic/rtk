@@ -856,3 +856,7 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [bug] Lines 81-93: the pixel-comparison test hardcodes the stride `220` and never checks that scrolling changed anything inside the entry. If the caret never scrolled, the test would still pass. It now uses `end.width()` and asserts at least one pixel differs inside the entry rect. -> fixed
 - [severity low] [bug] Lines 7-41: the Unicode navigation and deletion assertions are correct and meaningful. -> not fixed (no change needed)
 
+### tests/events.rs lines 1-122
+- [severity low] [bug] `release_outside_button_does_not_activate` could pass without testing anything. If the press never reached the button (bad rect, no layout), `count` would stay 0 anyway. I added a positive control: a click inside the same button must fire the command and set `count` to 1 (line 94) -> fixed
+- [severity low] [bug] Timing flakiness, panicking helpers, UTF-8 handling, and wrong expectations: none found in the rest of the file. The `click` helper's `expect` is acceptable in tests, and the multibyte `sim_text("hello 世界")` case is a good one to keep.
+

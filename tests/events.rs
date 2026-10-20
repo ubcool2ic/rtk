@@ -92,6 +92,10 @@ fn release_outside_button_does_not_activate() {
     tk.sim_mouse_move(-100.0, -100.0);
     tk.sim_mouse_up();
     assert_eq!(count.get(&tk), Some(0));
+    // Control: the same button must activate when released inside, so the
+    // negative assertion above is not vacuous.
+    click(&mut tk, button);
+    assert_eq!(count.get(&tk), Some(1));
 }
 
 /// Checks that checkbutton and scale commands observe the updated variable values when triggered.
