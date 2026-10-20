@@ -578,3 +578,9 @@ I found nothing in lines 1-155 that needs an edit.
 - [severity low] [bug] `list_select_running` stays `true` if the callback panics (line 117-120). The next dispatch for that widget is then silently skipped. This only matters if panics are caught and the toolkit keeps running, and the callback is already taken out of the node at that point. -> not fixed (the callback is lost on panic anyway, and the toolkit is not expected to survive one)
 - [severity low] [api] The public methods follow the `listbox_<verb>` pattern, have `///` docs, and use no public enums. No arithmetic can overflow: `last.saturating_add(1)` is used, and `idx + 1 - vis` is safe because `idx >= scroll + vis`. Indices are clamped, and `node_mut` guards stale ids. -> nothing to fix
 
+### src/tk/theme.rs lines 1-126
+- [severity low] [api] `sim_system_theme` (line 115) has a `sim_` (simulate) prefix, but its doc says it is the single entry point for the real window backend as well as for tests. A rename would touch call sites outside this chunk and break the public API, so it is better done in a dedicated change. -> not fixed (the rename belongs outside this chunk)
+- [severity low] [docs] Lines 61-62 (`let original = ...; let _ = original;`) are redundant but correct. -> not fixed (working code, no behavioural effect)
+
+I found no other defects in lines 1-126. The colourblind capture and restore logic is consistent with the documented behaviour. Every function has a `///` doc comment. No panics, indexing, or arithmetic risks appear in this chunk.
+
