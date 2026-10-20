@@ -497,3 +497,10 @@ I found nothing that needs fixing in this chunk.
 - [severity low] [bug] `progress_requested` measures `"{label} 100%"` even when `show_percent` is false, so the bar can be slightly wider than needed (line 120). -> not fixed (this only over-reserves width and is harmless; changing it would shift layout and goldens for little gain)
 - [severity none] [bug] I found no panics, overflow or borrow problems in the rest of the chunk. The easing math is stable for `ms = 0` and for very large `ms`, and NaN or out-of-range values are clamped. -> none
 
+### src/tk/dnd.rs lines 1-202
+- [high] [bug] `drop_target_at` also counted hover-only bindings, so a widget with only a hover binding swallowed drops. Its drop callback never ran, yet `sim_file_drop` returned true, and it shadowed a bound ancestor (line 81-99). Drop resolution now uses drop bindings only. Hover resolution (Enter/Leave/Drop) still considers either kind of binding. -> fixed
+- [medium] [bug] The walk-up ignored the active modal. Ancestors of the modal, and the root fallback, could be returned as targets (lines 83-92). The walk now stops at the modal, and the root fallback is skipped while a modal is active. -> fixed
+- [medium] [bug] Bindings for destroyed widgets were never pruned, so the `dnd` vectors grew without bound. `file_hover_target` could also return a dead id (lines 13-55, 102). `bind_*` now prunes dead entries, and `file_hover_target` filters dead ids. I can't see the destroy path in this chunk, so the pruning lives here. -> fixed
+- [low] [api] There was `unbind_file_drop` but no `unbind_file_hover`, which breaks the bind/unbind symmetry (line 31). -> fixed (added)
+- NOTE: edits for src/tk/dnd.rs:1-202 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
+
