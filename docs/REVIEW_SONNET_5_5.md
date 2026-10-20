@@ -687,3 +687,7 @@ I did not check whether `inputs` is dropped when a widget is destroyed, because 
 
 No edits needed: no panics, UTF-8 slicing, overflow or borrow issues in lines 1-30. The mutable node borrow ends before `self.dirty = true` (NLL), and the casts are safe.
 
+### examples/bench.rs lines 1-166
+- [severity low] [docs] The `demo_like` doc comment says the tree is "three side-by-side frames containing a label and entry". The function actually builds radio buttons, a checkbutton, a scale, a spinbox, a progress bar, a listbox with a scrollbar, and a canvas with 60 ovals. Since users copy from this example, the doc could mislead them (line 10) -> fixed
+- [severity low] [bug] I found nothing else in this chunk that needs changing. There are no panics on user paths: `?` and `ok_or` are used instead of `unwrap`. `w - (i % 2)` cannot underflow for the sizes used. The integer-literal inference in `f64::from(frames)` compiles, so I left it. -> not fixed (no issue)
+
