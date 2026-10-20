@@ -279,3 +279,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_spinbox.rs:1-172 | 5501 (0 cached) | 1376 (1032 reasoning) | 0.0248 | 5.5497 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_switch.rs:1-131 | 4478 (0 cached) | 724 (712 reasoning) | 0.0162 | 5.5659 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_tristate.rs:1-244 | 7359 (0 cached) | 1054 (766 reasoning) | 0.0253 | 5.5912 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_visual_fixes.rs:1-120 | 4602 (0 cached) | 2278 (1193 reasoning) | 0.0320 | 5.6231 |

@@ -1068,3 +1068,9 @@ I found nothing in lines 1-244 that needs fixing.
 - **Docs:** every function has a `///` doc comment.
 - **Not verifiable from this chunk:** whether `assert_golden` takes logical or physical size at 2x. Checking that needs the `testing` module source.
 
+### tests/m0_10_visual_fixes.rs lines 1-120
+- [medium] [bug] `progress_bar_label_contrast` (lines 99-119) claims to sample pixmap colours, but it only checks that the rect is non-empty and discards `golden_dir()` and `GoldenOpts::default()`. The name and doc overstate what it verifies. I renamed the test, corrected its doc and dropped the dummy calls and their now-unused imports. A real pixel assertion needs a headless pixmap-sampling API that is not in the reviewed surface, so the contrast check itself is not fixed. -> fixed (honesty only); contrast assertion not fixed (the API for it is not visible in this chunk)
+- [low] [bug] `progress_bar_fits_label` (lines 66-67) uses loose constants (height >= 12, width >= 60) instead of the measured label text, so it would pass even if the label were clipped. -> not fixed (no text-measure API is visible in this chunk)
+- [low] [bug] `dspin_packed_no_overlap` (lines 26-28, 40-45) gives `b` a suffix and `a` none, while the right-edge alignment check only holds if both have equal widths. The test could fail if the suffix changes the requested width. -> not fixed (it is correct for the intended behaviour, and the DoubleSpinbox sizing code is not visible here)
+- [low] [bug] `scrollarea_content_fills_width` (lines 79-80) packs the vertical scrollbar with default `Side::Top`, so it sits below the area rather than beside it. The expectation still holds because it subtracts the scrollbar's own width. -> not fixed (changing the layout could mask the behaviour under test without being able to run it)
+
