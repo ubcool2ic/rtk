@@ -273,3 +273,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_themes.rs:1-119 | 4458 (0 cached) | 1360 (867 reasoning) | 0.0225 | 5.3858 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m013_tokens.rs:1-114 | 4023 (0 cached) | 1519 (817 reasoning) | 0.0232 | 5.4090 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_a11y.rs:1-129 | 4799 (0 cached) | 350 (0 reasoning) | 0.0131 | 5.4221 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_progress.rs:1-159 | 5115 (0 cached) | 1360 (960 reasoning) | 0.0238 | 5.4460 |

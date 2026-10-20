@@ -1022,3 +1022,13 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 - [severity low] [docs] Every helper and test has a `///` doc comment, and the file has a `//!` module doc. -> not fixed (nothing to fix)
 - [severity low] [bug] No panics in the helpers: `setup` uses `expect` on valid construction, and `node_for` returns an `Option`. -> not fixed (nothing to fix)
 
+### tests/m0_10_progress.rs lines 1-159
+- none
+
+I found nothing in lines 1-159 that needs fixing, and I did not run the tests.
+
+- **Goldens:** golden names come out as `ring_light_1x` and similar, because `{scale}` on `1.0_f64` prints `1`, and `(320.0 * scale) as u32` is exact for 1.0 and 2.0.
+- **`progress_get` equality:** `assert_eq!(tk.progress_get(bar), Some(0.4))` compares `40.0 / 100.0` with the literal `0.4`, and both round to the same `f64`, so the comparison is exact.
+- **Timing:** the animation tests advance a simulated clock with `sim_advance_time`, so I see no wall-clock flakiness. I assumed `sim_advance_time` is deterministic and that `assert_golden` renders against that same simulated clock, which I could not confirm from the files given.
+- **Weak spots, left alone:** `progress_polish_apis` only checks that the setters return `true`. `progress_smooth_settles` does not check an intermediate eased value. Neither can be tightened without knowing whether `progress_get` reports the target or the displayed value, so I left both unchanged.
+
