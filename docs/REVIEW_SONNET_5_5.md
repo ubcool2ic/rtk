@@ -926,3 +926,10 @@ I found nothing in lines 1-131 that needs a fix.
 - [severity low] [bug] Several tests (`toast_auto_dismisses_after_duration`, `position_variants_place_toasts`) depend on animation durations that I cannot see (a fade-out of at least 100 ms and under 300 ms, and no slide-in offset on a fresh toast). These expectations are plausible and nothing in the chunk shows them to be wrong, so I changed nothing -> not fixed (no evidence of a bug; the expectations are legitimate)
 - [severity low] [docs] Doc comments are present on all functions -> none needed
 
+### tests/m011_tree.rs lines 1-249
+- [medium] [bug] `test_tree_10k_nodes_performance` only asserts `tree_selection(..).is_some()` after End (line 234). The earlier click already selects the first row, so the check passes even if End does nothing -> fixed (record the selection after the click and assert End changes it).
+- [low] [bug] The 2.0 s wall-clock bound on 10k inserts plus expand-all (line 236) is likely flaky in unoptimized builds on loaded CI -> fixed (raised to 10 s, which still catches quadratic blow-ups).
+- [low] [bug] `test_tree_two_roots` is documented as "navigable" but never tests keyboard navigation between roots (lines 246-247) -> fixed (added click + Down/Up assertions).
+- [low] [bug] `test_tree_keyboard_nav`, `test_tree_left_right_semantics` and the 10k test click at a hard-coded `rect.y + 4.0` (lines 68, 92, 232). This assumes the row height is over 8 px, while the other tests use `tree_row_height` -> not fixed (works with the current row height; avoids churn).
+- [low] [docs] `test_tree_renders` only checks `is_ok()` and does not inspect the pixmap -> not fixed (the return type is not visible from this chunk, so a stronger assertion would be a guess).
+
