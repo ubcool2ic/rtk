@@ -745,3 +745,10 @@ I assumed `tree_insert` and `chart_add_series` return `Option`, based on how the
 - [low] [bug] The canvas text uses a hard-coded near-black colour (line 306), which may be unreadable on dark themes -> not fixed. The palette's text-colour field isn't visible in this chunk, so a safe replacement can't be written. It is also a deliberate Okabe-Ito-style fixed colour demo.
 - NOTE: edits for examples/gallery.rs:1-309 were REVERTED (checks failed or SEARCH mismatch): '[clippy failed]\nerror: using `clone` on type `PackOpts` which implements the `Copy` trait\n   --> examples/gallery.rs:236:21\n    |\n236 |     tk.pack(normal, row_opts.clone());\n    |                     ^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `row_opts`\n    |\n    = help: for further info'
 
+### examples/gallery_charts_media.rs lines 1-168
+- [low] [bug] `Button` and `Image` are imported unconditionally but only used inside the `#[cfg(feature = "svg")]` block, so a build without `svg` emits unused-import warnings (line 12) -> fixed (imports moved under the same cfg).
+- [low] [bug] `tick` is advanced with `wrapping_add`, but `tick * 60` is a plain u64 multiplication that would panic on overflow in debug builds. The two are inconsistent, and users copy this pattern (line 107) -> fixed (computed in f64).
+- [low] [api] `chart_add_series(...).unwrap_or(0)` and `.unwrap_or(1)` silently fall back to a guessed series index if creation fails, so later appends could go to the wrong series (lines 27, 28, 34, 48) -> not fixed. I can't see the return type, and the fallback can't panic. Propagating the error would be better in a real app.
+- [low] [docs] The comment says x is "seconds since 2026-01-01T00:00Z", but the time axis may interpret x as Unix-epoch seconds, so labels could read as 1970 (line 103) -> not fixed. I can't confirm the axis semantics from this chunk.
+- [low] [docs] The tray "Show" menu item (index 0) has no handler, and a `Tray::new` error is silently ignored (lines 144-153) -> not fixed. This is acceptable demo behaviour and can't panic.
+

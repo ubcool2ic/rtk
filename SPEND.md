@@ -230,3 +230,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:637-800 | 4937 (0 cached) | 2271 (1518 reasoning) | 0.0326 | 4.2839 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:310-636 | 8398 (0 cached) | 2911 (1795 reasoning) | 0.0459 | 4.3298 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery.rs:1-309 | 7424 (0 cached) | 2084 (1163 reasoning) | 0.0357 | 4.3654 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet examples/gallery_charts_media.rs:1-168 | 5303 (0 cached) | 1946 (1161 reasoning) | 0.0301 | 4.3955 |
