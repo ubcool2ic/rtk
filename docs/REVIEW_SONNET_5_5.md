@@ -876,3 +876,7 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [low] [bug] The temp dir is left behind when an assertion fails (line 74). -> not fixed: keeping the output on failure is useful for debugging.
 - NOTE: edits for tests/gallery_smoke.rs:1-76 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror: unexpected closing delimiter: `}`\n  --> tests/gallery_smoke.rs:56:5\n   |\n46 | fn gallery_screenshots() {\n   |                          - this delimiter might not be properly closed...\n...\n55 |         }\n   |         - ...as it matches this but it has different indentation\n56 | '
 
+### tests/golden_m011.rs lines 1-273
+- [severity low] [docs] `golden_m011_scenes_render` says it renders "each scene" once at 1x, but it skips the menu and modal scenes and renders an unrelated bare Frame (lines 251-272) -> fixed: the test now also renders the menu and modal scenes.
+- [severity low] [bug] The goldens, name convention, scale and size math, and the other tests are correct and assert meaningful things. I found no timing dependence beyond the deterministic `sim_advance_time`, and no helper panics beyond intentional `expect`s -> not fixed (nothing to fix).
+
