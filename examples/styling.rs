@@ -1,3 +1,5 @@
+//! Example demonstrating theme selection and CSS-based styling, with command-line options for theme, stylesheet, and PNG output.
+
 use std::env;
 use std::error::Error;
 
@@ -6,6 +8,7 @@ use rtk::{
     Radiobutton, Scale, Side, StyleSpec, Theme, Tk,
 };
 
+/// Runs the styling demo, parsing --theme, --css, and --png arguments to configure appearance and output.
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut initial_theme = Theme::Light;

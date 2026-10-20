@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+/// Returns the style class name used for the given widget kind.
 pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
     match kind {
         Kind::Frame => "TFrame",
@@ -403,6 +404,7 @@ impl Tk {
     }
 
 
+    /// Starts a style transition when a widget's state changes, animating from the currently displayed colors.
     pub(crate) fn check_state_transition(&mut self, id: WidgetId, old_state: State) {
         let new_state = self.widget_state(id);
         if old_state == new_state {

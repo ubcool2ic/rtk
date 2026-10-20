@@ -503,6 +503,7 @@ impl Tk {
     }
 
 
+    /// Runs the widget's command callback unless it is disabled or already executing, restoring the command afterward.
     pub(crate) fn run_command(&mut self, id: WidgetId) {
         let Some(node) = self.node_mut(id) else { return };
         if node.disabled || node.command_running {
@@ -519,6 +520,7 @@ impl Tk {
         }
     }
 
+    /// Activates a widget, toggling checkbutton or switch variables and invoking the command when enabled.
     pub(crate) fn activate(&mut self, id: WidgetId) {
         let Some(node) = self.node(id) else { return };
         if node.disabled {
@@ -541,6 +543,7 @@ impl Tk {
         }
     }
 
+    /// Returns the scale widget's current value as a clamped fraction between 0.0 and 1.0 of its range.
     pub(crate) fn scale_fraction(&self, id: WidgetId) -> f32 {
         let Some(node) = self.node(id) else { return 0.0 };
         let (from, to) = node.range;
@@ -552,6 +555,7 @@ impl Tk {
         }
     }
 
+    /// Sets a scale widget's value, clamped to its range, updating the variable and running the command on change.
     pub(crate) fn set_scale(&mut self, id: WidgetId, value: i64) {
         let Some(node) = self.node(id) else { return };
         if node.disabled {
@@ -566,6 +570,7 @@ impl Tk {
         }
     }
 
+    /// Updates a scale widget's value from a horizontal drag position mapped onto its track.
     pub(crate) fn drag_scale(&mut self, id: WidgetId, x: f32) {
         if !x.is_finite() {
             return;
@@ -585,6 +590,7 @@ impl Tk {
         self.set_scale(id, value);
     }
 
+    /// Moves keyboard focus to the next or previous focusable widget in paint order, honoring modal scope.
     pub(crate) fn traverse_focus(&mut self, backwards: bool) {
         let order: Vec<_> = self.paint_order.iter().copied()
             .filter(|id| {
@@ -796,6 +802,7 @@ impl Tk {
     }
 
 
+    /// Clears all transient input state such as focus, press, hover and drag, and marks the toolkit dirty.
     pub(crate) fn clear_input(&mut self) {
         self.focused = None;
         self.pressed = None;

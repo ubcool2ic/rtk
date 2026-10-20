@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+/// Replaces the text between start and end with value, tolerating out-of-range indices.
 pub(crate) fn join_text(text: &str, start: usize, end: usize, value: &str) -> String {
     let mut result = String::new();
     result.push_str(text.get(..start).unwrap_or_default());
@@ -11,6 +12,7 @@ pub(crate) fn join_text(text: &str, start: usize, end: usize, value: &str) -> St
     result
 }
 
+/// Strips control characters and truncates text to the given byte limit.
 pub(crate) fn clean_entry_limit(text: &str, limit: usize) -> String {
     let mut result = String::new();
     for ch in text.chars().filter(|ch| !ch.is_control()) {
@@ -22,10 +24,12 @@ pub(crate) fn clean_entry_limit(text: &str, limit: usize) -> String {
     result
 }
 
+/// Cleans entry text to the maximum allowed byte length.
 pub(crate) fn clean_entry(text: &str) -> String {
     clean_entry_limit(text, MAX_ENTRY_BYTES)
 }
 
+/// Returns byte offsets marking grapheme cluster boundaries, treating combining marks and joiners as extensions.
 pub(crate) fn clusters(text: &str) -> Vec<usize> {
     let mut result = vec![0];
     let mut previous = '\0';
@@ -48,11 +52,13 @@ pub(crate) fn clusters(text: &str) -> Vec<usize> {
     result
 }
 
+/// Returns the nearest grapheme cluster boundary at or before the given cursor offset, falling back to zero.
 pub(crate) fn cursor_boundary(text: &str, cursor: usize) -> usize {
     clusters(text).into_iter().take_while(|boundary| *boundary <= cursor).last().unwrap_or(0)
 }
 
 impl Tk {
+    /// Edits an Entry's text in response to a key or inserted text, without extending the selection.
     pub(crate) fn edit_entry(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
         self.edit_entry_ext(id, key, inserted, false);
     }

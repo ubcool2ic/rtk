@@ -1,5 +1,8 @@
+//! Minimal hello-world example with a label and a quit button wired to a command that exits the main loop.
+
 use rtk::{Button, Label, PackOpts, Tk};
 
+/// Runs a hello-world window with a label and a quit button that prints a farewell and exits.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Hello, rtk");

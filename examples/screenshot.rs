@@ -1,5 +1,8 @@
+//! Example that builds a small window and renders it directly to a PNG file without opening a real window.
+
 use rtk::{Button, Label, PackOpts, Tk};
 
+/// Renders a hello window to a PNG file at the given path (default hello.png) and prints the saved location.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from)
         .unwrap_or_else(|| "hello.png".into());

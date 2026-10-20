@@ -87,3 +87,10 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | guide-doctest2 r0 | 44323 (256 cached) | 748 (0 reasoning) | 0.0035 | 0.2048 |
 | hand glue | lead | docs/GUIDE.md: 2 doctest one-liners (drop nonexistent `Opt::Variable` line; mark Window API block `no_run` since it feeds empty PNG bytes) + `GuideDoctests` include in src/lib.rs | $0 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | readme r0 | 8406 (7680 cached) | 958 (0 reasoning) | 0.0006 | 0.2054 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-fns-0 | 7205 (0 cached) | 1239 (0 reasoning) | 0.0012 | 0.2066 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-fns-1 | 6991 (0 cached) | 1177 (0 reasoning) | 0.0011 | 0.2077 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-fns-2 | 7643 (0 cached) | 1415 (0 reasoning) | 0.0012 | 0.2089 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-fns-3 | 8312 (0 cached) | 1250 (0 reasoning) | 0.0012 | 0.2101 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-fns-4 | 6256 (0 cached) | 1133 (0 reasoning) | 0.0011 | 0.2112 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docfill-headers | 5853 (0 cached) | 551 (0 reasoning) | 0.0007 | 0.2119 |
+| 2026-10-20 07:10 | (cap) | **Tyler 7:05 AM: hard cap $20 total for the remaining rtk 1.0 work, counted from here** (baseline: lead ledger total above + helper rows ≈ $2.48 incl. ~$0.30 estimated aborted calls). Driver enforces the cap (stops at $19 over the baseline, counting lead ledger plus helper rows added after this line). $1.50 balance floor still applies. | — | — | — | — |

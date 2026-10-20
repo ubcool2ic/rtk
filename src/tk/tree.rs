@@ -4,6 +4,7 @@
 use super::*;
 
 impl Tk {
+    /// Creates a new widget node under a Frame or Notebook parent, returning its id.
     pub(crate) fn add(
         &mut self,
         kind: Kind,
@@ -243,6 +244,7 @@ impl Tk {
         true
     }
 
+    /// Replaces an entry's text and repaints only its area when the contents actually change.
     pub(crate) fn write_entry(&mut self, id: WidgetId, text: String) {
         let binding = self.node(id).and_then(|node| node.binding);
         let mut changed = false;

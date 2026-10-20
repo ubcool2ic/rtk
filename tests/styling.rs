@@ -1,7 +1,10 @@
+//! Tests for theme token defaults and style resolution across the built-in themes.
+
 use rtk::{
     Button, Color, Frame, Key, Label, Opt, PackOpts, State, StyleSpec, Theme, Tk,
 };
 
+/// Checks that theme token defaults for palette and radius match each theme.
 #[test]
 fn token_defaults_per_theme() {
     let mut tk = Tk::new();
@@ -29,6 +32,7 @@ fn token_defaults_per_theme() {
     assert_eq!(tk.tokens().radius.md, 0.0);
 }
 
+/// Confirms a named style overrides the default class style for a button.
 #[test]
 fn named_style_beats_class() {
     let mut tk = Tk::new();
@@ -52,6 +56,7 @@ fn named_style_beats_class() {
     assert_eq!(res.bg, Color::rgb(10, 20, 30));
 }
 
+/// Ensures a per-widget style override takes precedence over a named style.
 #[test]
 fn override_beats_named() {
     let mut tk = Tk::new();
@@ -76,6 +81,7 @@ fn override_beats_named() {
     assert_eq!(res.font_size, 16.0); // kept from named style
 }
 
+/// Verifies that frames inherit foreground and font from parents but not background.
 #[test]
 fn frame_inheritance_fg_and_font_not_bg() {
     let mut tk = Tk::new();
@@ -105,6 +111,7 @@ fn frame_inheritance_fg_and_font_not_bg() {
     assert_ne!(res.bg, Color::rgb(50, 50, 50));
 }
 
+/// Tests that state maps apply on simulated hover, press, and focus events.
 #[test]
 fn state_map_applies_on_sim_hover_press_focus() {
     let mut tk = Tk::new();
@@ -144,6 +151,7 @@ fn state_map_applies_on_sim_hover_press_focus() {
     assert!(tk.widget_state(btn).contains(State::HOVER));
 }
 
+/// Confirms style transitions interpolate halfway and complete to the target values.
 #[test]
 fn transition_interpolates_halfway_and_finishes() {
     let mut tk = Tk::new();
@@ -182,6 +190,7 @@ fn transition_interpolates_halfway_and_finishes() {
     assert!(!tk.is_animating());
 }
 
+/// Ensures disabled buttons ignore clicks and are skipped during tab navigation.
 #[test]
 fn disabled_button_ignores_click_and_skipped_by_tab() {
     let mut tk = Tk::new();
@@ -213,6 +222,7 @@ fn disabled_button_ignores_click_and_skipped_by_tab() {
     assert_eq!(tk.focused_widget(), Some(btn3));
 }
 
+/// Tests stylesheet parsing including comments, hover states, and gradient backgrounds.
 #[test]
 fn stylesheet_parse_success_and_hover_and_gradients() {
     let mut tk = Tk::new();
@@ -258,6 +268,7 @@ fn stylesheet_parse_success_and_hover_and_gradients() {
     assert!(hovered.shadow.is_some());
 }
 
+/// Verifies that a per-widget Bg option overrides a style-configured background for a TButton.
 #[test]
 fn legacy_opt_bg_still_wins() {
     let mut tk = Tk::new();
@@ -274,6 +285,7 @@ fn legacy_opt_bg_still_wins() {
     assert_eq!(res.bg, Color::rgb(200, 200, 200));
 }
 
+/// Checks that a focused button under the HighContrast theme renders a yellow focus-ring pixel.
 #[test]
 fn high_contrast_renders_yellow_focus_ring_pixel() {
     let mut tk = Tk::new();
@@ -300,6 +312,7 @@ fn high_contrast_renders_yellow_focus_ring_pixel() {
     assert!(found_yellow, "High contrast focus ring must render yellow pixels");
 }
 
+/// Confirms that the top-left pixel of a rounded button corner shows the parent background color.
 #[test]
 fn rounded_corner_pixel_at_top_left_equals_parent_bg() {
     let mut tk = Tk::new();
@@ -334,6 +347,7 @@ fn rounded_corner_pixel_at_top_left_equals_parent_bg() {
     assert_eq!(r, 0, "Corner pixel must not be button bg (red)");
 }
 
+/// Ensures named style configurations survive a theme switch and still resolve correctly.
 #[test]
 fn theme_switch_keeps_named_styles() {
     let mut tk = Tk::new();
@@ -355,6 +369,7 @@ fn theme_switch_keeps_named_styles() {
     assert_eq!(tk.resolved_style(btn).unwrap().font_size, 21.0);
 }
 
+/// Fuzzes the stylesheet parser with random input to verify it never panics.
 #[test]
 fn stylesheet_parser_fuzz_never_panics() {
     let mut tk = Tk::new();
@@ -380,6 +395,7 @@ fn stylesheet_parser_fuzz_never_panics() {
     }
 }
 
+/// Tests that a button can render with an image loaded from in-memory PNG bytes.
 #[test]
 fn image_support_button_rendering() {
     let mut tk = Tk::new();
@@ -407,6 +423,7 @@ fn image_support_button_rendering() {
     assert!(found_red, "Button with Image must render image pixels");
 }
 
+/// Verifies press and release transitions animate from the previous state rather than resetting.
 #[test]
 fn press_and_release_transitions_start_from_previous_state() {
     let mut tk = Tk::new();
@@ -435,6 +452,7 @@ fn press_and_release_transitions_start_from_previous_state() {
     assert!((back.r as i32 - 100).abs() <= 3, "release midpoint {back:?}");
 }
 
+/// Checks that bold text requests more width and disabled widgets render with a muted appearance.
 #[test]
 fn bold_text_requests_more_width_and_disabled_has_muted_look() {
     let mut tk = Tk::new();
@@ -455,6 +473,7 @@ fn bold_text_requests_more_width_and_disabled_has_muted_look() {
     assert_eq!(style.fg, tk.tokens().palette.muted);
 }
 
+/// Confirms the README stylesheet snippet parses into the expected number of rules.
 #[test]
 fn readme_stylesheet_snippet_parses() {
     let mut tk = Tk::new();

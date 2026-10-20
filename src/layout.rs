@@ -8,6 +8,7 @@ use std::ops::{BitOr, BitOrAssign};
 
 pub(crate) const MAX_TRACKS: usize = 4096;
 
+/// Clamps a length to a finite non-negative range, mapping nonfinite values to zero.
 pub(crate) fn length(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(0.0, 10_000_000.0)
@@ -16,6 +17,7 @@ pub(crate) fn length(value: f32) -> f32 {
     }
 }
 
+/// Clamps a position to a finite range, mapping nonfinite values to zero.
 pub(crate) fn position(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(-1_000_000_000.0, 1_000_000_000.0)
@@ -65,6 +67,7 @@ impl Rect {
         }
     }
 
+    /// Shrinks the rectangle by the given horizontal and vertical insets, clamped so it never inverts.
     fn normalized(self) -> Self {
         Self::new(self.x, self.y, self.width, self.height)
     }
@@ -122,6 +125,7 @@ impl Rect {
             && y < self.y + self.height
     }
 
+    /// Returns a copy of the rectangle scaled by the given factor.
     pub(crate) fn scaled(self, scale: f32) -> Self {
         Self::new(
             self.x * scale,
@@ -312,12 +316,14 @@ impl Sticky {
 impl BitOr for Sticky {
     type Output = Self;
 
+    /// Combines two sticky flags with bitwise OR.
     fn bitor(self, rhs: Self) -> Self {
         Self(self.0 | rhs.0)
     }
 }
 
 impl BitOrAssign for Sticky {
+    /// Adds the sticky flags of another value in place.
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0;
     }
@@ -375,6 +381,7 @@ pub struct GridItem {
     pub opts: GridOpts,
 }
 
+/// Returns the size grown by the given padding on each axis.
 fn padded(size: Size, x: f32, y: f32) -> Size {
     Size::new(
         length(size.width) + 2.0 * length(x),
@@ -382,6 +389,7 @@ fn padded(size: Size, x: f32, y: f32) -> Size {
     )
 }
 
+/// Returns whether the side is horizontal (left or right).
 fn horizontal(side: Side) -> bool {
     matches!(side, Side::Left | Side::Right)
 }
@@ -403,6 +411,7 @@ pub fn pack_request(items: &[PackItem]) -> Size {
     Size::new(width.max(used_w), height.max(used_h))
 }
 
+/// Computes the extra space distributed to expanding items along one axis.
 fn expansion(items: &[PackItem], axis_x: bool, mut available: f32) -> f32 {
     let mut count = 0_usize;
     let mut limit = available;
@@ -487,11 +496,13 @@ pub fn pack(container: Rect, items: &[PackItem]) -> Vec<Rect> {
     result
 }
 
+/// Clamps a grid span to the valid track range, ensuring at least one track.
 fn span(start: usize, count: usize) -> (usize, usize) {
     let start = start.min(MAX_TRACKS - 1);
     (start, count.max(1).min(MAX_TRACKS - start))
 }
 
+/// Returns the start track, span count, and needed size for a grid item along one axis.
 fn specification(item: &GridItem, axis_x: bool) -> (usize, usize, f32) {
     let opts = item.opts;
     let size = padded(item.requested, opts.padx, opts.pady);
@@ -503,6 +514,7 @@ fn specification(item: &GridItem, axis_x: bool) -> (usize, usize, f32) {
     (start, count, if axis_x { size.width } else { size.height })
 }
 
+/// Computes the requested size of each grid track along one axis from the items.
 fn tracks(items: &[GridItem], axis_x: bool) -> Vec<f32> {
     let count = items
         .iter()
@@ -543,6 +555,7 @@ pub fn grid_request(items: &[GridItem]) -> Size {
     )
 }
 
+/// Distributes available space across tracks according to weights, shrinking proportionally when over budget.
 fn weighted(mut tracks: Vec<f32>, available: f32, weights: &[(usize, u32)]) -> Vec<f32> {
     let last = weights.iter().filter(|(i, _)| *i < MAX_TRACKS).map(|(i, _)| *i).max();
     if let Some(last) = last {
@@ -572,6 +585,7 @@ fn weighted(mut tracks: Vec<f32>, available: f32, weights: &[(usize, u32)]) -> V
     tracks
 }
 
+/// Returns the offset and size of a track range, clamped to the available space.
 fn track_range(tracks: &[f32], start: usize, count: usize, available: f32) -> (f32, f32) {
     let offset = tracks.get(..start).unwrap_or_default().iter().sum::<f32>().min(available);
     let size = tracks
@@ -583,6 +597,7 @@ fn track_range(tracks: &[f32], start: usize, count: usize, available: f32) -> (f
     (offset, size)
 }
 
+/// Computes the offset and size of a widget within a cell according to sticky flags.
 fn sticky_axis(start: f32, available: f32, requested: f32, low: bool, high: bool) -> (f32, f32) {
     let size = if low && high { available } else { length(requested).min(available) };
     let offset = if low {
@@ -635,6 +650,7 @@ pub fn grid(
 mod tests {
     use super::*;
 
+    /// Verifies that place anchors position a widget correctly within its container.
     #[test]
     fn place_anchors_test() {
         let container = Rect::new(0.0, 0.0, 100.0, 100.0);
@@ -662,10 +678,12 @@ mod tests {
 mod legacy_tests {
     use super::*;
 
+    /// Builds a pack item with the given requested size and options.
     fn slave(width: f32, height: f32, opts: PackOpts) -> PackItem {
         PackItem { requested: Size::new(width, height), opts }
     }
 
+    /// Builds a grid item with the given width at the specified row and column.
     fn cell(width: f32, row: usize, column: usize) -> GridItem {
         GridItem {
             requested: Size::new(width, 10.0),
@@ -673,6 +691,7 @@ mod legacy_tests {
         }
     }
 
+    /// Verifies that top-packed items stack vertically and are centered horizontally.
     #[test]
     fn pack_top_stacking() {
         let items = [
@@ -685,6 +704,7 @@ mod legacy_tests {
         assert_eq!(pack_request(&items), Size::new(30.0, 25.0));
     }
 
+    /// Verifies that a left-packed item with vertical fill stretches to the container height.
     #[test]
     fn pack_left_fill_y() {
         let item = slave(20.0, 10.0, PackOpts {
@@ -696,6 +716,7 @@ mod legacy_tests {
         );
     }
 
+    /// Verifies that two expanding slaves with fill Both split the container evenly along the pack axis.
     #[test]
     fn pack_expand_sharing() {
         let opts = PackOpts { fill: Fill::Both, expand: true, ..PackOpts::default() };
@@ -707,6 +728,7 @@ mod legacy_tests {
         assert_eq!(result[1], Rect::new(0.0, 50.0, 100.0, 50.0));
     }
 
+    /// Checks that padx and pady shrink the allocated slot and are included in the pack request size.
     #[test]
     fn pack_padding() {
         let opts = PackOpts { fill: Fill::X, padx: 3.0, pady: 4.0, ..PackOpts::default() };
@@ -717,6 +739,7 @@ mod legacy_tests {
         assert_eq!(pack_request(&items), Size::new(26.0, 36.0));
     }
 
+    /// Ensures an expanding item reserves space so a perpendicular side item keeps its requested extent.
     #[test]
     fn expansion_reserves_orthogonal_requests() {
         let items = [
@@ -732,6 +755,7 @@ mod legacy_tests {
         assert_eq!(result[1].height, 40.0);
     }
 
+    /// Confirms grid column widths are the maximum cell width per column and positions follow those widths.
     #[test]
     fn grid_column_widths_are_maxima() {
         let items = [cell(10.0, 0, 0), cell(30.0, 1, 0), cell(20.0, 0, 1)];
@@ -740,6 +764,7 @@ mod legacy_tests {
         assert_eq!(result[2].x, 30.0);
     }
 
+    /// Verifies that sticky E|W stretches a grid cell to fill its column width.
     #[test]
     fn grid_sticky_ew_stretches() {
         let mut item = cell(20.0, 0, 0);
@@ -748,6 +773,7 @@ mod legacy_tests {
         assert_eq!(result[0].width, 100.0);
     }
 
+    /// Checks that column and row weights distribute extra space proportionally across grid tracks.
     #[test]
     fn grid_weight_distribution() {
         let mut items = [cell(10.0, 0, 0), cell(10.0, 0, 1)];
@@ -762,6 +788,7 @@ mod legacy_tests {
         assert_eq!(result[1], Rect::new(30.0, 0.0, 70.0, 30.0));
     }
 
+    /// Validates that columnspan, rowspan, and padding affect both the grid request and the placed rectangle.
     #[test]
     fn grid_spans_and_padding() {
         let mut item = cell(40.0, 0, 0);

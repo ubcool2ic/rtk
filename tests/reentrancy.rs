@@ -1,8 +1,11 @@
+//! Tests that command callbacks can safely destroy their own widget, create replacements, mutate state, and quit.
+
 use std::cell::Cell;
 use std::rc::Rc;
 
 use rtk::{Button, Key, Label, Opt, PackOpts, Tk};
 
+/// Tests that a command can destroy its own widget, reuse the slot, mutate state, and quit safely.
 #[test]
 fn command_can_destroy_itself_reuse_slot_mutate_and_quit() {
     let mut tk = Tk::new();
@@ -31,6 +34,7 @@ fn command_can_destroy_itself_reuse_slot_mutate_and_quit() {
     assert!(tk.render_to_pixmap(240, 100).is_ok());
 }
 
+/// Confirms that a replacement command takes effect and the running command is not re-entered.
 #[test]
 fn replacement_command_wins_and_running_command_is_not_reentered() {
     let mut tk = Tk::new();
@@ -53,6 +57,7 @@ fn replacement_command_wins_and_running_command_is_not_reentered() {
     assert_eq!(count.get(&tk), Some(10));
 }
 
+/// Ensures cyclic variable traces are bounded and that equal trace sets are cleaned up correctly.
 #[test]
 fn cyclic_var_traces_are_bounded_and_equal_sets_are_clean() {
     let mut tk = Tk::new();
@@ -80,6 +85,7 @@ fn cyclic_var_traces_are_bounded_and_equal_sets_are_clean() {
     assert_eq!(calls.get(), 2);
 }
 
+/// Verifies that a trace callback can destroy its bound entry and itself without causing errors.
 #[test]
 fn trace_may_destroy_its_bound_entry_and_itself() {
     let mut tk = Tk::new();

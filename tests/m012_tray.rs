@@ -128,6 +128,7 @@ fn tray_error_display() {
 /// `TrayError` implements `std::error::Error`.
 #[test]
 fn tray_error_is_error() {
+    /// Verifies that TrayEvent implements Clone, Debug, PartialEq, and Eq with correct equality semantics.
     fn assert_error<E: std::error::Error>(_: &E) {}
     assert_error(&TrayError::InvalidIcon);
     assert_error(&TrayError::Platform("x".into()));

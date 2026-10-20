@@ -1,5 +1,8 @@
+//! Tests for widget ID validity, stale ID rejection, and slot reuse after destruction.
+
 use rtk::{Button, Entry, Frame, GridOpts, Label, Opt, PackOpts, Tk, WidgetId};
 
+/// Verifies that operations on stale or destroyed widget IDs fail gracefully without panicking.
 #[test]
 fn stale_ids_and_slot_reuse() {
     let mut tk = Tk::new();
@@ -28,6 +31,7 @@ fn stale_ids_and_slot_reuse() {
     assert!(Entry::new(&mut tk, replacement).is_err());
 }
 
+/// Confirms that destroying a parent widget removes its descendants and clears focus from them.
 #[test]
 fn destroying_parent_removes_descendants_and_focus() {
     let mut tk = Tk::new();
@@ -48,6 +52,7 @@ fn destroying_parent_removes_descendants_and_focus() {
     assert_eq!(tk.focused_widget(), None);
 }
 
+/// Ensures variables reject handles from other Tk instances and destroyed handles.
 #[test]
 fn variables_reject_foreign_and_destroyed_handles() {
     let mut first = Tk::new();
@@ -64,6 +69,7 @@ fn variables_reject_foreign_and_destroyed_handles() {
     assert!(!value.destroy(&mut first));
 }
 
+/// Checks that incompatible geometry managers and invalid configuration values are rejected.
 #[test]
 fn incompatible_configuration_is_rejected() {
     let mut tk = Tk::new();

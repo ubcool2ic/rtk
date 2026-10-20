@@ -13,6 +13,7 @@ fn sample_rgba() -> Vec<u8> {
     ]
 }
 
+/// Verifies iconphoto_rgba rejects zero-width or zero-height images.
 #[test]
 fn iconphoto_rgba_rejects_zero_size() {
     let mut tk = Tk::new();
@@ -22,6 +23,7 @@ fn iconphoto_rgba_rejects_zero_size() {
     assert!(tk.window_icon().is_none());
 }
 
+/// Ensures iconphoto_rgba rejects buffers whose length does not match the dimensions.
 #[test]
 fn iconphoto_rgba_rejects_wrong_length() {
     let mut tk = Tk::new();
@@ -32,6 +34,7 @@ fn iconphoto_rgba_rejects_wrong_length() {
     assert!(tk.window_icon().is_none());
 }
 
+/// Checks that iconphoto_rgba accepts a valid buffer and records the icon size.
 #[test]
 fn iconphoto_rgba_accepts_valid_buffer() {
     let mut tk = Tk::new();
@@ -39,6 +42,7 @@ fn iconphoto_rgba_accepts_valid_buffer() {
     assert_eq!(tk.window_icon(), Some((2, 2)));
 }
 
+/// Tests that a PNG encoded in memory round-trips through iconphoto_png with the correct size.
 #[test]
 fn iconphoto_png_roundtrip_size() {
     // Build a 3x2 PNG via tiny-skia and feed it back through iconphoto_png.
@@ -53,6 +57,7 @@ fn iconphoto_png_roundtrip_size() {
     assert_eq!(tk.window_icon(), Some((3, 2)));
 }
 
+/// Verifies iconphoto_png rejects non-PNG data with an invalid image size error.
 #[test]
 fn iconphoto_png_rejects_garbage() {
     let mut tk = Tk::new();
@@ -60,6 +65,7 @@ fn iconphoto_png_rejects_garbage() {
     assert!(tk.window_icon().is_none());
 }
 
+/// Tests that minsize and maxsize setters are reflected by their getters.
 #[test]
 fn minsize_maxsize_getters() {
     let mut tk = Tk::new();
@@ -71,6 +77,7 @@ fn minsize_maxsize_getters() {
     assert_eq!(tk.window_maxsize(), Some((800, 600)));
 }
 
+/// Verifies the resizable getter reflects each combination of width and height flags.
 #[test]
 fn resizable_getter() {
     let mut tk = Tk::new();
@@ -83,6 +90,7 @@ fn resizable_getter() {
     assert_eq!(tk.is_resizable(), (false, true));
 }
 
+/// Checks that a close protocol callback returning false vetoes quitting.
 #[test]
 fn protocol_close_veto_keeps_running() {
     let mut tk = Tk::new();
@@ -92,6 +100,7 @@ fn protocol_close_veto_keeps_running() {
     assert!(!tk.is_quit_requested());
 }
 
+/// Verifies a close protocol callback returning true allows the window to quit.
 #[test]
 fn protocol_close_allow_quits() {
     let mut tk = Tk::new();
@@ -101,6 +110,7 @@ fn protocol_close_allow_quits() {
     assert!(tk.is_quit_requested());
 }
 
+/// Ensures the default close behavior requests quit when no protocol is set.
 #[test]
 fn protocol_close_default_quits() {
     let mut tk = Tk::new();
@@ -109,6 +119,7 @@ fn protocol_close_default_quits() {
     assert!(tk.is_quit_requested());
 }
 
+/// Tests that a close protocol callback can re-enter the toolkit to change window state.
 #[test]
 fn protocol_close_callback_can_reenter() {
     let mut tk = Tk::new();
@@ -121,6 +132,7 @@ fn protocol_close_callback_can_reenter() {
     assert!(!tk.is_quit_requested());
 }
 
+/// Verifies the window title getter returns the value set by title.
 #[test]
 fn window_title_getter() {
     let mut tk = Tk::new();

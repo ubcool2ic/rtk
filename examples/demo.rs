@@ -1,3 +1,5 @@
+//! Comprehensive demo showcasing many rtk widgets, themes, and drag interactions, with optional command-line flags for dark mode and PNG output.
+
 use std::env;
 use std::error::Error;
 
@@ -6,6 +8,7 @@ use rtk::{
     ProgressBar, Radiobutton, Scale, Scrollbar, Side, Spinbox, Theme, Tk,
 };
 
+/// Runs the demo application, parsing --dark and --png flags to select the theme and optional PNG output.
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut dark = false;

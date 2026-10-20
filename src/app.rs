@@ -167,6 +167,7 @@ impl Tk {
 }
 
 impl App {
+    /// Creates the application window with the configured title, size, icon, and min/max constraints.
     fn open(&mut self, event_loop: &ActiveEventLoop) -> Result<(), Box<dyn Error>> {
         let (width, height) = self.tk.initial_size();
         let mut attributes = Window::default_attributes()
@@ -228,6 +229,7 @@ impl App {
         Ok(())
     }
 
+    /// Schedules the next event-loop step, exiting if quit was requested and draining posted tasks.
     fn schedule(&mut self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
             event_loop.exit();
@@ -303,6 +305,7 @@ impl App {
         }
     }
 
+    /// Draws the current frame to the window surface, skipping work when occluded or zero-sized.
     fn draw(&mut self) -> Result<(), Box<dyn Error>> {
         let Some(window) = self.window.clone() else { return Ok(()) };
         window.set_title(&self.tk.window_title);
@@ -412,6 +415,7 @@ impl App {
 }
 
 impl ApplicationHandler<RtkUserEvent> for App {
+    /// Handles a user event by processing posted tasks and accessibility updates, then rescheduling.
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: RtkUserEvent) {
         self.tk.process_posted();
         #[cfg(feature = "accesskit")]
@@ -419,6 +423,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
         self.schedule(event_loop);
     }
 
+    /// Resumes the application, opening the window if needed and exiting on failure.
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.tk.quit_requested {
             event_loop.exit();
@@ -435,6 +440,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
         self.schedule(event_loop);
     }
 
+    /// Handles suspension by dropping the surface, context, and window and clearing input state.
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         self.surface = None;
         self.context = None;
@@ -442,6 +448,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
         self.tk.clear_input();
     }
 
+    /// Handles window events for the tracked window, forwarding them to the accessibility adapter.
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -641,6 +648,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
         self.schedule(event_loop);
     }
 
+    /// Processes posted tasks and accessibility updates before scheduling the next event-loop step.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.tk.process_posted();
         #[cfg(feature = "accesskit")]
@@ -649,6 +657,7 @@ impl ApplicationHandler<RtkUserEvent> for App {
     }
 }
 
+/// Returns whether a key event should be accepted as text input, rejecting logo and plain-control shortcuts.
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
 }
@@ -843,6 +852,7 @@ pub(crate) static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new
 mod tests {
     use super::{accepts_key_input, pinned_limits, FREE_AXIS_MAX};
 
+    /// Verifies that AltGr text is accepted while plain-control and logo shortcuts are rejected.
     #[test]
     fn altgr_text_is_accepted_but_shortcuts_are_not() {
         assert!(accepts_key_input(false, false, false));
@@ -851,6 +861,7 @@ mod tests {
         assert!(!accepts_key_input(false, false, true));
     }
 
+    /// Verifies that a fully resizable window preserves user min and max constraints.
     #[test]
     fn fully_resizable_keeps_user_constraints() {
         let min = Some((100, 200));
@@ -862,6 +873,7 @@ mod tests {
         assert_eq!(pinned_limits((true, true), (640, 480), None, None), (None, None));
     }
 
+    /// Verifies that a fixed-width window pins only the width while leaving height free.
     #[test]
     fn fixed_width_pins_only_width() {
         let (min, max) = pinned_limits((false, true), (640, 480), None, None);
@@ -869,6 +881,7 @@ mod tests {
         assert_eq!(max, Some((640, FREE_AXIS_MAX)));
     }
 
+    /// Verifies that a fixed-height window pins only the height while leaving width free.
     #[test]
     fn fixed_height_pins_only_height() {
         let (min, max) = pinned_limits((true, false), (640, 480), None, None);
@@ -876,6 +889,7 @@ mod tests {
         assert_eq!(max, Some((FREE_AXIS_MAX, 480)));
     }
 
+    /// Verifies that a fixed-width window keeps user height constraints while pinning width.
     #[test]
     fn fixed_width_keeps_user_height_constraints() {
         let (min, max) = pinned_limits((false, true), (640, 480), Some((10, 200)), Some((900, 700)));
@@ -883,6 +897,7 @@ mod tests {
         assert_eq!(max, Some((640, 700)));
     }
 
+    /// Verifies that a fixed-height window keeps user width constraints while pinning height.
     #[test]
     fn fixed_height_keeps_user_width_constraints() {
         let (min, max) = pinned_limits((true, false), (640, 480), Some((300, 10)), Some((900, 700)));
@@ -890,6 +905,7 @@ mod tests {
         assert_eq!(max, Some((900, 480)));
     }
 
+    /// Verifies that a fully fixed window pins both axes to the current size.
     #[test]
     fn fully_fixed_pins_both_axes() {
         let (min, max) = pinned_limits((false, false), (640, 480), None, None);
@@ -897,6 +913,7 @@ mod tests {
         assert_eq!(max, Some((640, 480)));
     }
 
+    /// Verifies that inverted user ranges are clamped so min never exceeds max.
     #[test]
     fn inverted_ranges_are_clamped() {
         // User min larger than the pinned current width must not produce min > max.

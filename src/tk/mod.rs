@@ -296,6 +296,7 @@ pub struct Tk {
 }
 
 impl Default for Tk {
+    /// Creates a toolkit with a root Frame, the Light theme and a 640×480 viewport.
     fn default() -> Self {
         Self::new()
     }
@@ -453,12 +454,14 @@ impl Tk {
         WidgetId { index: 0, gen: 0 }
     }
 
+    /// Returns a shared reference to the widget node for the given id, or None if it is stale.
     pub(crate) fn node(&self, id: WidgetId) -> Option<&WidgetNode> {
         self.nodes.get(id.index as usize)
             .filter(|slot| slot.gen == id.gen)?
             .node.as_ref()
     }
 
+    /// Returns a mutable reference to the widget node for the given id, or None if it is stale.
     pub(crate) fn node_mut(&mut self, id: WidgetId) -> Option<&mut WidgetNode> {
         self.nodes.get_mut(id.index as usize)
             .filter(|slot| slot.gen == id.gen)?

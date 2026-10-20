@@ -74,10 +74,12 @@ impl TextEngine {
         self.shaped.get(&key)
     }
 
+    /// Reports whether any font faces are loaded in the font database.
     fn has_fonts(&self) -> bool {
         self.fonts.db().faces().next().is_some()
     }
 
+    /// Builds a shaped text buffer for the given style, returning None for missing fonts or invalid sizes.
     fn buffer(
         &mut self,
         text: &str,
@@ -118,6 +120,7 @@ impl TextEngine {
         Some(buffer)
     }
 
+    /// Measures styled text, caching results by text, size, family, weight, and italic.
     pub fn measure_styled(
         &mut self,
         text: &str,
@@ -143,6 +146,7 @@ impl TextEngine {
         result
     }
 
+    /// Measures plain text at the given size using default weight and no family.
     pub fn measure(&mut self, text: &str, size: f32) -> Size {
         self.measure_styled(text, size, None, 400, false)
     }
@@ -165,6 +169,7 @@ impl TextEngine {
         self.draw_styled(pixmap, text, appearance, family, weight, italic, origin, clip, opacity);
     }
 
+    /// Draws styled text into the pixmap at the origin, clipped and with the given opacity.
     #[allow(clippy::too_many_arguments)]
     fn draw_styled(
         &mut self,
@@ -236,6 +241,7 @@ fn blend_pixel(data: &mut [u8], index: usize, color: cosmic_text::Color) {
     pixel[3] = (alpha + u32::from(pixel[3]) * inverse / 255).min(255) as u8;
 }
 
+/// Fills the intersection of rect and clip with a solid color.
 pub(super) fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
     let rect = rect.intersection(clip);
     if rect.width <= 0.0 || rect.height <= 0.0 {
@@ -249,6 +255,7 @@ pub(super) fn fill(pixmap: &mut Pixmap, rect: Rect, clip: Rect, color: Color) {
     }
 }
 
+/// Draws a rectangular outline using separate top and bottom colors, clamped to half the rect size.
 pub(super) fn outline(pixmap: &mut Pixmap, rect: Rect, clip: Rect, width: f32, colors: (Color, Color)) {
     let width = width.min(rect.width / 2.0).min(rect.height / 2.0);
     let (top, bottom) = colors;
@@ -266,6 +273,7 @@ pub(super) fn outline(pixmap: &mut Pixmap, rect: Rect, clip: Rect, width: f32, c
     );
 }
 
+/// Fills a circle approximated with cubic Béziers, clipped to the given rectangle.
 fn fill_circle(pixmap: &mut Pixmap, cx: f32, cy: f32, r: f32, clip: Rect, color: Color) {
     let mut pb = PathBuilder::new();
     let d = r * 0.552_284_8;

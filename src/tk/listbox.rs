@@ -109,6 +109,7 @@ impl Tk {
         true
     }
 
+    /// Invokes the listbox selection callback with the new selection, guarding against reentrancy.
     pub(crate) fn dispatch_list_select(&mut self, id: WidgetId, sel: Option<usize>) {
         let Some(node) = self.node_mut(id) else { return };
         if node.list_select_running { return; }

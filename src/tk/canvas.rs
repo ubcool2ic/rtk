@@ -23,6 +23,7 @@ impl Tk {
         self.node(id).filter(|n| n.kind == Kind::Canvas).map(|n| n.view)
     }
 
+    /// Dispatches a canvas drag callback for the widget, guarding against reentrant calls.
     pub(crate) fn dispatch_canvas_drag(&mut self, id: WidgetId, cx: f32, cy: f32, phase: DragPhase) {
         let Some(node) = self.node_mut(id) else { return };
         if node.canvas_drag_running {
@@ -61,6 +62,7 @@ impl Tk {
         self.canvas_add_item(id, CanvasItemKind::Text { x, y, text: text.into(), color })
     }
 
+    /// Adds a canvas item to a canvas widget, reusing free slots and returning the new item handle.
     pub(crate) fn canvas_add_item(&mut self, id: WidgetId, kind: CanvasItemKind) -> Option<CanvasItem> {
         const MAX_CANVAS_ITEMS: usize = 1 << 20;
         let node = self.node_mut(id)?;

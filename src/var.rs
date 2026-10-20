@@ -32,12 +32,14 @@ pub struct Var<T> {
 impl<T> Copy for Var<T> {}
 
 impl<T> Clone for Var<T> {
+    /// Clones the variable handle, which is a cheap copy sharing the same slot.
     fn clone(&self) -> Self {
         *self
     }
 }
 
 impl<T> PartialEq for Var<T> {
+    /// Compares two variable handles for equality by slot index, generation and owner.
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && self.gen == other.gen && self.owner == other.owner
     }
@@ -46,6 +48,7 @@ impl<T> PartialEq for Var<T> {
 impl<T> Eq for Var<T> {}
 
 impl<T> Hash for Var<T> {
+    /// Hashes a variable handle by its slot index, generation and owner.
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.index.hash(state);
         self.gen.hash(state);
@@ -64,6 +67,7 @@ pub(crate) struct VarSlot {
 }
 
 impl<T: 'static> Var<T> {
+    /// Returns the variable's slot if the handle is still valid and holds the expected type.
     fn slot(self, tk: &Tk) -> Option<&VarSlot> {
         tk.vars.get(self.index).filter(|slot| {
             slot.gen == self.gen
@@ -72,6 +76,7 @@ impl<T: 'static> Var<T> {
         })
     }
 
+    /// Returns a mutable reference to the variable's slot if the handle is still valid and typed correctly.
     fn slot_mut(self, tk: &mut Tk) -> Option<&mut VarSlot> {
         tk.vars.get_mut(self.index).filter(|slot| {
             slot.gen == self.gen
@@ -149,6 +154,7 @@ impl<T: 'static> Var<T> {
 }
 
 impl Tk {
+    /// Allocates a new variable slot with the given value and returns a typed handle to it.
     fn make_var<T: 'static>(&mut self, value: T) -> Var<T> {
         // Variable slots are intentionally not reused. This also makes a
         // destroyed handle unambiguously invalid at generation exhaustion.

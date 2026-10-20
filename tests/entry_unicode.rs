@@ -1,5 +1,8 @@
+//! Tests that the entry widget handles Unicode grapheme clusters correctly across navigation and deletion.
+
 use rtk::{Entry, Key, Opt, PackOpts, Tk};
 
+/// Checks that grapheme clusters survive cursor navigation and deletion in an Entry.
 #[test]
 fn unicode_clusters_survive_navigation_and_deletion() {
     let mut tk = Tk::new();
@@ -37,6 +40,7 @@ fn unicode_clusters_survive_navigation_and_deletion() {
     assert_eq!(value.get(&tk).as_deref(), Some("hllo  "));
 }
 
+/// Verifies external variable changes and large input are handled safely by an Entry.
 #[test]
 fn external_changes_controls_and_large_input_are_safe() {
     let mut tk = Tk::new();
@@ -64,6 +68,7 @@ fn external_changes_controls_and_large_input_are_safe() {
     assert!(tk.entry_get(entry).expect("text").len() < text.len());
 }
 
+/// Checks that long entry text is clipped and the caret scrolls the view.
 #[test]
 fn entry_text_is_clipped_and_caret_can_scroll() {
     let mut tk = Tk::new();

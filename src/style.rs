@@ -62,12 +62,14 @@ impl State {
 
 impl std::ops::BitOr for State {
     type Output = Self;
+    /// Combines two states into their union via the bitwise-or operator.
     fn bitor(self, rhs: Self) -> Self {
         self.union(rhs)
     }
 }
 
 impl std::ops::BitOrAssign for State {
+    /// Adds the flags of another state into this one in place.
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0;
     }
@@ -104,6 +106,7 @@ impl Edges {
 }
 
 impl Default for Edges {
+    /// Returns zero spacing on all four edges.
     fn default() -> Self {
         Self::all(0.0)
     }
@@ -498,6 +501,7 @@ pub struct ResolvedStyle {
 }
 
 impl Default for ResolvedStyle {
+    /// Returns the default style spec with theme colors, a gray border, and no radius or shadow.
     fn default() -> Self {
         Self {
             bg: Color::BG,
@@ -534,6 +538,7 @@ pub struct StyleError {
 }
 
 impl fmt::Display for StyleError {
+    /// Formats the stylesheet error with its line number and message.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "stylesheet error at line {}: {}", self.line, self.message)
     }
@@ -551,6 +556,7 @@ pub struct StyleEngine {
 }
 
 impl Default for StyleEngine {
+    /// Creates a style engine using the default light token set.
     fn default() -> Self {
         Self::new(Tokens::light())
     }
@@ -1191,6 +1197,7 @@ impl StyleEngine {
     }
 }
 
+/// Overlays every field set in src onto dst, leaving unset fields unchanged.
 fn merge_spec(dst: &mut StyleSpec, src: &StyleSpec) {
     if src.bg.is_some() { dst.bg = src.bg; }
     if src.fg.is_some() { dst.fg = src.fg; }
@@ -1313,6 +1320,7 @@ impl<'a> StylesheetParser<'a> {
         Self { input, pos: 0, line: 1 }
     }
 
+    /// Advances past whitespace and block comments, tracking line numbers.
     fn skip_whitespace_and_comments(&mut self) {
         while self.pos < self.input.len() {
             let rest = &self.input[self.pos..];
@@ -1369,6 +1377,7 @@ impl<'a> StylesheetParser<'a> {
         Ok(count)
     }
 
+    /// Parses a selector list up to the opening brace, returning names with optional states.
     fn parse_selector(&mut self) -> Result<Vec<(String, Option<State>)>, StyleError> {
         let start = self.pos;
         while self.pos < self.input.len() {
@@ -1408,6 +1417,7 @@ impl<'a> StylesheetParser<'a> {
         Ok(selectors)
     }
 
+    /// Parses a declaration block into a style spec until the closing brace.
     fn parse_block(&mut self) -> Result<StyleSpec, StyleError> {
         let mut spec = StyleSpec::default();
         loop {
@@ -1447,6 +1457,7 @@ impl<'a> StylesheetParser<'a> {
     }
 }
 
+/// Maps a state name string to its State flag, returning None if unrecognized.
 fn parse_state(s: &str) -> Option<State> {
     match s.trim().to_ascii_lowercase().as_str() {
         "hover" => Some(State::HOVER),
@@ -1459,6 +1470,7 @@ fn parse_state(s: &str) -> Option<State> {
     }
 }
 
+/// Parses a single property declaration and applies it to the style spec.
 fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -> Result<(), StyleError> {
     let err = |msg: &str| StyleError { line, message: format!("{msg} in '{prop}: {val}'") };
     match prop.to_ascii_lowercase().as_str() {
@@ -1558,6 +1570,7 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
     Ok(())
 }
 
+/// Parses one, two, or four whitespace-separated lengths into edge spacing.
 fn parse_edges(val: &str) -> Option<Edges> {
     let parts: Vec<&str> = val.split_whitespace().collect();
     let nums: Vec<f32> = parts.iter().filter_map(|p| p.trim_end_matches("px").parse::<f32>().ok()).collect();
@@ -1569,6 +1582,7 @@ fn parse_edges(val: &str) -> Option<Edges> {
     }
 }
 
+/// Parses a shadow from offset, blur, and optional color components.
 fn parse_shadow(val: &str) -> Option<Shadow> {
     let parts: Vec<&str> = val.split_whitespace().collect();
     if parts.len() < 3 {
@@ -1585,6 +1599,7 @@ fn parse_shadow(val: &str) -> Option<Shadow> {
     Some(Shadow { dx, dy, blur, color })
 }
 
+/// Parses a linear-gradient value into an angle and color stops.
 fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
     let start = val.find('(')?;
     let end = val.rfind(')')?;

@@ -68,6 +68,7 @@ pub enum RtkError {
 }
 
 impl std::fmt::Display for RtkError {
+    /// Formats the error as a human-readable message describing the failure cause.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::InvalidParent => "parent is not a live frame",

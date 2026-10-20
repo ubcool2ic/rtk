@@ -132,6 +132,7 @@ impl Tk {
         (total > visible && visible > 0.0).then_some((total, visible, pos))
     }
 
+    /// Sets the scroll position of a scrollable widget, clamped to its valid range.
     pub(crate) fn set_scroll_pos(&mut self, id: WidgetId, pos: f32) {
         let Some(kind) = self.node(id).map(|n| n.kind) else { return };
         match kind {
@@ -177,6 +178,7 @@ impl Tk {
         }
     }
 
+    /// Sets a canvas's view offset, clamped so it stays within the scroll region.
     pub(crate) fn canvas_set_view(&mut self, id: WidgetId, x: f32, y: f32) {
         let Some(n) = self.node(id) else { return };
         let (rw, rh) = n.scrollregion.unwrap_or((n.rect.width, n.rect.height));
@@ -190,6 +192,7 @@ impl Tk {
 
 
 
+    /// Returns the visible fraction range of a scrollable widget along the given axis.
     pub(crate) fn view_fractions(&mut self, id: WidgetId, vertical: bool) -> (f32, f32) {
         self.ensure_layout();
         let Some(n) = self.node(id) else { return (0.0, 1.0) };

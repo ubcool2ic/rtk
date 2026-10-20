@@ -1,5 +1,8 @@
+//! Tests that widgets render correctly to an offscreen pixmap without a real window.
+
 use rtk::{Button, Fill, Frame, Label, PackOpts, Tk};
 
+/// Renders a simple hello-world layout to a pixmap without requiring a window.
 #[test]
 fn hello_renders_without_a_window() {
     let mut tk = Tk::new();
@@ -31,6 +34,7 @@ fn hello_renders_without_a_window() {
     }
 }
 
+/// Checks that invalid pixmap sizes return errors while valid sizes succeed.
 #[test]
 fn invalid_image_sizes_are_errors() {
     let mut tk = Tk::new();
@@ -40,6 +44,7 @@ fn invalid_image_sizes_are_errors() {
     assert!(tk.render_to_pixmap(40, 40).is_ok());
 }
 
+/// Confirms HiDPI scaling preserves logical geometry while scaling rendered pixel dimensions.
 #[test]
 fn hidpi_keeps_logical_geometry_and_scales_pixels() {
     let mut tk = Tk::new();

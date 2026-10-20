@@ -580,6 +580,7 @@ pub(crate) enum Kind {
 }
 
 impl Kind {
+    /// Returns true if widgets of this kind can receive keyboard focus.
     pub fn focusable(self) -> bool {
         matches!(
             self,
@@ -600,6 +601,7 @@ impl Kind {
         )
     }
 
+    /// Returns true if widgets of this kind support a command callback.
     pub fn has_command(self) -> bool {
         matches!(
             self,
@@ -754,6 +756,7 @@ pub struct EditSnapshot {
 }
 
 impl WidgetNode {
+    /// Creates a new widget node with default state, placing the cursor at the end of the text.
     pub fn new(kind: Kind, parent: Option<WidgetId>, text: String) -> Self {
         Self {
             kind,

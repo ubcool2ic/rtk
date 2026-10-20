@@ -1,5 +1,8 @@
+//! Example of a two-field form laid out with the grid geometry manager, using labels and entries with sticky alignment.
+
 use rtk::{Button, Entry, GridOpts, Label, Sticky, Tk};
 
+/// Runs a simple two-field name and email form laid out with the grid geometry manager.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Form");

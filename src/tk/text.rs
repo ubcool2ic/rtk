@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+/// Trims the text to at most the given number of lines, dropping the oldest lines first.
 pub(crate) fn trim_lines(text: &mut String, max: usize) {
     let lines: Vec<&str> = text.split('\n').collect();
     if lines.len() > max {
@@ -12,6 +13,7 @@ pub(crate) fn trim_lines(text: &mut String, max: usize) {
 }
 
 impl Tk {
+    /// Edits a Text widget's contents in response to a key or inserted text, without extending the selection.
     pub(crate) fn edit_text(&mut self, id: WidgetId, key: Option<Key>, inserted: &str) {
         self.edit_text_ext(id, key, inserted, false);
     }

@@ -4,6 +4,7 @@
 use super::*;
 
 impl Tk {
+    /// Assigns a geometry manager to a widget, rejecting mixes of pack and grid among siblings.
     pub(crate) fn set_manager(&mut self, id: WidgetId, manager: Manager) -> bool {
         let Some(parent) = self.node(id).and_then(|node| node.parent) else { return false };
         let Some(parent_node) = self.node(parent) else { return false };
@@ -56,6 +57,7 @@ impl Tk {
         self.configure_track(parent, row, weight, false)
     }
 
+    /// Sets the weight of a grid row or column track on a Frame, returning false if invalid.
     pub(crate) fn configure_track(&mut self, parent: WidgetId, index: usize, weight: u32, column: bool) -> bool {
         let Some(node) = self.node_mut(parent) else { return false };
         if node.kind != Kind::Frame || index >= layout::MAX_TRACKS {
@@ -70,6 +72,7 @@ impl Tk {
         true
     }
 
+    /// Returns the children of a widget that are managed by a geometry manager, excluding notebook pages.
     pub(crate) fn managed_children(&self, id: WidgetId) -> Vec<WidgetId> {
         self.node(id).map(|node| {
             if node.kind == Kind::Notebook {
@@ -81,6 +84,7 @@ impl Tk {
         }).unwrap_or_default()
     }
 
+    /// Collects the pack-managed children among the given widgets with their requested sizes and options.
     pub(crate) fn pack_items(&self, children: &[WidgetId]) -> Vec<PackItem> {
         children.iter().filter_map(|id| {
             let node = self.node(*id)?;
@@ -91,6 +95,7 @@ impl Tk {
         }).collect()
     }
 
+    /// Collects the grid-managed children among the given widgets with their requested sizes and options.
     pub(crate) fn grid_items(&self, children: &[WidgetId]) -> Vec<GridItem> {
         children.iter().filter_map(|id| {
             let node = self.node(*id)?;
@@ -101,6 +106,7 @@ impl Tk {
         }).collect()
     }
 
+    /// Returns true if any of the given children is managed by the pack geometry manager.
     pub(crate) fn uses_pack(&self, children: &[WidgetId]) -> bool {
         children.iter().filter_map(|id| self.node(*id)).any(|n| matches!(n.manager, Some(Manager::Pack(_))))
     }
@@ -119,11 +125,13 @@ impl Tk {
         Size::new(size.width / scale, size.height / scale)
     }
 
+    /// Measures text at the given font size, returning logical-pixel dimensions.
     pub(crate) fn measure(&mut self, text: &str, font_size: f32) -> Size {
         let size = self.text_engine.measure(text, font_size * self.scale_factor);
         Size::new(size.width / self.scale_factor, size.height / self.scale_factor)
     }
 
+    /// Recomputes requested sizes for the whole widget tree in bottom-up order.
     pub(crate) fn update_requested(&mut self) {
         let mut order = Vec::new();
         let mut pending = vec![self.root()];
@@ -304,6 +312,7 @@ impl Tk {
         }
     }
 
+    /// Returns the initial window size, using the configured size or the root's requested size with minimums.
     pub(crate) fn initial_size(&mut self) -> (u32, u32) {
         if let Some(size) = self.window_size {
             return size;
@@ -414,6 +423,7 @@ impl Tk {
         }
     }
 
+    /// Lays out the widget tree if it has been marked dirty since the last layout.
     pub(crate) fn ensure_layout(&mut self) {
         if self.dirty {
             self.layout();

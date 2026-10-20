@@ -73,6 +73,7 @@ impl Tk {
         true
     }
 
+    /// Invokes the notebook's changed callback with the new tab index, guarding against reentrancy.
     pub(crate) fn dispatch_notebook_changed(&mut self, nb: WidgetId, index: usize) {
         let Some(node) = self.node_mut(nb) else { return };
         if node.notebook_changed_running { return; }
