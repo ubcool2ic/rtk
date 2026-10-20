@@ -1199,3 +1199,4 @@ I did not add new tests, such as overflowing dimensions or an over-long buffer. 
 - [severity low] [bug] Lines 38-49: `render_after_constraint_change_succeeds` checks only the pixmap dimensions. The constraints are not applied in a headless render, so it cannot show they have any effect. -> not fixed (the assertions are correct as written and the test is deterministic, so there is nothing to weaken or change).
 
 - RECOVERED: examples/gallery.rs 1-309. DeepSeek fixed the clippy clone-on-Copy (recover-gallery).
+- RECOVERED: tests/gallery_smoke.rs. The test now validates the PNG header and size. DeepSeek fixed a stray brace (recover-gallery-smoke).

@@ -300,3 +300,5 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_api.rs:1-142 | 4588 (0 cached) | 795 (539 reasoning) | 0.0171 | 6.0129 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/window_pinning.rs:1-50 | 3002 (0 cached) | 1183 (600 reasoning) | 0.0178 | 6.0307 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery r0 | 13401 (0 cached) | 102 (0 reasoning) | 0.0010 | 0.2472 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r0 | 5661 (0 cached) | 333 (0 reasoning) | 0.0006 | 0.2477 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-gallery-smoke r1 | 5783 (3584 cached) | 948 (0 reasoning) | 0.0007 | 0.2484 |

@@ -23,10 +23,29 @@ fn temp_dir() -> PathBuf {
     dir
 }
 
-/// Runs the gallery example headlessly and asserts the PNGs are non-empty.
+/// Asserts the file is a PNG with non-zero dimensions and returns its width.
+fn png_width(path: &std::path::Path) -> u32 {
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|_| panic!("missing screenshot {}", path.display()));
+    assert!(bytes.len() > 33, "truncated screenshot {}", path.display());
+    assert_eq!(
+        &bytes[..8],
+        &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A],
+        "not a PNG: {}",
+        path.display()
+    );
+    assert_eq!(&bytes[12..16], b"IHDR", "missing IHDR in {}", path.display());
+    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+    assert!(width > 0 && height > 0, "zero-sized screenshot {}", path.display());
+    width
+}
+
+/// Runs the gallery example headlessly and asserts the PNGs are valid and non-empty.
 #[test]
 fn gallery_screenshots() {
     if std::env::var("RTK_GALLERY_TEST").ok().as_deref() != Some("1") {
+        eprintln!("gallery_screenshots skipped: set RTK_GALLERY_TEST=1 to run");
         return;
     }
 
@@ -60,16 +79,17 @@ fn gallery_screenshots() {
     for theme in themes {
         for page in pages {
             let path = dir.join(format!("gallery_{theme}_{page}.png"));
-            let meta = std::fs::metadata(&path)
-                .unwrap_or_else(|_| panic!("missing screenshot {}", path.display()));
-            assert!(meta.len() > 0, "empty screenshot {}", path.display());
+            png_width(&path);
         }
     }
 
     let hidpi = dir.join("gallery_light_basics_2x.png");
-    let meta = std::fs::metadata(&hidpi)
-        .unwrap_or_else(|_| panic!("missing screenshot {}", hidpi.display()));
-    assert!(meta.len() > 0, "empty screenshot {}", hidpi.display());
+    let base = png_width(&dir.join("gallery_light_basics.png"));
+    assert!(
+        png_width(&hidpi) > base,
+        "2x screenshot is not larger than 1x: {}",
+        hidpi.display()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
