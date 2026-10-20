@@ -305,3 +305,4 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | hidpi-bg-fix r0 | 18992 (2816 cached) | 473 (0 reasoning) | 0.0014 | 0.2498 |
 | 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r1 [Sol fix] | 19141 (0 cached) | 3427 (2951 reasoning) | 0.0821 | 1.6836 |
 | 2026-10-20 | openai/gpt-6.1-sol | hidpi-bg-fix r2 [Sol fix] | 22852 (0 cached) | 463 (347 reasoning) | 0.0618 | 1.7453 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | changelog r0 | 10780 (256 cached) | 1284 (0 reasoning) | 0.0014 | 0.2511 |
