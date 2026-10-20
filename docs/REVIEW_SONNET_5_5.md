@@ -573,3 +573,8 @@ I found nothing in lines 1-155 that needs an edit.
 - [low] [bug] An infinite `diameter` passed to `ProgressRing::new` is stored as-is and breaks layout (line 28) -> fixed (non-finite falls back to 48.0)
 - [low] [bug] `ring_advance` allocates an `InputsState` on every tick for non-spinner rings (line 111) -> not fixed (harmless, one allocation per ring, and the behaviour matches the other widgets)
 
+### src/tk/listbox.rs lines 1-128
+- [severity low] [bug] `listbox_delete` and `listbox_insert` change or clear the selection without firing the select callback (lines 19-23, 38-44). `listbox_select` does fire it on change, so this is slightly inconsistent. Tkinter does not fire `<<ListboxSelect>>` for programmatic edits, and firing here would add a reentrancy path inside delete. -> not fixed (behavior decision, not a defect)
+- [severity low] [bug] `list_select_running` stays `true` if the callback panics (line 117-120). The next dispatch for that widget is then silently skipped. This only matters if panics are caught and the toolkit keeps running, and the callback is already taken out of the node at that point. -> not fixed (the callback is lost on panic anyway, and the toolkit is not expected to survive one)
+- [severity low] [api] The public methods follow the `listbox_<verb>` pattern, have `///` docs, and use no public enums. No arithmetic can overflow: `last.saturating_add(1)` is used, and `idx + 1 - vis` is safe because `idx >= scroll + vis`. Indices are clamped, and `node_mut` guards stale ids. -> nothing to fix
+
