@@ -24,7 +24,7 @@
 //! use rtk::{Tk, tray::{Tray, TrayEvent, TrayOptions}};
 //!
 //! let mut tk = Tk::new();
-//! let proxy = tk.proxy();
+//! // NOTE: keep the `Tray` alive (e.g. in app state); dropping it removes the icon.
 //! tk.after_idle(move |tk| {
 //!     let opts = TrayOptions {
 //!         tooltip: "rtk demo".into(),
@@ -40,7 +40,7 @@
 //! # }
 //! ```
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
@@ -137,6 +137,16 @@ type TrayHandler = Box<dyn FnMut(&mut Tk, TrayEvent)>;
 thread_local! {
     /// The active tray event callback, stored on the UI thread.
     static HANDLER: RefCell<Option<TrayHandler>> = const { RefCell::new(None) };
+    /// Generation counter bumped whenever the handler is installed or cleared.
+    static HANDLER_GEN: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Installs `cb` as the active handler and bumps the generation counter.
+fn install_handler(cb: TrayHandler) {
+    HANDLER_GEN.with(|g| g.set(g.get().wrapping_add(1)));
+    HANDLER.with(|slot| {
+        *slot.borrow_mut() = Some(cb);
+    });
 }
 
 /// Dispatches a tray event to the currently installed handler.
@@ -151,13 +161,17 @@ pub fn dispatch(tk: &mut Tk, event: TrayEvent) {
     let Some(mut cb) = taken else {
         return;
     };
+    let generation = HANDLER_GEN.with(|g| g.get());
     cb(tk, event);
-    HANDLER.with(|slot| {
-        let mut guard = slot.borrow_mut();
-        if guard.is_none() {
-            *guard = Some(cb);
-        }
-    });
+    // Restore only if nothing was installed or cleared during the callback.
+    if HANDLER_GEN.with(|g| g.get()) == generation {
+        HANDLER.with(|slot| {
+            let mut guard = slot.borrow_mut();
+            if guard.is_none() {
+                *guard = Some(cb);
+            }
+        });
+    }
 }
 
 /// Installs a tray event handler for testing purposes.
@@ -166,13 +180,12 @@ pub fn dispatch(tk: &mut Tk, event: TrayEvent) {
 /// callback used by [`dispatch`].
 #[doc(hidden)]
 pub fn set_handler_for_test(cb: impl FnMut(&mut Tk, TrayEvent) + 'static) {
-    HANDLER.with(|slot| {
-        *slot.borrow_mut() = Some(Box::new(cb));
-    });
+    install_handler(Box::new(cb));
 }
 
 /// Clears the thread-local tray event handler.
 fn clear_handler() {
+    HANDLER_GEN.with(|g| g.set(g.get().wrapping_add(1)));
     HANDLER.with(|slot| {
         *slot.borrow_mut() = None;
     });
@@ -238,9 +251,7 @@ impl Tray {
             .map_err(|e| TrayError::Platform(e.to_string()))?;
 
         // Install the callback on the UI thread.
-        HANDLER.with(|slot| {
-            *slot.borrow_mut() = Some(Box::new(on_event));
-        });
+        install_handler(Box::new(on_event));
 
         // Forward tray icon events through the proxy.
         let proxy = tk.proxy();

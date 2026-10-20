@@ -393,3 +393,8 @@ I found nothing in lines 1-318 that needs a fix:
 - **Runaway timers:** the 10,000-callback cap bounds `after(0)` self-rescheduling loops.
 - **API and docs:** the public items follow tkinter naming, `TimerId` is a struct rather than an enum so `#[non_exhaustive]` does not apply, and every public fn has a `///` doc comment.
 
+### src/tray.rs lines 1-317
+- [medium] [bug] `dispatch` re-installs the handler after the callback returns if the callback dropped the `Tray` (which clears the slot). A stale callback then survives the `Tray`, and later events still reach it. It now uses a generation counter and only restores the handler if nothing was installed or cleared during dispatch (lines 149-161) -> fixed
+- [low] [docs] The module example binds `let _tray = Tray::new(...)` inside the `after_idle` closure, so the tray is dropped immediately when the closure ends. It also has an unused `proxy` variable. The example now says to keep the `Tray` alive and drops the unused variable (lines 27-38) -> fixed
+- [low] [bug] The event handlers are global in `tray_icon`, so a second `Tray` replaces the first one's handlers, and dropping either `Tray` clears them. Fixing this would need a redesign, so only one `Tray` at a time is supported (lines 241-272) -> not fixed (design limitation)
+
