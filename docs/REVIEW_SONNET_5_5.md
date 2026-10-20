@@ -594,3 +594,9 @@ I found no other defects in lines 1-126. The colourblind capture and restore log
 - [low] [api] `A11yNode` derives `PartialEq` with `f64` fields, so `Eq` cannot be derived. This is correct as written. -> not fixed (n/a)
 - [low] [api] All enums are already `#[non_exhaustive]`, every item has rustdoc, and the derives are consistent. No bugs are present in this type-only chunk. -> not fixed (nothing to fix)
 
+### src/tk/notebook.rs lines 1-92
+- [medium] [bug] `notebook_add` accepts the same page twice, which creates duplicate tabs that point at one frame (line 34) -> fixed
+- [low] [bug] If a changed callback panics, `notebook_changed_running` stays true and the callback is lost (line 82). This would need a drop guard and the surrounding node/widget code, which is outside this chunk -> not fixed (out of scope)
+- [low] [api] `grid_forget` delegates to `pack_forget` and unmaps any manager, not only grid. This is harmless and consistent with tkinter's observable behavior -> not fixed
+- [low] [bug] A `notebook_select` call made from inside the changed callback updates the selection but does not re-fire the callback. This is deliberate reentrancy protection -> not fixed
+
