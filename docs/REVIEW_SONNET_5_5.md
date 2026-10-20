@@ -1180,3 +1180,15 @@ I checked the file against the public API shown in `lib.rs` only, because the `V
 - `equal_set_does_not_dirty` (lines 18-29) binds the variable to no widget. The `is_dirty()` assertion at line 28 therefore depends on `Var::set` marking the toolkit dirty even when no widget uses the variable. I did not change it, because I cannot see whether that is the intended behaviour.
 - `trace_that_sets_itself_terminates` (lines 31-42) expects the value 2. That is only right if a trace that fires while its own trace is already running is suppressed. I read the expectation as intentional and left it.
 
+### tests/window_api.rs lines 1-142
+- none
+
+I found nothing in lines 1-142 that needs fixing. Specifically:
+- Every helper and test has a `///` doc comment.
+- No assertion is vacuous or contradicts the API.
+- The tests are deterministic, with no timing dependence or real window needed.
+- The `tiny_skia` PNG round-trip builds valid premultiplied pixels (alpha 255), so the `unwrap()` calls cannot panic.
+- The close-protocol tests cover veto, allow, default and re-entrancy, and each checks both the return value and `is_quit_requested()`.
+
+I did not add new tests, such as overflowing dimensions or an over-long buffer. I couldn't confirm what those calls return, so an added test might assert the wrong thing.
+
