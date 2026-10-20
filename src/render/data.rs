@@ -92,7 +92,7 @@ impl TableSnapshot {
         let state = node.table.as_deref()?;
         let top = state.top;
         let rows_len = state.rows.len();
-        let end = (top + visible + 1).min(rows_len);
+        let end = top.saturating_add(visible).saturating_add(1).min(rows_len);
         let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
         for display in top..end {
             let Some(&model) = state.order.get(display) else { continue };
@@ -142,7 +142,7 @@ impl TreeSnapshot {
         let state = tk.tree_state_mut(id)?;
         state.ensure_visible_robust();
         let top = state.top;
-        let end = (top + visible + 1).min(state.visible.len());
+        let end = top.saturating_add(visible).saturating_add(1).min(state.visible.len());
         let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
         for display in top..end {
             let Some(&(key, depth)) = state.visible.get(display) else { continue };
@@ -165,7 +165,7 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
     let rects = tk.toast_layout();
     let style = tk.resolved_style(tk.root()).unwrap_or_default();
     let palette = tk.style_engine.tokens().palette;
-    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32 / scale, pixmap.height() as f32 / scale);
+    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32, pixmap.height() as f32);
     let font_size = style.font_size;
     let radius = style.radius.max(6.0);
 

@@ -138,3 +138,21 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 ### src/style.rs lines 1-338
 - none
 
+### src/render/data.rs lines 533-670
+- [severity medium] [bug] The sort-indicator triangle is drawn with no clip. For a column that is only partly visible (cell_clip.width > 0), it can paint outside the cell or widget bounds (line 589-595) -> fixed (only drawn when it lies fully inside cell_clip)
+- [severity low] [bug] The column separators were sized to the full table height but drawn before the body rows. Each row's full-width background fill then painted over them, so they showed only in the header (lines 598-599, 623) -> fixed (second separator pass over the body area after the rows are drawn)
+- NOTE: edits for src/render/data.rs:533-670 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror[E0425]: cannot find value `body_top` in this scope\n   --> src/render/data.rs:519:46\n    |\n519 |         let sep = Rect::new(sep_x + w - 1.0, body_top, 1.0, (logical.height - hh).max(0.0));\n    |                                              ^^^^^^^^ not found in this scope\n\nerror'
+
+### src/render/data.rs lines 287-532
+- [high] [bug] `draw_menu_overlay` builds `full_clip` by dividing the pixmap size by `scale`, so it is in logical units. `fill` and `draw_styled` take physical-pixel clips, so on HiDPI (scale > 1) menu panels, rows and text were cut off to the top-left 1/scale of the window (line 297) -> fixed
+- [low] [bug] `draw_tree` finds each row's display index with `position(|r| r.0 == *key)`, which is O(n²) per frame and would put duplicate keys on the wrong row. It now uses the enumerate index (lines 478-480) -> fixed
+- [low] [docs] `tree_triangle` doc says the apex is at `(cx, cy)`, but the triangle is centred on that point (line 424) -> fixed
+- NOTE: 1 golden(s) changed by these fixes and were re-blessed (diffs in /workspace/rtk-1.0-shots/sonnet-diffs/src_render_data.rs-287): m011_toast_dark_2x.png, m011_toast_highcontrast_2x.png, m011_toast_light_2x.png
+- NOTE: edits for src/render/data.rs:287-532 were REVERTED (checks failed or SEARCH mismatch): '[clippy failed]\nerror: field `top` is never read\n   --> src/render/data.rs:123:5\n    |\n119 | struct TreeSnapshot {\n    |        ------------ field in this struct\n...\n123 |     top: usize,\n    |     ^^^\n    |\n    = note: `-D dead-code` implied by `-D warnings`\n    = help: to override `-D warnings` ad'
+
+### src/render/data.rs lines 1-286
+- [high] [bug] `draw_toast_overlay` builds `full_clip` in logical px (`pixmap.width()/scale`) but intersects it with `rect.scaled(scale)`, which is in device px. At scale > 1 toasts near the right or bottom edge (the default bottom-right placement) are clipped or skipped entirely, and their text is clipped too (line 168) -> fixed
+- [low] [bug] `top + visible + 1` can overflow `usize` in `TableSnapshot::capture` (line 95) -> fixed
+- [low] [bug] The same `top + visible + 1` overflow in `TreeSnapshot::capture` (line 145) -> fixed
+- [low] [docs] The doc comment on `fill` says `rect` is logical but also says both arguments are device px. It is inconsistent but harmless, since the function only intersects and fills in a single space -> not fixed (docs only, no behavioural effect)
+

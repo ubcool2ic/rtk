@@ -112,3 +112,6 @@
 | 2026-10-20 07:50 | anthropic/claude-sonnet-5.5 | sonnet src/style.rs:1655 accidental restart, killed within seconds of sending (possible tiny charge, not in ledger) | — | — | ~0.00 | — |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/style.rs:339-605 | 6751 (0 cached) | 2520 (1208 reasoning) | 0.0387 | 0.6901 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/style.rs:1-338 | 7809 (0 cached) | 700 (688 reasoning) | 0.0226 | 0.7127 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/data.rs:533-670 | 4330 (0 cached) | 2272 (1536 reasoning) | 0.0314 | 0.7441 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/data.rs:287-532 | 6710 (0 cached) | 1766 (1012 reasoning) | 0.0311 | 0.7752 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/data.rs:1-286 | 7447 (0 cached) | 1831 (1153 reasoning) | 0.0332 | 0.8084 |
