@@ -452,3 +452,8 @@ I found nothing in lines 1-318 that needs a fix:
 - [info] Coalescing otherwise never drops damage and is bounded. The list is folded into its union at 16 rects. While `coalesced` is set, every new rect merges into that single union, so the list never exceeds one rect. `coalesced` is reset on every path that clears the damage list. -> no change needed
 - NOTE: edits for src/tk/damage.rs:1-251 were REVERTED (checks failed or SEARCH mismatch): 'EDIT src/tk/damage.rs: SEARCH text not found:\n        let Some(mut scratch) = self.scratch.take() else {\n            // Scratch allocation failed; fall back to a full render.\n            let pixmap = self.render_to_pixmap(width, height)?;\n            self.frame = Some(pixmap);\n            self.damag'
 
+### src/tk/scroll_area.rs lines 1-240
+- [severity low] [bug] `scrollarea_scroll_to` sends ±infinity to offset 0 instead of clamping to the nearest bound. A huge `scroll_by` delta that overflows to infinity therefore jumps to the top instead of the end (lines 100-101) -> fixed (only NaN maps to 0; infinities now clamp).
+- [severity low] [docs] `scrollarea_vbar_width` doc says a hidden bar reserves 0 width, but the code does no visibility check (line 202). The hidden-state field is not visible in this chunk, so I cannot add the check without guessing a field name -> not fixed (needs the visibility field from the other module).
+- [severity low] [bug] A scrollbar's `scroll_target` can outlive its destroyed area. The destroy path is outside this chunk, and `scrollarea_vbar_width` already verifies that the target is a live ScrollArea, so it stays safe here -> not fixed (outside chunk).
+
