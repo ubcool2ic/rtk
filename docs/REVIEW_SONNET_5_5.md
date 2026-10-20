@@ -920,3 +920,9 @@ I found nothing in lines 1-131 that needs a fix.
 - [medium] [bug] `test_table_wheel_scroll_bounds` only asserts `top < 100` after scrolling far down, which holds even if the max clamp is broken (lines 139-140) -> fixed (asserts `top > 0` and that further wheel-down leaves the position unchanged)
 - [low] [bug] The two render tests use `assert!(x.is_ok())`, which discards the error message on failure (lines 201-202, 240) -> fixed (use `expect`)
 
+### tests/m011_toast.rs lines 1-130
+- [severity medium] [bug] `toasts_render` is titled "non-empty pixmap" but only asserts the pixmap width and that the rect has a positive width. It would still pass if toasts were never drawn. It now renders a baseline first and asserts the toast frame differs from it (line 117-129) -> fixed
+- [severity low] [bug] The toast fade-in could make a render taken immediately after creation look like the baseline. The test now advances the animation clock before rendering (line 120-125) -> fixed
+- [severity low] [bug] Several tests (`toast_auto_dismisses_after_duration`, `position_variants_place_toasts`) depend on animation durations that I cannot see (a fade-out of at least 100 ms and under 300 ms, and no slide-in offset on a fresh toast). These expectations are plausible and nothing in the chunk shows them to be wrong, so I changed nothing -> not fixed (no evidence of a bug; the expectations are legitimate)
+- [severity low] [docs] Doc comments are present on all functions -> none needed
+
