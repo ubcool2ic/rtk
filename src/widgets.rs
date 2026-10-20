@@ -385,7 +385,8 @@ impl Canvas {
 
 #[allow(clippy::new_ret_no_self)]
 impl Spinbox {
-    /// Creates an integer spin box over `from..=to` bound to `var`.
+    /// Creates an integer spin box over `from..=to` bound to `var`
+    /// (the bounds are swapped if `from > to`).
     pub fn new(
         tk: &mut Tk,
         parent: WidgetId,
@@ -396,6 +397,7 @@ impl Spinbox {
         if var.get(tk).is_none() {
             return Err(RtkError::InvalidVariable);
         }
+        let (from, to) = if from <= to { (from, to) } else { (to, from) };
         let id = tk.add(Kind::Spinbox, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
             node.range = (from, to);

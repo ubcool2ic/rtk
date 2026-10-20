@@ -199,3 +199,29 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 - [low] [docs] `App` and its non-feature-gated fields are undocumented (lines 105-116) -> not fixed (private items, so `missing_docs` does not apply; no behaviour impact).
 - [low] [bug] F16 (per-frame window title/env calls): none present in lines 1-307. `sync_window_props` is called once from `open`, and its body is outside this chunk -> not fixed (not in this chunk).
 
+### src/widgets.rs lines 675-888
+- none
+
+I found nothing in lines 675-888 that needs fixing. The chunk holds the tail of the `WidgetNode` field list, `EditSnapshot`, `WidgetNode::new`, `WidgetSlot` and `CanvasItemKind::translate`.
+
+- **`WidgetNode::new`:** `cursor: text.len()` is evaluated before `text` is moved, so there is no borrow or move problem and the cursor starts on a UTF-8 boundary. The code also uses `kind` after moving it into the struct. That compiles only if `Kind` is `Copy`, which I assumed because the definition is outside this chunk.
+- **`CanvasItemKind::translate`:** every variant is handled, so a missing variant would fail to compile rather than slip through. The coordinate math is plain addition on `f32`, with no overflow or panic risk.
+- **API surface:** `WidgetNode` and `WidgetSlot` are crate-private, and `EditSnapshot` sits in the private `widgets` module and is not re-exported. The `missing_docs` lint and the `#[non_exhaustive]` requirement therefore do not apply to them, and every fn already has a `///` comment.
+- **State reset on destroy:** the fields that would need clearing, such as `scroll_area_owner`, the undo and redo stacks, and the `*_running` flags, are reset by destroy logic outside this chunk, so I could not check them here.
+
+### src/widgets.rs lines 340-674
+- [severity medium] [bug] `Spinbox::new` stores `range = (from, to)` without checking order. If a caller passes `from > to`, any later `i64::clamp(from, to)` on the spin box panics ("min > max") (line 401) -> fixed. The bounds are now normalised by swapping them, and the doc comment says so.
+- [severity low] [bug] `Canvas`, `Image`, `Chart`, `Sparkline` and `ProgressBar` only clamp the lower bound of their sizes. An infinite size is accepted and could reach layout or pixmap allocation (lines 380, 422, 505, 532, 547) -> not fixed. NaN and negative values are already handled by `max(0.0)`. Allocation limits belong at the render/layout boundary outside this chunk, and changing it here would be speculative.
+- [severity low] [api] `Kind` is `pub(crate)`, so `#[non_exhaustive]` and rustdoc are not required on it (line 554) -> not fixed (not public API).
+- No other bugs, naming inconsistencies or missing docs found in this chunk. All `fn`s carry `///` docs.
+
+### src/widgets.rs lines 1-339
+- [medium] [api] Public enum `Theme` lacks `#[non_exhaustive]`, so adding a theme later would be a breaking change (line 77) -> fixed
+- [medium] [api] Public enum `Compound` lacks `#[non_exhaustive]` (line 97) -> fixed
+- [medium] [api] Public enum `DragPhase` lacks `#[non_exhaustive]` (line 111) -> fixed
+- [medium] [api] Public enum `Opt` lacks `#[non_exhaustive]`, and it is the most likely enum to gain variants (line 164) -> fixed
+- [low] [api] `ListSelectCallback` and `NotebookChangedCallback` are `pub` aliases in a private module and are not re-exported in lib.rs, so users cannot name them (lines 159, 161) -> not fixed (the re-export belongs in lib.rs, outside this chunk)
+- [low] [api] The `Scrollbar::new` doc references `Tk::link_scrollbar`, which looks like `<verb>_<widget>` rather than the `<widget>_<verb>` pattern (line 335) -> not fixed (the method is defined outside this chunk, so I can't confirm it or rename it safely)
+- [low] [bug] `Scale::new` stores `from`/`to` unchecked and does not clamp the variable's current value. Consumers outside this chunk may assume `from <= to` (line 315) -> not fixed (handling lives outside this chunk, and tkinter allows reversed ranges)
+- NOTE: edits for src/widgets.rs:1-339 were REVERTED (checks failed or SEARCH mismatch): '[build failed]\nerror[E0004]: non-exhaustive patterns: `_` not covered\n  --> examples/gallery.rs:50:11\n   |\n50 |     match theme {\n   |           ^^^^^ pattern `_` not covered\n   |\nnote: `Theme` defined here\n  --> src/widgets.rs:78:1\n   |\n78 | pub enum Theme {\n   | ^^^^^^^^^^^^^^\n   = note: the match'
+
