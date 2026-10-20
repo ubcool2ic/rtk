@@ -827,3 +827,9 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - **Initial state:** the `Enabled` string matches the initial `true` of `enabled`, so the label does not contradict the checkbutton at startup.
 - **Docs:** the module doc and the `main` doc comment are present and match what the program does.
 
+### tests/canvas_shapes.rs lines 1-56
+- [severity low] [bug] `px` indexes the pixel buffer with no bounds check, so an out-of-range coordinate fails with an opaque index panic instead of a clear message (line 6-10) -> fixed
+- [severity low] [bug] The polygon handle is created and then discarded with `let _ = poly;`, so the polygon's bounds are never checked and the test asserts less than it appears to (lines 44, 51) -> fixed (now asserts the polygon's bounding box)
+- [severity low] [bug] Pixel coordinates in both tests come from `widget_rect`, which is called before any render. If layout runs lazily it could be stale, but the canvas fills the whole window, so I did not change this -> not fixed
+- [severity low] [bug] The `h_big > 28.0` assertion depends on the font's line height being at least the font size. That is true for normal fonts and I left it as is -> not fixed
+
