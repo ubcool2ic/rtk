@@ -710,3 +710,8 @@ Within what is visible:
 - `count.get(tk)` is handled as an `Option`.
 - `saturating_add` avoids overflow on the counter.
 
+### examples/demo.rs lines 1-139
+- [low] [bug] `--png` as the last argument, with no path, was silently ignored. The demo then opened a window instead of writing a PNG. (line 21) -> fixed: it now returns an error.
+- [low] [bug] The canvas drag callback adds one oval per Press/Move event with no cap. A long drag grows the item list without bound, but the "Clear Canvas" button already resets it, so this is acceptable for a demo. (line 122) -> not fixed (demo behaviour, user-clearable)
+- [low] [api] Several calls cannot be checked against the reference, because only lib.rs is shown. These are `listbox_insert(.., usize::MAX, ..)` as an append, `Var::trace`, `Var::get` returning `Option`, and `Theme: PartialEq`. -> not fixed (no evidence of a bug in the visible code)
+
