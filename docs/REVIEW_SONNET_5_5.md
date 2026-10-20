@@ -504,3 +504,9 @@ I found nothing that needs fixing in this chunk.
 - [low] [api] There was `unbind_file_drop` but no `unbind_file_hover`, which breaks the bind/unbind symmetry (line 31). -> fixed (added)
 - NOTE: edits for src/tk/dnd.rs:1-202 were REVERTED (checks failed or SEARCH mismatch): '[test failed]\n\n.................................\ntest result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s\n\n\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s\n\n\n.................\ntest result: ok. 17 passed; 0 failed;'
 
+### src/tk/window.rs lines 1-200
+- [severity low] [bug] `geometry(0, h)` or `geometry(w, 0)` passes a zero dimension to `sim_resize` and to the requested window size. A zero-sized pixmap or surface is invalid in tiny-skia and softbuffer (line 19) -> fixed (clamped to at least 1 px)
+- [severity low] [docs] `geometry` documents physical px while `minsize` and `maxsize` use logical px. This is probably intentional, so only the docs were adjusted, not the behaviour (line 18) -> fixed (doc clarified)
+- [severity low] [bug] `handle_close_request` takes the callback out before calling it. A `sim_close_request` made from inside the callback therefore finds no callback and quits without consulting the veto. This reentrant edge case is acceptable and documented behaviour, and fixing it would need a redesign (line 177) -> not fixed (edge case, needs redesign)
+- [severity low] [api] The tkinter-style names (`title`, `geometry`, `minsize`, `resizable`) intentionally do not follow `<widget>_<verb>`, and `clear_minsize`/`clear_maxsize` are consistent with each other -> not fixed (intentional)
+

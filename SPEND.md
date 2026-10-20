@@ -170,3 +170,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/a11y_accesskit.rs:1-207 | 5793 (0 cached) | 1935 (879 reasoning) | 0.0309 | 2.8104 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/progress.rs:1-203 | 5730 (0 cached) | 2206 (1597 reasoning) | 0.0335 | 2.8439 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/dnd.rs:1-202 | 5471 (0 cached) | 5404 (2582 reasoning) | 0.0650 | 2.9089 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/window.rs:1-200 | 5242 (0 cached) | 1739 (1034 reasoning) | 0.0279 | 2.9368 |

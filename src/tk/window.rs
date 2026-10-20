@@ -16,7 +16,11 @@ impl Tk {
     }
 
     /// Requests an initial window size in physical px (tkinter `root.geometry("WxH")`).
+    ///
+    /// Each dimension is clamped to at least 1 px. Note that [`Tk::minsize`]
+    /// and [`Tk::maxsize`] are expressed in logical px.
     pub fn geometry(&mut self, width: u32, height: u32) {
+        let (width, height) = (width.max(1), height.max(1));
         self.window_size = Some((width, height));
         self.sim_resize(width, height);
     }
