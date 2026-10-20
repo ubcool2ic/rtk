@@ -169,3 +169,5 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 
 - RECOVERED: the reverted src/style.rs 1300-1639 edits (comment parsing, gradient slicing panic, etc.) were re-applied from the saved Sonnet reply; DeepSeek fixed the clippy `manual_strip` error (recover-style-1300). Checks green.
 
+- RECOVERED: src/render/inputs.rs 338-567 edits re-applied; they had only failed because they used `clip_mask` from the not-yet-reviewed chunk above. Green with no extra calls.
+

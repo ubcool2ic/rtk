@@ -410,6 +410,17 @@ pub(super) fn draw_slider(
     // thumb uses the theme surface; otherwise it matches the widget background.
     let thumb_fill = if resolved.bg.a == 0 { palette.surface } else { resolved.bg };
 
+    // Clip mask so the path-based drawing below honours `clip`.
+    let clip_mask = {
+        let mut m = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
+        if let Some(mm) = m.as_mut() {
+            if let Some(r) = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height) {
+                mm.fill_path(&tiny_skia::PathBuilder::from_rect(r), tiny_skia::FillRule::Winding, false, Transform::identity());
+            }
+        }
+        m
+    };
+
     let track_w = 4.0;
     let thumb_d = 16.0;
 
@@ -435,7 +446,7 @@ pub(super) fn draw_slider(
         let mut paint = Paint::default();
         paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
     }
 
     // Filled portion.
@@ -453,7 +464,7 @@ pub(super) fn draw_slider(
             let mut paint = Paint::default();
             paint.set_color_rgba8(fill_color.r, fill_color.g, fill_color.b, fill_color.a);
             paint.anti_alias = true;
-            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
         }
     }
 
@@ -462,6 +473,8 @@ pub(super) fn draw_slider(
         if every > 0.0 && (to - from).abs() > f64::EPSILON {
             let span = (to - from).abs();
             let count = (span / every).floor() as i64;
+            // Too dense to be useful (also guards against runaway loops).
+            let count = if count > 1000 { -1 } else { count };
             for k in 0..=count {
                 let value = from + (k as f64) * every * if to >= from { 1.0 } else { -1.0 };
                 let f = ((value - from) / (to - from)).clamp(0.0, 1.0) as f32;
@@ -500,12 +513,12 @@ pub(super) fn draw_slider(
         let mut paint = Paint::default();
         paint.set_color_rgba8(thumb_fill.r, thumb_fill.g, thumb_fill.b, thumb_fill.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
         let mut stroke_paint = Paint::default();
         stroke_paint.set_color_rgba8(thumb_border.r, thumb_border.g, thumb_border.b, thumb_border.a);
         stroke_paint.anti_alias = true;
         let stroke = Stroke { width: 1.5 * scale, ..Stroke::default() };
-        pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+        pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), clip_mask.as_ref());
     }
 }
 
