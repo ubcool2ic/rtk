@@ -156,3 +156,18 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/timer.rs:1-318 | 6996 (0 cached) | 1964 (1692 reasoning) | 0.0336 | 2.2288 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tray.rs:1-317 | 7323 (0 cached) | 3331 (1783 reasoning) | 0.0480 | 2.2767 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/edit.rs:1-310 | 7268 (0 cached) | 3921 (2203 reasoning) | 0.0537 | 2.3305 |
+
+### 0.11 follow-ups: file dialogs + editable combobox (BizyBot4, branch m0.11-dialogs-combobox)
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | Running total |
+|---|---|---|---|---|---|---|
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-filedialog r0 | 24013 (2816 cached) | 7962 (0 reasoning) | 0.0055 | 0.0055 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-filedialog r1 | 24322 (2816 cached) | 498 (0 reasoning) | 0.0018 | 0.0073 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-filedialog r2 | 24429 (23808 cached) | 653 (0 reasoning) | 0.0006 | 0.0078 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-combobox r0 | 59263 (0 cached) | 16192 (0 reasoning) | 0.0122 | 0.0201 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-combobox r1 | 65285 (512 cached) | 741 (0 reasoning) | 0.0049 | 0.0250 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-combobox r2 | 66219 (512 cached) | 4487 (0 reasoning) | 0.0068 | 0.0318 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-examples r0 | 17957 (0 cached) | 2874 (0 reasoning) | 0.0029 | 0.0347 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | m011-examples r1 | 18312 (0 cached) | 212 (0 reasoning) | 0.0016 | 0.0363 |
+
+Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were needed. Glue fixes done by hand are listed in the commit messages.

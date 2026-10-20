@@ -53,14 +53,14 @@ Apps that depend on rtk and exist on GitHub: `rtk-weather`, `esp-boot-manager`, 
 | Slider: `f64`, step, vertical, ticks | integer horizontal only | MUST |
 | Toggle / switch | none | MUST |
 | Checkbox tri-state, radio group helper | checkbox and radio exist | SHOULD |
-| Dropdown / combobox: editable, filter-as-you-type | read-only combobox | SHOULD |
+| Dropdown / combobox: editable, filter-as-you-type | read-only combobox | done in 0.11 (`Combobox::editable`) |
 | Numeric spin box: `f64`, step, format | integer only | MUST |
 | Tabs | Notebook exists | done (closable tabs LATER) |
 | Table / data grid: columns, sorting, resizable columns, virtualized rows | none | MUST |
 | Tree view | none | SHOULD |
 | Scroll area (scrollable Frame of widgets), horizontal Scrollbar | none | MUST |
 | Modal dialogs / message boxes | in-app overlay exists, nesting bug (F5) | MUST (fix nesting) |
-| File dialogs | in-app only; native through `rfd` (v0.17.2) | SHOULD (native, opt-in feature) |
+| File dialogs | in-app only; native through `rfd` (v0.17.2) | done in 0.11 (`rtk::file_dialog`, opt-in `native-dialogs` feature) |
 | Tooltips | done | done |
 | Menus: menubar, context menu, accelerators | none | MUST |
 | Notifications / toasts (in-app) | none | SHOULD |
@@ -119,7 +119,7 @@ LOC means new or changed Rust lines, including tests and docs comments.
 | **0.8.2** | Hotfix (in progress) | Bundled OFL font with Arial/sans fallback, button weight fix, Entry Enter-to-submit | S | ~0.4k |
 | **0.9** | Foundations | Split `tk.rs` into modules, `#[non_exhaustive]`, window API (icon, min size, resizable, close hook), clipboard, Entry/Text selection + undo, shortcuts API, activate CI on 3 OSes, golden-test harness, review `render`/`style`/`layout` | L | ~5k |
 | **0.10** | Progress and inputs | Linear progress polish, **ProgressRing + Spinner**, Switch, `f64` Slider (vertical, step, ticks), `f64` SpinBox, tri-state checkbox, horizontal Scrollbar, **ScrollArea** (scrollable Frame) | M/L | ~4k |
-| **0.11** | Data and navigation | **Table/DataGrid** (sort, resize, virtualized), TreeView, menubar + context menus, toasts, nested-modal fix, editable combobox, optional native file dialogs (`rfd`) | L | ~7k |
+| **0.11** ✅ done | Data and navigation | **Table/DataGrid** (sort, resize, virtualized), TreeView, menubar + context menus, toasts, nested-modal fix, editable combobox, optional native file dialogs (`rfd`) | L | ~7k |
 | **0.12** | Charts and media | **Chart** widget (line, area, bar, time axis, live append, sparkline, legend, colorblind palette), Image widget, SVG icons, file drag-and-drop, optional tray | M/L | ~4.5k |
 | **0.13** | Theming, a11y, platform | Semantic token v2 + light/dark/HC/colorblind palettes + follow OS dark mode, AccessKit, IME, bidi caret, HiDPI verification on Windows and macOS, damage-region rendering | L | ~5k |
 | **1.0-rc → 1.0** | Freeze | Remove deprecations, `deny(missing_docs)`, guide, gallery app, full golden suite, perf budget in CI, port the 5 apps, publishing | M | ~3k (+ docs) |
