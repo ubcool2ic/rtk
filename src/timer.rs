@@ -1,3 +1,6 @@
+//! Internal timer subsystem providing timer IDs, scheduled callbacks, and a timer queue used by `after`/`every` scheduling.
+
+/// Handle identifying a scheduled `after`/`every` timer, used to cancel it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TimerId(pub(crate) u64);
 
@@ -20,6 +23,7 @@ pub(crate) struct Timers {
 }
 
 impl Timers {
+    /// Schedules a one-shot or repeating timer and returns its identifier.
     pub(crate) fn add(
         &mut self,
         delay_ms: u64,
@@ -43,6 +47,7 @@ impl Timers {
         id
     }
 
+    /// Cancels the timer with the given id, returning whether it was found.
     pub(crate) fn cancel(&mut self, id: TimerId) -> bool {
         if let Some(pos) = self.list.iter().position(|t| t.id == id) {
             self.list.remove(pos);
@@ -52,10 +57,12 @@ impl Timers {
         }
     }
 
+    /// Returns the earliest due time among pending timers, if any.
     pub(crate) fn next_due(&self) -> Option<u64> {
         self.list.iter().map(|t| t.due_ms).min()
     }
 
+    /// Returns the number of pending timers.
     pub(crate) fn len(&self) -> usize {
         self.list.len()
     }
@@ -85,6 +92,7 @@ impl crate::Tk {
         self.timers.cancel(id)
     }
 
+    /// Number of timers currently scheduled (repeating timers count once).
     pub fn pending_timers(&self) -> usize {
         self.timers.len()
     }
@@ -95,6 +103,7 @@ impl crate::Tk {
         self.run_timers_until(target_ms)
     }
 
+    /// Runs all timers due at or before now_ms, returning how many callbacks fired.
     pub(crate) fn run_timers_until(&mut self, now_ms: u64) -> usize {
         let mut count = 0;
         while count < 10_000 {
@@ -144,6 +153,7 @@ impl crate::Tk {
         count
     }
 
+    /// Returns the next timer due time in milliseconds, if any timers are pending.
     pub(crate) fn next_timer_due_ms(&self) -> Option<u64> {
         self.timers.next_due()
     }
@@ -154,6 +164,7 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
+    /// Verifies a one-shot timer fires exactly once at its scheduled time.
     #[test]
     fn test_one_shot_fires_once_at_right_time() {
         let mut tk = crate::Tk::new();
@@ -175,6 +186,7 @@ mod tests {
         assert_eq!(tk.pending_timers(), 0);
     }
 
+    /// Checks that a repeating timer fires on each period boundary.
     #[test]
     fn test_every_repeats() {
         let mut tk = crate::Tk::new();
@@ -193,6 +205,7 @@ mod tests {
         assert_eq!(tk.pending_timers(), 1);
     }
 
+    /// Confirms cancelling a timer prevents its callback from running.
     #[test]
     fn test_cancel_prevents() {
         let mut tk = crate::Tk::new();
@@ -211,6 +224,7 @@ mod tests {
         assert_eq!(counter.get(), 0);
     }
 
+    /// Verifies a repeating timer can cancel itself from within its callback.
     #[test]
     fn test_cancel_self_from_inside_callback() {
         let mut tk = crate::Tk::new();
@@ -235,6 +249,7 @@ mod tests {
         assert_eq!(counter.get(), 1);
     }
 
+    /// Checks that a timer scheduled inside a callback fires at the expected time.
     #[test]
     fn test_scheduling_new_timer_inside_callback() {
         let mut tk = crate::Tk::new();
@@ -257,6 +272,7 @@ mod tests {
         assert_eq!(tk.pending_timers(), 0);
     }
 
+    /// Verifies a repeating timer skips missed ticks when time jumps far ahead.
     #[test]
     fn test_catch_up_skipping() {
         let mut tk = crate::Tk::new();
@@ -278,6 +294,7 @@ mod tests {
         assert_eq!(count.get(), 2);
     }
 
+    /// Confirms timers fire in order of their due times.
     #[test]
     fn test_ordering_by_due_time() {
         let mut tk = crate::Tk::new();

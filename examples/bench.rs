@@ -7,6 +7,7 @@ use rtk::{Button, Opt, Theme,
     Radiobutton, Scale, Scrollbar, Side, Spinbox, Tk,
 };
 
+/// Builds a demo-like window with three side-by-side frames (a form of common controls, a listbox with scrollbar, and a canvas of ovals), returning the Tk instance for benchmarking.
 fn demo_like() -> Result<Tk, Box<dyn Error>> {
     let mut tk = Tk::new();
     let root = tk.root();
@@ -52,6 +53,7 @@ fn demo_like() -> Result<Tk, Box<dyn Error>> {
     Ok(tk)
 }
 
+/// Renders n frames at the given size and returns the average milliseconds per frame, optionally forcing a full relayout each frame.
 fn time_renders(tk: &mut Tk, w: u32, h: u32, n: u32, relayout: bool) -> f64 {
     let _ = tk.render_to_pixmap(w, h); // warm text caches
     let start = Instant::now();
@@ -65,6 +67,7 @@ fn time_renders(tk: &mut Tk, w: u32, h: u32, n: u32, relayout: bool) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0 / f64::from(n)
 }
 
+/// Creates a themed window with four cards of standard and accent buttons and returns the Tk instance plus the first button's id.
 fn styled(theme: Theme) -> Result<(Tk, rtk::WidgetId), Box<dyn Error>> {
     let mut tk = Tk::new();
     tk.set_theme(theme);
@@ -94,6 +97,7 @@ fn styled(theme: Theme) -> Result<(Tk, rtk::WidgetId), Box<dyn Error>> {
     Ok((tk, first))
 }
 
+/// Benchmarks idle rendering and hover-driven redraws for the light and material themes, printing timing results.
 fn main() -> Result<(), Box<dyn Error>> {
     for theme in [Theme::Light, Theme::Material] {
         let (mut tk, button) = styled(theme)?;

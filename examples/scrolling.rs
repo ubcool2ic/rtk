@@ -1,6 +1,7 @@
 //! Scrollable Canvas with a linked Scrollbar: wheel/touchpad, drag the thumb, click to focus then PgUp/PgDn/Home/End.
 use rtk::{Canvas, Color, Fill, PackOpts, Scrollbar, Side, Tk};
 
+/// Runs a scrolling example with a canvas of rounded rectangles and a vertical scrollbar.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Scrolling");

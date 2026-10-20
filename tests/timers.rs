@@ -1,6 +1,9 @@
+//! Tests for timer scheduling, firing, cancellation, and quitting from within a timer callback.
+
 use rtk::{Label, Opt, Tk};
 use std::{cell::Cell, rc::Rc};
 
+/// Tests that a repeating timer updates widget text and that after_cancel stops further firings.
 #[test]
 fn timer_updates_widget_text_and_cancel_handle_works() {
     let mut tk = Tk::new();
@@ -17,6 +20,7 @@ fn timer_updates_widget_text_and_cancel_handle_works() {
     assert_eq!(tk.pending_timers(), 0);
 }
 
+/// Verifies that calling quit from a timer sets the quit-requested flag.
 #[test]
 fn quit_from_timer() {
     let mut tk = Tk::new();

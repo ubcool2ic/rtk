@@ -1,5 +1,8 @@
+//! Example showing a checkbutton and scale bound to variables, with labels reflecting their state and a quit button.
+
 use rtk::{Button, Checkbutton, Label, Opt, PackOpts, Scale, Tk};
 
+/// Runs a checkbutton and scale example that updates status labels from bound variables.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Checkbutton and Scale");

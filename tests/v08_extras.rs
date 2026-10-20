@@ -1,3 +1,5 @@
+//! Tests for newer features including cross-thread proxies, dialogs, and icons.
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -7,6 +9,7 @@ use rtk::dialog;
 use rtk::icons::{self, Icon};
 use rtk::{Button, Color, Key, Opt, State, Theme, Tk};
 
+/// Checks that a proxy can post a closure from another thread and have it execute.
 #[test]
 fn proxy_post_from_another_thread() {
     let mut tk = Tk::new();
@@ -27,6 +30,7 @@ fn proxy_post_from_another_thread() {
     assert!(flag.load(Ordering::SeqCst));
 }
 
+/// Ensures after_idle callbacks only run when posted events are processed.
 #[test]
 fn after_idle_runs_on_process_posted() {
     let mut tk = Tk::new();
@@ -42,6 +46,7 @@ fn after_idle_runs_on_process_posted() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
+/// Tests the ask_string dialog's accept and cancel callback results.
 #[test]
 fn dialog_ask_string_accept_and_cancel() {
     let mut tk = Tk::new();
@@ -82,6 +87,7 @@ fn dialog_ask_string_accept_and_cancel() {
     assert_eq!(res_esc, None);
 }
 
+/// Verifies ask_typed_confirmation only accepts an exact match of the required phrase.
 #[test]
 fn dialog_ask_typed_confirmation_exact_match() {
     let mut tk = Tk::new();
@@ -107,6 +113,7 @@ fn dialog_ask_typed_confirmation_exact_match() {
     assert!(confirmed.load(Ordering::SeqCst));
 }
 
+/// Confirms a modal dialog blocks clicks from reaching background widgets.
 #[test]
 fn modal_blocks_background_clicks() {
     let mut tk = Tk::new();
@@ -143,9 +150,10 @@ fn modal_blocks_background_clicks() {
     assert_eq!(counter.load(Ordering::SeqCst), 2);
 }
 
+/// Tests that the file browser dialog lists directory contents and returns an accepted path.
 #[test]
 fn dialog_file_browser_lists_and_accepts() {
-    let tmp = std::env::temp_dir().join("rtk_test_file_dialog");
+    let tmp = std::env::temp_dir().join(format!("rtk_test_file_dialog_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(tmp.join("subdir")).unwrap();
     std::fs::write(tmp.join("data.bin"), b"1234").unwrap();
@@ -189,6 +197,7 @@ fn dialog_file_browser_lists_and_accepts() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// Checks that the ModernDark theme applies the expected accent button background color.
 #[test]
 fn modern_dark_and_accent_theming() {
     let mut tk = Tk::new();
@@ -209,6 +218,7 @@ fn modern_dark_and_accent_theming() {
     assert_eq!(updated_style.bg, emerald);
 }
 
+/// Verifies set_selected toggles the SELECTED state bit on a widget.
 #[test]
 fn set_selected_state_bit() {
     let mut tk = Tk::new();
@@ -223,6 +233,7 @@ fn set_selected_state_bit() {
     assert!(!tk.widget_state(btn).contains(State::SELECTED));
 }
 
+/// Ensures every built-in icon renders to RGBA and registers without error.
 #[test]
 fn all_icons_render_and_register() {
     let mut tk = Tk::new();

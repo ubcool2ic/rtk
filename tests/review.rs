@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use rtk::{Button, Entry, Key, Opt, PackOpts, Scale, Tk};
 
+/// Ensures a scale with an extreme integer range stays within bounds during clicks and key presses.
 #[test]
 fn scale_with_extreme_range_stays_in_bounds() {
     let mut tk = Tk::new();
@@ -11,7 +12,7 @@ fn scale_with_extreme_range_stays_in_bounds() {
     let v = tk.int_var(0);
     let s = Scale::new(&mut tk, root, i64::MIN, i64::MAX, v).expect("scale");
     tk.pack(s, PackOpts { fill: rtk::Fill::X, ..PackOpts::default() });
-    let _ = tk.render_to_pixmap(300, 80);
+    assert!(tk.render_to_pixmap(300, 80).is_ok());
     let r = tk.widget_rect(s).expect("rect");
     tk.sim_click(r.x + r.width - 1.0, r.y + r.height / 2.0);
     for _ in 0..3 { tk.sim_key(Key::Right); }
@@ -21,6 +22,7 @@ fn scale_with_extreme_range_stays_in_bounds() {
     assert!(tk.render_to_pixmap(300, 80).is_ok());
 }
 
+/// Verifies that destroying an entry from within its trace while typing does not cause errors.
 #[test]
 fn entry_destroyed_by_trace_while_typing() {
     let mut tk = Tk::new();
@@ -38,6 +40,7 @@ fn entry_destroyed_by_trace_while_typing() {
     assert!(tk.render_to_pixmap(200, 80).is_ok());
 }
 
+/// Confirms tab navigation after destruction skips stale widgets and finds reused slots.
 #[test]
 fn tab_after_destroy_skips_stale_and_finds_reused_slot() {
     let mut tk = Tk::new();
@@ -62,6 +65,7 @@ fn tab_after_destroy_skips_stale_and_finds_reused_slot() {
     assert_eq!(tk.focused_widget(), Some(c));
 }
 
+/// Ensures press-leave-release does not fire the command and does not leave the button stuck.
 #[test]
 fn press_leave_release_does_not_fire_and_does_not_stick() {
     let mut tk = Tk::new();
@@ -71,7 +75,7 @@ fn press_leave_release_does_not_fire_and_does_not_stick() {
     tk.pack(b, PackOpts::default());
     let k = Rc::clone(&n);
     tk.set_command(b, move |_| k.set(k.get() + 1));
-    let _ = tk.render_to_pixmap(200, 80);
+    assert!(tk.render_to_pixmap(200, 80).is_ok());
     let r = tk.widget_rect(b).expect("rect");
     let (x, y) = (r.x + r.width / 2.0, r.y + r.height / 2.0);
     tk.sim_mouse_move(x, y);
@@ -83,6 +87,7 @@ fn press_leave_release_does_not_fire_and_does_not_stick() {
     assert_eq!(n.get(), 1);
 }
 
+/// Checks that reentrant sets inside a trace keep the last value, matching Tcl semantics.
 #[test]
 fn reentrant_set_in_trace_keeps_last_value_tcl_semantics() {
     let mut tk = Tk::new();

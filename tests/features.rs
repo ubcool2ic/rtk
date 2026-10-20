@@ -1,9 +1,12 @@
+//! Integration tests exercising listbox, canvas, progress bar, scrollbar, spinbox, and other widget features.
+
 use rtk::layout::{place_rect, Anchor, PlaceOpts, Rect, Size};
 use rtk::{
     Button, Canvas, Color, DragPhase, Frame, Key, Listbox, PackOpts,
     ProgressBar, Radiobutton, Scrollbar, Spinbox, Theme, Tk,
 };
 
+/// Tests listbox click selection, keyboard navigation, and wheel scrolling with clamping at the list bounds.
 #[test]
 fn test_listbox_click_keys_wheel_clamp() {
     let mut tk = Tk::new();
@@ -45,11 +48,15 @@ fn test_listbox_click_keys_wheel_clamp() {
     tk.sim_wheel(-2.0); // scroll down
     // scroll clamped
     tk.sim_wheel(-100.0);
+    // Wheel scrolling must not change the selection
+    assert_eq!(tk.listbox_curselection(lb), Some(0));
     // Delete items
     tk.listbox_delete(lb, 0, 1);
     assert_eq!(tk.listbox_get(lb).len(), 4);
+    assert!(tk.listbox_get(lb)[0] == "Cherry");
 }
 
+/// Verifies that dragging a linked scrollbar changes the listbox view range.
 #[test]
 fn test_scrollbar_drag_changes_view() {
     let mut tk = Tk::new();
@@ -79,6 +86,7 @@ fn test_scrollbar_drag_changes_view() {
     tk.sim_mouse_up();
 }
 
+/// Confirms that radiobuttons in the same group are mutually exclusive and update the shared variable.
 #[test]
 fn test_radio_group_exclusivity() {
     let mut tk = Tk::new();
@@ -102,6 +110,7 @@ fn test_radio_group_exclusivity() {
     assert_eq!(var.get(&tk), Some(3));
 }
 
+/// Exercises canvas item creation, movement, deletion, and dragging for rects, ovals, lines, and text.
 #[test]
 fn test_canvas_create_move_delete_drag() {
     let mut tk = Tk::new();
@@ -146,6 +155,7 @@ fn test_canvas_create_move_delete_drag() {
     assert_eq!(tk.canvas_coords(cv, r), None);
 }
 
+/// Validates place geometry math for various anchors and relative positioning options.
 #[test]
 fn test_place_math_anchors() {
     let container = Rect::new(10.0, 10.0, 200.0, 100.0);
@@ -164,6 +174,7 @@ fn test_place_math_anchors() {
     assert_eq!(p_se, Rect::new(170.0, 90.0, 40.0, 20.0));
 }
 
+/// Checks that switching themes changes the rendered background pixel color.
 #[test]
 fn test_theme_switch_changes_rendered_bg() {
     let mut tk = Tk::new();
@@ -183,6 +194,7 @@ fn test_theme_switch_changes_rendered_bg() {
     assert_ne!(light_pixel, dark_pixel);
 }
 
+/// Verifies that spinbox arrow clicks and keyboard input clamp values to the configured range.
 #[test]
 fn test_spinbox_clamps() {
     let mut tk = Tk::new();
@@ -217,6 +229,7 @@ fn test_spinbox_clamps() {
     assert_eq!(val.get(&tk), Some(0));
 }
 
+/// Confirms that a progress bar renders at the requested pixmap dimensions with the given fraction.
 #[test]
 fn test_progressbar_render_fraction() {
     let mut tk = Tk::new();
@@ -228,8 +241,15 @@ fn test_progressbar_render_fraction() {
     let pixmap = tk.render_to_pixmap(120, 40).unwrap();
     assert_eq!(pixmap.width(), 120);
     assert_eq!(pixmap.height(), 40);
+    let half = pixmap.data().to_vec();
+
+    // An empty bar must render differently from a half-filled one.
+    val.set(&mut tk, 0);
+    let empty = tk.render_to_pixmap(120, 40).unwrap();
+    assert_ne!(half, empty.data().to_vec());
 }
 
+/// Ensures tab focus order includes new interactive widgets but excludes the canvas.
 #[test]
 fn test_tab_focus_includes_new_widgets_excludes_canvas() {
     let mut tk = Tk::new();
@@ -261,6 +281,7 @@ fn test_tab_focus_includes_new_widgets_excludes_canvas() {
     assert_eq!(tk.focused_widget(), Some(lb));
 }
 
+/// Tests canvas text movement, clearing, and correct stacking order after slot reuse.
 #[test]
 fn test_canvas_clear_text_move_and_stacking_after_slot_reuse() {
     let mut tk = Tk::new();

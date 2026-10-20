@@ -1,3 +1,5 @@
+//! Example demonstrating theme selection and CSS-based styling, with command-line options for theme, stylesheet, and PNG output.
+
 use std::env;
 use std::error::Error;
 
@@ -6,6 +8,7 @@ use rtk::{
     Radiobutton, Scale, Side, StyleSpec, Theme, Tk,
 };
 
+/// Runs the styling demo, parsing --theme, --css, and --png arguments to configure appearance and output.
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut initial_theme = Theme::Light;
@@ -59,10 +62,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         Theme::Light => 0,
         Theme::Dark => 1,
         Theme::Fluent => 2,
+        Theme::Material => 3,
         Theme::HighContrast => 4,
-        // Modern themes (v0.8) are not in this demo picker.
+        // Any other theme is not in this demo picker.
         _ => 0,
-        Theme::HighContrast => 4,
     });
 
     let themes = [
@@ -134,7 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let scale = Scale::new(&mut tk, card, 0, 100, sc_var)?;
         tk.pack(scale, PackOpts { side: Side::Top, pady: 3.0, fill: rtk::Fill::X, ..Default::default() });
 
-        let prog = ProgressBar::new(&mut tk, card, 120.0, sc_var)?;
+        let prog = ProgressBar::new(&mut tk, card, 100.0, sc_var)?;
         tk.pack(prog, PackOpts { side: Side::Top, pady: 4.0, fill: rtk::Fill::X, ..Default::default() });
 
         // Disabled button showcase on card 4

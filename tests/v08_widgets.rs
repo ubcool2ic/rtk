@@ -6,6 +6,7 @@ use rtk::{
     Notebook, Opt, PackOpts, ProgressBar, Text, Tk,
 };
 
+/// Tests basic Text widget creation, content get/set, and line counting.
 #[test]
 fn test_text_widget_basic_and_editing() {
     let mut tk = Tk::new();
@@ -60,6 +61,7 @@ fn test_text_widget_basic_and_editing() {
     assert_eq!(tk.text_get(text).as_deref(), Some("abcdz"));
 }
 
+/// Verifies listbox selection triggers the bound select callback with the correct index.
 #[test]
 fn test_listbox_select_callback() {
     let mut tk = Tk::new();
@@ -89,6 +91,7 @@ fn test_listbox_select_callback() {
     assert_eq!(sel_var.get(&tk), Some(1));
 }
 
+/// Tests combobox creation, initial value retrieval, and keyboard stepping.
 #[test]
 fn test_combobox() {
     let mut tk = Tk::new();
@@ -116,6 +119,7 @@ fn test_combobox() {
     assert_eq!(tk.combobox_get(cb), Some((2, "Cherry".into())));
 }
 
+/// Tests notebook tab creation and geometry forget behavior for pages.
 #[test]
 fn test_notebook_and_geometry_forget() {
     let mut tk = Tk::new();
@@ -158,6 +162,7 @@ fn test_notebook_and_geometry_forget() {
     assert!(!tk.is_mapped(btn));
 }
 
+/// Verifies progress bar binding to f64 variables and indeterminate mode toggling.
 #[test]
 fn test_progressbar_f64_and_indeterminate() {
     let mut tk = Tk::new();
@@ -181,6 +186,7 @@ fn test_progressbar_f64_and_indeterminate() {
     assert!(!tk.is_animating());
 }
 
+/// Checks that the monospace font option can be set and the label renders.
 #[test]
 fn test_monospace_font_option() {
     let mut tk = Tk::new();
@@ -190,9 +196,10 @@ fn test_monospace_font_option() {
     tk.pack(lbl, PackOpts::default());
 
     let pm = tk.render_to_pixmap(100, 50);
-    assert!(pm.is_ok());
+    pm.expect("render_to_pixmap should succeed");
 }
 
+/// Tests tooltip registration and activation on mouse hover.
 #[test]
 fn test_tooltips() {
     let mut tk = Tk::new();
@@ -223,6 +230,7 @@ fn test_tooltips() {
     assert_eq!(tk.active_tooltip(), None);
 }
 
+/// Verifies creating a canvas image from raw RGBA data yields the expected coordinates.
 #[test]
 fn test_canvas_image_rgba() {
     let mut tk = Tk::new();
@@ -245,6 +253,7 @@ fn test_canvas_image_rgba() {
     assert!(tk.canvas_delete(cv, item));
 }
 
+/// Tests colormap sampling and heatmap conversion, including NaN transparency and flat ranges.
 #[test]
 fn test_colormaps() {
     let c_vir = colormap::sample(Colormap::Viridis, 0.5);

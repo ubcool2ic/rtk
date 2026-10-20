@@ -1,4 +1,9 @@
 //! Modal dialog overlays for alerts, confirmations, prompts, and file picking.
+//!
+//! Dialogs are stacked: opening a dialog while another is already presented
+//! pushes the outer dialog's state onto `Tk::modal_stack`, so the inner dialog
+//! can be dismissed without orphaning the outer one. All teardown funnels
+//! through a single internal helper that restores the previous frame.
 
 use std::cell::RefCell;
 use std::fs;
@@ -6,14 +11,19 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::layout::{Anchor, PackOpts, PlaceOpts, Side};
+use crate::tk::ModalFrame;
 use crate::widgets::{Button, Color, Combobox, Entry, Frame, Label, Listbox, Opt};
 use crate::{Tk, WidgetId};
 
 /// Severity / classification icon for informational dialogs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MessageKind {
+    /// Informational message.
     Info,
+    /// Warning message.
     Warning,
+    /// Error message.
     Error,
 }
 
@@ -22,19 +32,54 @@ pub fn is_open(tk: &Tk) -> bool {
     tk.modal.is_some()
 }
 
-/// Closes any active modal dialog, running its cancel callback if pending.
+/// Returns the number of currently presented modal dialogs (0 when none).
+///
+/// Nested dialogs each add one level; the top-most dialog is the one that
+/// receives Escape/Enter and blocks input to everything beneath it.
+pub fn modal_depth(tk: &Tk) -> usize {
+    tk.modal_stack.len() + usize::from(tk.modal.is_some())
+}
+
+/// Closes the top-most modal dialog, running its cancel callback if pending.
+///
+/// Only one level is popped; any outer dialog beneath it becomes active again.
 pub fn close(tk: &mut Tk) {
     if let Some(mut cancel) = tk.modal_cancel.take() {
         cancel(tk);
-    } else if let Some(modal_id) = tk.modal.take() {
-        tk.destroy(modal_id);
-        tk.modal_accept = None;
-        tk.modal_entry_changed = None;
-        tk.dirty = true;
+    } else if let Some(modal_id) = tk.modal {
+        finish_modal(tk, modal_id);
     }
 }
 
+/// Destroys `scrim` and restores the previous modal frame from the stack.
+///
+/// Only the dialog whose scrim is the current top may be finished; if `scrim`
+/// is not the active modal (a stale closure fired after the dialog already
+/// closed) this is a no-op. When the stack is empty the modal state is cleared.
+pub(crate) fn finish_modal(t: &mut Tk, scrim: WidgetId) {
+    if t.modal != Some(scrim) {
+        return;
+    }
+    t.modal = None;
+    t.modal_cancel = None;
+    t.modal_accept = None;
+    t.modal_entry_changed = None;
+    if t.contains(scrim) {
+        t.destroy(scrim);
+    }
+    if let Some(frame) = t.modal_stack.pop() {
+        t.modal = frame.modal;
+        t.modal_cancel = frame.cancel;
+        t.modal_accept = frame.accept;
+        t.modal_entry_changed = frame.entry_changed;
+    }
+    t.dirty = true;
+}
+
 /// Helper that builds the full-screen semi-transparent scrim and centered Card frame.
+///
+/// If a dialog is already presented, its state is pushed onto the modal stack
+/// so it can be restored when this new dialog is dismissed.
 fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), crate::RtkError> {
     let root = tk.root();
     let scrim = Frame::new(tk, root)?;
@@ -43,22 +88,42 @@ fn build_scrim_card(tk: &mut Tk, width: f32) -> Result<(WidgetId, WidgetId), cra
         border_width: Some(0.0),
         ..Default::default()
     }));
-    let mut scrim_opts = PlaceOpts::default();
-    scrim_opts.relx = 0.0;
-    scrim_opts.rely = 0.0;
-    scrim_opts.relwidth = Some(1.0);
-    scrim_opts.relheight = Some(1.0);
+    let scrim_opts = PlaceOpts {
+        relx: 0.0,
+        rely: 0.0,
+        relwidth: Some(1.0),
+        relheight: Some(1.0),
+        anchor: Anchor::Nw,
+        ..PlaceOpts::default()
+    };
     tk.place(scrim, scrim_opts);
 
-    let card = Frame::new(tk, scrim)?;
+    let card = match Frame::new(tk, scrim) {
+        Ok(c) => c,
+        Err(e) => {
+            tk.destroy(scrim);
+            return Err(e);
+        }
+    };
     tk.config(card, Opt::Style("Card".into()));
-    let mut card_opts = PlaceOpts::default();
-    card_opts.relx = 0.5;
-    card_opts.rely = 0.5;
-    card_opts.anchor = Anchor::Center;
-    card_opts.width = Some(width);
+    let card_opts = PlaceOpts {
+        relx: 0.5,
+        rely: 0.5,
+        anchor: Anchor::Center,
+        width: Some(width),
+        ..PlaceOpts::default()
+    };
     tk.place(card, card_opts);
 
+    if tk.modal.is_some() {
+        let frame = ModalFrame {
+            modal: tk.modal,
+            cancel: tk.modal_cancel.take(),
+            accept: tk.modal_accept.take(),
+            entry_changed: tk.modal_entry_changed.take(),
+        };
+        tk.modal_stack.push(frame);
+    }
     tk.modal = Some(scrim);
     Ok((scrim, card))
 }
@@ -79,9 +144,11 @@ pub fn message_box(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let msg_lbl = Label::new(tk, card, message).unwrap();
@@ -96,10 +163,7 @@ pub fn message_box(
     let cb_clone = cb.clone();
     tk.set_command(ok_btn, move |t| {
         if let Some(f) = cb_clone.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t);
         }
     });
@@ -107,19 +171,13 @@ pub fn message_box(
     let cb_cancel = cb.clone();
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t);
         }
     }));
     tk.modal_accept = Some(Box::new(move |t| {
         if let Some(f) = cb.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t);
         }
     }));
@@ -141,9 +199,11 @@ pub fn ask_yes_no(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let msg_lbl = Label::new(tk, card, message).unwrap();
@@ -156,9 +216,11 @@ pub fn ask_yes_no(
 
     let yes_btn = Button::new(tk, btn_row, "Yes").unwrap();
     tk.config(yes_btn, Opt::Style("Accent.TButton".into()));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(yes_btn, bp);
 
     let no_btn = Button::new(tk, btn_row, "No").unwrap();
@@ -168,10 +230,7 @@ pub fn ask_yes_no(
     let cb_yes = cb.clone();
     tk.set_command(yes_btn, move |t| {
         if let Some(f) = cb_yes.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, true);
         }
     });
@@ -179,10 +238,7 @@ pub fn ask_yes_no(
     let cb_no = cb.clone();
     tk.set_command(no_btn, move |t| {
         if let Some(f) = cb_no.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, false);
         }
     });
@@ -190,19 +246,13 @@ pub fn ask_yes_no(
     let cb_esc = cb.clone();
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, false);
         }
     }));
     tk.modal_accept = Some(Box::new(move |t| {
         if let Some(f) = cb.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, true);
         }
     }));
@@ -225,9 +275,11 @@ pub fn ask_string(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let prompt_lbl = Label::new(tk, card, prompt).unwrap();
@@ -242,16 +294,20 @@ pub fn ask_string(
     tk.focused = Some(entry);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut rp = PackOpts::default();
-    rp.side = Side::Top;
-    rp.pady = 4.0;
+    let rp = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, rp);
 
     let ok_btn = Button::new(tk, btn_row, "OK").unwrap();
     tk.config(ok_btn, Opt::Style("Accent.TButton".into()));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(ok_btn, bp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -261,10 +317,7 @@ pub fn ask_string(
     tk.set_command(ok_btn, move |t| {
         let val = t.entry_get(entry);
         if let Some(f) = cb_ok.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, val);
         }
     });
@@ -272,10 +325,7 @@ pub fn ask_string(
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     });
@@ -283,10 +333,7 @@ pub fn ask_string(
     let cb_esc = cb.clone();
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     }));
@@ -294,10 +341,7 @@ pub fn ask_string(
     tk.modal_accept = Some(Box::new(move |t| {
         let val = t.entry_get(entry);
         if let Some(f) = cb.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, val);
         }
     }));
@@ -320,9 +364,11 @@ pub fn ask_typed_confirmation(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let warn_lbl = Label::new(tk, card, warning).unwrap();
@@ -342,17 +388,22 @@ pub fn ask_typed_confirmation(
     tk.focused = Some(entry);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut rp = PackOpts::default();
-    rp.side = Side::Top;
-    rp.pady = 4.0;
+    let rp = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, rp);
 
     let ok_btn = Button::new(tk, btn_row, "Confirm").unwrap();
     tk.config(ok_btn, Opt::Style("Accent.TButton".into()));
-    tk.config(ok_btn, Opt::Disabled(true));
-    let mut bp = PackOpts::default();
-    bp.side = Side::Left;
-    bp.padx = 6.0;
+    // An empty phrase can never trigger an entry change, so start enabled.
+    tk.config(ok_btn, Opt::Disabled(!phrase.is_empty()));
+    let bp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(ok_btn, bp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -372,11 +423,7 @@ pub fn ask_typed_confirmation(
         let text = t.entry_get(entry).unwrap_or_default();
         if text == phrase_check {
             if let Some(f) = cb_ok.borrow_mut().take() {
-                t.modal = None;
-                t.modal_cancel = None;
-                t.modal_accept = None;
-                t.modal_entry_changed = None;
-                t.destroy(scrim);
+                finish_modal(t, scrim);
                 f(t, true);
             }
         }
@@ -385,11 +432,7 @@ pub fn ask_typed_confirmation(
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.modal_entry_changed = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, false);
         }
     });
@@ -397,11 +440,7 @@ pub fn ask_typed_confirmation(
     let cb_esc = cb.clone();
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.modal_entry_changed = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, false);
         }
     }));
@@ -411,11 +450,7 @@ pub fn ask_typed_confirmation(
         let text = t.entry_get(entry).unwrap_or_default();
         if text == phrase_accept {
             if let Some(f) = cb.borrow_mut().take() {
-                t.modal = None;
-                t.modal_cancel = None;
-                t.modal_accept = None;
-                t.modal_entry_changed = None;
-                t.destroy(scrim);
+                finish_modal(t, scrim);
                 f(t, true);
             }
         }
@@ -427,6 +462,8 @@ pub fn ask_typed_confirmation(
 // File and Directory Browser Dialogs
 // ---------------------------------------------------------------------------
 
+/// Reads `dir`, returning sorted subdirectory names (with a trailing `/`) and
+/// sorted file names that match `filter_exts` (empty or `*` matches all).
 fn read_dir_entries(dir: &Path, filter_exts: &[&str]) -> (Vec<String>, Vec<String>) {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
@@ -456,6 +493,7 @@ fn read_dir_entries(dir: &Path, filter_exts: &[&str]) -> (Vec<String>, Vec<Strin
     (dirs, files)
 }
 
+/// Clears `listbox` and repopulates it with `..`, subdirectories, then files.
 fn populate_file_list(
     tk: &mut Tk,
     listbox: WidgetId,
@@ -495,15 +533,24 @@ pub fn ask_open_filename(
 
     let cur_dir = Rc::new(RefCell::new(start_dir.to_path_buf()));
     let owned_filters: Vec<(String, Vec<String>)> = filters.iter()
-        .map(|(n, exts)| (n.to_string(), exts.iter().map(|s| s.to_string()).collect()))
+        .map(|(n, exts)| {
+            let norm: Vec<String> = exts
+                .iter()
+                .map(|s| s.trim().trim_start_matches("*.").trim_start_matches('.').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            (n.to_string(), norm)
+        })
         .collect();
     let filter_var = tk.int_var(0);
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -519,7 +566,16 @@ pub fn ask_open_filename(
     let combo_vals: Vec<String> = if owned_filters.is_empty() {
         vec!["All Files (*)".into()]
     } else {
-        owned_filters.iter().map(|(n, exts)| format!("{n} (*.{})", exts.join(", *."))).collect()
+        owned_filters
+            .iter()
+            .map(|(n, exts)| {
+                if exts.is_empty() || exts.iter().any(|e| e == "*") {
+                    format!("{n} (*)")
+                } else {
+                    format!("{n} (*.{})", exts.join(", *."))
+                }
+            })
+            .collect()
     };
     let combobox = Combobox::new(tk, card, combo_vals, filter_var).unwrap();
     tk.pack(combobox, p);
@@ -532,16 +588,20 @@ pub fn ask_open_filename(
     populate_file_list(tk, listbox, start_dir, &active_filter);
 
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let open_btn = Button::new(tk, btn_row, "Open").unwrap();
     tk.config(open_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(open_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -577,10 +637,7 @@ pub fn ask_open_filename(
             } else {
                 let file_path = cur_dir.borrow().join(item);
                 if let Some(f) = cb.borrow_mut().take() {
-                    t.modal = None;
-                    t.modal_cancel = None;
-                    t.modal_accept = None;
-                    t.destroy(scrim);
+                    finish_modal(t, scrim);
                     f(t, Some(file_path));
                 }
             }
@@ -593,10 +650,7 @@ pub fn ask_open_filename(
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     });
@@ -604,10 +658,7 @@ pub fn ask_open_filename(
     let cb_esc = cb;
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     }));
@@ -632,9 +683,11 @@ pub fn ask_save_filename(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -645,24 +698,71 @@ pub fn ask_save_filename(
     let listbox = Listbox::new(tk, card, 8).unwrap();
     p.pady = 6.0;
     tk.pack(listbox, p);
-    populate_file_list(tk, listbox, start_dir, &[]);
+    let refresh_files = {
+        let cur_dir = cur_dir.clone();
+        move |t: &mut Tk| {
+            let total = t.listbox_get(listbox).len();
+            if total > 0 {
+                t.listbox_delete(listbox, 0, total);
+            }
+            let dir = cur_dir.borrow().clone();
+            populate_file_list(t, listbox, &dir, &[]);
+            let has_parent = dir.parent().is_some();
+            let first_is_up = t.listbox_get(listbox).first().map(|s| s == "..").unwrap_or(false);
+            if has_parent && !first_is_up {
+                t.listbox_insert(listbox, 0, "..");
+            }
+        }
+    };
+    refresh_files(tk);
 
     let filename_entry = Entry::new(tk, card).unwrap();
     tk.entry_set(filename_entry, default_name);
     p.pady = 6.0;
     tk.pack(filename_entry, p);
 
+    // Enter / double-click: files fill the name entry, directories navigate.
+    {
+        let cur_dir = cur_dir.clone();
+        let refresh_files = refresh_files.clone();
+        tk.listbox_bind_activate(listbox, move |t, _idx| {
+            let sel = t.listbox_curselection(listbox);
+            let items = t.listbox_get(listbox);
+            let Some(idx) = sel else { return };
+            let Some(item) = items.get(idx).cloned() else { return };
+            if item == ".." {
+                let parent = cur_dir.borrow().parent().map(|p| p.to_path_buf());
+                if let Some(parent) = parent {
+                    *cur_dir.borrow_mut() = parent.clone();
+                    t.config(path_lbl, Opt::Text(parent.display().to_string()));
+                    refresh_files(t);
+                }
+            } else if item.ends_with('/') {
+                let child = cur_dir.borrow().join(&item[..item.len() - 1]);
+                *cur_dir.borrow_mut() = child.clone();
+                t.config(path_lbl, Opt::Text(child.display().to_string()));
+                refresh_files(t);
+            } else {
+                t.entry_set(filename_entry, &item);
+            }
+        });
+    }
+
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let save_btn = Button::new(tk, btn_row, "Save").unwrap();
     tk.config(save_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(save_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -675,10 +775,7 @@ pub fn ask_save_filename(
         if !name.trim().is_empty() {
             let path = cur_dir_clone.borrow().join(name.trim());
             if let Some(f) = cb_save.borrow_mut().take() {
-                t.modal = None;
-                t.modal_cancel = None;
-                t.modal_accept = None;
-                t.destroy(scrim);
+                finish_modal(t, scrim);
                 f(t, Some(path));
             }
         }
@@ -690,10 +787,7 @@ pub fn ask_save_filename(
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     });
@@ -701,10 +795,7 @@ pub fn ask_save_filename(
     let cb_esc = cb;
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     }));
@@ -728,9 +819,11 @@ pub fn ask_directory(
 
     let title_lbl = Label::new(tk, card, title).unwrap();
     tk.config(title_lbl, Opt::Style("Subheading".into()));
-    let mut p = PackOpts::default();
-    p.side = Side::Top;
-    p.pady = 4.0;
+    let mut p = PackOpts {
+        side: Side::Top,
+        pady: 4.0,
+        ..PackOpts::default()
+    };
     tk.pack(title_lbl, p);
 
     let path_lbl = Label::new(tk, card, start_dir.display().to_string()).unwrap();
@@ -762,17 +855,51 @@ pub fn ask_directory(
     };
     refresh_dirs(tk);
 
+    // Enter / double-click on a selected entry navigates into a sub-directory
+    // (or up via ".."); the Select Folder button accepts the current directory.
+    let activate = {
+        let cur_dir = cur_dir.clone();
+        let refresh_dirs = refresh_dirs.clone();
+        move |t: &mut Tk| {
+            let sel = t.listbox_curselection(listbox);
+            let items = t.listbox_get(listbox);
+            let Some(idx) = sel else { return };
+            let Some(item) = items.get(idx).cloned() else { return };
+            if item == ".." {
+                let parent = cur_dir.borrow().parent().map(|p| p.to_path_buf());
+                if let Some(parent) = parent {
+                    *cur_dir.borrow_mut() = parent.clone();
+                    t.config(path_lbl, Opt::Text(parent.display().to_string()));
+                    refresh_dirs(t);
+                }
+            } else if item.ends_with('/') {
+                let child = cur_dir.borrow().join(&item[..item.len() - 1]);
+                *cur_dir.borrow_mut() = child.clone();
+                t.config(path_lbl, Opt::Text(child.display().to_string()));
+                refresh_dirs(t);
+            }
+        }
+    };
+
+    let activate_enter = activate.clone();
+    tk.listbox_bind_activate(listbox, move |t, _idx| activate_enter(t));
+    tk.focused = Some(listbox);
+
     let btn_row = Frame::new(tk, card).unwrap();
-    let mut bp = PackOpts::default();
-    bp.side = Side::Top;
-    bp.pady = 6.0;
+    let bp = PackOpts {
+        side: Side::Top,
+        pady: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(btn_row, bp);
 
     let select_btn = Button::new(tk, btn_row, "Select Folder").unwrap();
     tk.config(select_btn, Opt::Style("Accent.TButton".into()));
-    let mut bbp = PackOpts::default();
-    bbp.side = Side::Left;
-    bbp.padx = 6.0;
+    let bbp = PackOpts {
+        side: Side::Left,
+        padx: 6.0,
+        ..PackOpts::default()
+    };
     tk.pack(select_btn, bbp);
 
     let cancel_btn = Button::new(tk, btn_row, "Cancel").unwrap();
@@ -783,21 +910,25 @@ pub fn ask_directory(
     tk.set_command(select_btn, move |t| {
         let path = cur_dir_sel.borrow().clone();
         if let Some(f) = cb_sel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, Some(path));
         }
     });
 
+    let cur_dir_accept = cur_dir.clone();
+    let cb_accept = cb.clone();
+    tk.modal_accept = Some(Box::new(move |t| {
+        let path = cur_dir_accept.borrow().clone();
+        if let Some(f) = cb_accept.borrow_mut().take() {
+            finish_modal(t, scrim);
+            f(t, Some(path));
+        }
+    }));
+
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     });
@@ -805,10 +936,7 @@ pub fn ask_directory(
     let cb_esc = cb;
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
-            t.modal = None;
-            t.modal_cancel = None;
-            t.modal_accept = None;
-            t.destroy(scrim);
+            finish_modal(t, scrim);
             f(t, None);
         }
     }));

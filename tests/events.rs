@@ -1,10 +1,14 @@
+//! Tests for shared event handling across widgets, covering clicks, focus, and resize behavior.
+
 use rtk::{Button, Checkbutton, Entry, Key, Label, Opt, PackOpts, Scale, Tk, WidgetId};
 
+/// Simulates a click at the center of the given widget.
 fn click(tk: &mut Tk, id: WidgetId) {
     let rect = tk.widget_rect(id).expect("visible widget");
     tk.sim_click(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
 }
 
+/// Verifies that shared event handlers correctly update widget-bound variables for widgets, focus changes, and resize events.
 #[test]
 fn shared_event_handlers_cover_widgets_focus_and_resize() {
     let mut tk = Tk::new();
@@ -71,6 +75,7 @@ fn shared_event_handlers_cover_widgets_focus_and_resize() {
     assert_eq!(count.get(&tk), Some(4));
 }
 
+/// Ensures that releasing the mouse outside a button after pressing inside does not activate the button's command.
 #[test]
 fn release_outside_button_does_not_activate() {
     let mut tk = Tk::new();
@@ -87,8 +92,13 @@ fn release_outside_button_does_not_activate() {
     tk.sim_mouse_move(-100.0, -100.0);
     tk.sim_mouse_up();
     assert_eq!(count.get(&tk), Some(0));
+    // Control: the same button must activate when released inside, so the
+    // negative assertion above is not vacuous.
+    click(&mut tk, button);
+    assert_eq!(count.get(&tk), Some(1));
 }
 
+/// Checks that checkbutton and scale commands observe the updated variable values when triggered.
 #[test]
 fn check_and_scale_commands_observe_updated_values() {
     let mut tk = Tk::new();

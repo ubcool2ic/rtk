@@ -9,8 +9,13 @@ fn tk_defaults_to_bundled_font() {
     assert_eq!(tk.default_font(), &DefaultFont::Bundled);
     assert_eq!(tk.default_font().family(), Some(rtk::fonts::BUNDLED_FAMILY));
     let root = tk.root();
+    let blank = tk.render_to_pixmap(400, 60).unwrap();
     let l = Label::new(&mut tk, root, "Search  Add selected city  Remove").unwrap();
     tk.pack(l, PackOpts::default());
     let pm = tk.render_to_pixmap(400, 60).unwrap();
-    assert!(pm.data().chunks(4).any(|p| p[0] < 100), "text was drawn");
+    assert_ne!(
+        pm.data(),
+        blank.data(),
+        "label text changed the rendered pixels"
+    );
 }

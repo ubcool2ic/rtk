@@ -1,3 +1,5 @@
 target/
 Cargo.lock.bak
 .or/
+tests/golden/*.actual.png
+tests/golden/*.diff.png

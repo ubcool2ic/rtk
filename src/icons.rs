@@ -8,41 +8,78 @@ use crate::Tk;
 
 /// Built-in monochrome icon set drawn as crisp vector paths at any size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Icon {
+    /// A house outline.
     Home,
+    /// A microchip with pins.
     Chip,
+    /// A USB trident.
     Usb,
+    /// Stacked books/library shelves.
     Library,
+    /// Vertical sliders with handles.
     Sliders,
+    /// A wrench.
     Wrench,
+    /// A filled lightning bolt.
     Bolt,
+    /// A gear.
     Settings,
+    /// An open book.
     Book,
+    /// A shield outline.
     Shield,
+    /// A downward arrow onto a baseline.
     Download,
+    /// An upward arrow from a baseline.
     Upload,
+    /// A check mark.
     Check,
+    /// A warning triangle with an exclamation mark.
     Warning,
+    /// A circle with an X.
     Error,
+    /// A circle with an "i".
     Info,
+    /// A circular refresh arrow.
     Refresh,
+    /// A folder outline.
     Folder,
+    /// A floppy-disk save symbol.
     Save,
+    /// A filled play triangle.
     Play,
+    /// A filled stop square.
     Stop,
+    /// A sun with rays.
     Sun,
+    /// A filled crescent moon.
     Moon,
+    /// A magnifying glass.
     Search,
+    /// A memory module.
     Memory,
+    /// A partitioned square.
     Partition,
+    /// A battery outline with a terminal.
     Battery,
+    /// A clock face.
     Clock,
 }
 
-/// Renders `icon` at logical size `size_px` with the given `color` into an RGBA byte buffer.
+/// Renders `icon` at logical size `size_px` with the given `color` into an RGBA byte buffer
+/// of exactly `size_px * size_px * 4` bytes. Returns an empty buffer if `size_px` is zero or
+/// too large to allocate.
 pub fn render_rgba(icon: Icon, size_px: u32, color: Color) -> Vec<u8> {
-    let size = size_px.max(8);
-    let mut pixmap = Pixmap::new(size, size).unwrap_or_else(|| Pixmap::new(8, 8).unwrap());
+    if size_px == 0 {
+        return Vec::new();
+    }
+    let size = size_px;
+    let mut pixmap = match Pixmap::new(size, size) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
     let s = size as f32;
     let k = s / 24.0;
     let sw = (1.8 * k).max(1.0);
@@ -382,7 +419,20 @@ pub fn render_rgba(icon: Icon, size_px: u32, color: Color) -> Vec<u8> {
 }
 
 /// Helper that renders `icon` and registers it directly into `tk`, returning its `ImageId`.
+///
+/// The registered dimensions are derived from the rendered buffer, so sizes for which
+/// the renderer adjusts the output (very small icons) stay consistent. Returns `None`
+/// for a zero size or if the image cannot be registered.
 pub fn icon(tk: &mut Tk, icon: Icon, size_px: u32, color: Color) -> Option<ImageId> {
+    if size_px == 0 {
+        return None;
+    }
     let rgba = render_rgba(icon, size_px, color);
-    tk.register_image_rgba(size_px, size_px, &rgba)
+    let px = rgba.len() / 4;
+    let side = (px as f64).sqrt().round() as usize;
+    if side == 0 || side * side * 4 != rgba.len() {
+        return None;
+    }
+    let side = u32::try_from(side).ok()?;
+    tk.register_image_rgba(side, side, &rgba)
 }

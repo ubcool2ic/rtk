@@ -1,5 +1,8 @@
+//! Tests for string and integer variable get/set behavior and dirty-state tracking.
+
 use rtk::Tk;
 
+/// Tests get and set on string and int variables.
 #[test]
 fn string_and_int_get_set() {
     let mut tk = Tk::new();
@@ -12,6 +15,7 @@ fn string_and_int_get_set() {
     assert_eq!(n.get(&tk), Some(42));
 }
 
+/// Ensures setting a variable to its current value does not mark the widget dirty.
 #[test]
 fn equal_set_does_not_dirty() {
     let mut tk = Tk::new();
@@ -24,6 +28,7 @@ fn equal_set_does_not_dirty() {
     assert!(tk.is_dirty());
 }
 
+/// Verifies a trace that sets its own variable terminates without infinite recursion.
 #[test]
 fn trace_that_sets_itself_terminates() {
     let mut tk = Tk::new();
@@ -36,6 +41,7 @@ fn trace_that_sets_itself_terminates() {
     assert_eq!(n.get(&tk), Some(2));
 }
 
+/// Checks that a destroyed variable rejects further get, set, and destroy calls.
 #[test]
 fn destroyed_var_is_rejected() {
     let mut tk = Tk::new();

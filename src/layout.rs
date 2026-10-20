@@ -8,6 +8,7 @@ use std::ops::{BitOr, BitOrAssign};
 
 pub(crate) const MAX_TRACKS: usize = 4096;
 
+/// Clamps a length to a finite non-negative range, mapping nonfinite values to zero.
 pub(crate) fn length(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(0.0, 10_000_000.0)
@@ -16,6 +17,7 @@ pub(crate) fn length(value: f32) -> f32 {
     }
 }
 
+/// Clamps a position to a finite range, mapping nonfinite values to zero.
 pub(crate) fn position(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(-1_000_000_000.0, 1_000_000_000.0)
@@ -24,27 +26,38 @@ pub(crate) fn position(value: f32) -> f32 {
     }
 }
 
+/// A width/height pair in logical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Size {
+    /// Width in logical px (nonfinite values become 0).
     pub width: f32,
+    /// Height in logical px (nonfinite values become 0).
     pub height: f32,
 }
 
 impl Size {
+    /// Creates a size, normalizing nonfinite or negative dimensions to 0.
     pub fn new(width: f32, height: f32) -> Self {
         Self { width: length(width), height: length(height) }
     }
 }
 
+/// An axis-aligned rectangle in logical pixels (origin at the top-left).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
+    /// Left edge in logical px.
     pub x: f32,
+    /// Top edge in logical px.
     pub y: f32,
+    /// Width in logical px.
     pub width: f32,
+    /// Height in logical px.
     pub height: f32,
 }
 
 impl Rect {
+    /// Creates a rectangle, normalizing nonfinite values (positions clamp to
+    /// ±1e9, dimensions to `0..=1e7`).
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
         Self {
             x: position(x),
@@ -54,10 +67,13 @@ impl Rect {
         }
     }
 
+    /// Returns the rectangle with nonfinite or out-of-range values normalized as in [`Rect::new`].
     fn normalized(self) -> Self {
         Self::new(self.x, self.y, self.width, self.height)
     }
 
+    /// Shrinks the rectangle by `x` on each horizontal side and `y` on each
+    /// vertical side (clamped to half the extent so it never inverts).
     pub fn inset(self, x: f32, y: f32) -> Self {
         let rect = self.normalized();
         let x = length(x).min(rect.width / 2.0);
@@ -70,6 +86,7 @@ impl Rect {
         )
     }
 
+    /// Returns the overlapping area of two rectangles (zero-sized if disjoint).
     pub fn intersection(self, other: Self) -> Self {
         let a = self.normalized();
         let b = other.normalized();
@@ -99,6 +116,8 @@ impl Rect {
         )
     }
 
+    /// Returns true if the point lies inside the rectangle (right/bottom edges
+    /// exclusive).
     pub fn contains(self, x: f32, y: f32) -> bool {
         x >= self.x
             && y >= self.y
@@ -106,6 +125,7 @@ impl Rect {
             && y < self.y + self.height
     }
 
+    /// Returns a copy of the rectangle scaled by the given factor.
     pub(crate) fn scaled(self, scale: f32) -> Self {
         Self::new(
             self.x * scale,
@@ -116,39 +136,61 @@ impl Rect {
     }
 }
 
+/// The side of the cavity a packed widget is placed against (tkinter `side`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Side {
+    /// Stack from the top (default).
     #[default]
     Top,
+    /// Stack from the bottom.
     Bottom,
+    /// Stack from the left.
     Left,
+    /// Stack from the right.
     Right,
 }
 
+/// Which axes a packed widget stretches to fill (tkinter `fill`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Fill {
+    /// Keep the requested size (default).
     #[default]
     None,
+    /// Stretch horizontally.
     X,
+    /// Stretch vertically.
     Y,
+    /// Stretch both axes.
     Both,
 }
 
+/// Where a widget sits inside its allocated parcel (tkinter `anchor`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Anchor {
+    /// Centered (default).
     #[default]
     Center,
+    /// Top-center.
     N,
+    /// Bottom-center.
     S,
+    /// Middle-right.
     E,
+    /// Middle-left.
     W,
+    /// Top-right.
     Ne,
+    /// Top-left.
     Nw,
+    /// Bottom-right.
     Se,
+    /// Bottom-left.
     Sw,
 }
 
 impl Anchor {
+    /// Returns the `(x, y)` fractions in `0.0..=1.0` of the parcel used to
+    /// position the widget for this anchor.
     pub fn fractions(self) -> (f32, f32) {
         match self {
             Self::Center => (0.5, 0.5),
@@ -164,19 +206,30 @@ impl Anchor {
     }
 }
 
+/// Options for the place geometry manager (tkinter `place`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PlaceOpts {
+    /// Absolute x offset in logical px from the container's left edge.
     pub x: f32,
+    /// Absolute y offset in logical px from the container's top edge.
     pub y: f32,
+    /// Relative x offset as a fraction of the container width.
     pub relx: f32,
+    /// Relative y offset as a fraction of the container height.
     pub rely: f32,
+    /// Fixed width in logical px; overrides `relwidth` and the requested size.
     pub width: Option<f32>,
+    /// Fixed height in logical px; overrides `relheight` and the requested size.
     pub height: Option<f32>,
+    /// Width as a fraction of the container width.
     pub relwidth: Option<f32>,
+    /// Height as a fraction of the container height.
     pub relheight: Option<f32>,
+    /// Which point of the widget the coordinates refer to.
     pub anchor: Anchor,
 }
 
+/// Computes the rectangle for a placed widget, clamped inside `container`.
 pub fn place_rect(container: Rect, requested: Size, opts: PlaceOpts) -> Rect {
     let container = container.normalized();
     let relx = if opts.relx.is_finite() { opts.relx } else { 0.0 };
@@ -215,29 +268,46 @@ pub fn place_rect(container: Rect, requested: Size, opts: PlaceOpts) -> Rect {
     Rect::new(left, top, w, h).within(container)
 }
 
+/// Options for the pack geometry manager (tkinter `pack`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PackOpts {
+    /// Side of the cavity to pack against.
     pub side: Side,
+    /// Axes the widget stretches along.
     pub fill: Fill,
+    /// Whether the widget claims a share of leftover space.
     pub expand: bool,
+    /// Horizontal padding in logical px on each side.
     pub padx: f32,
+    /// Vertical padding in logical px on each side.
     pub pady: f32,
+    /// Alignment inside the parcel when not filling.
     pub anchor: Anchor,
 }
 
+/// A bit set of grid cell edges a widget sticks to (tkinter `sticky`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Sticky(u8);
 
 impl Sticky {
+    /// Sticks to no edges (centered in the cell).
     pub const NONE: Self = Self(0);
+    /// Sticks to the top edge.
     pub const N: Self = Self(1);
+    /// Sticks to the bottom edge.
     pub const S: Self = Self(2);
+    /// Sticks to the right edge.
     pub const E: Self = Self(4);
+    /// Sticks to the left edge.
     pub const W: Self = Self(8);
+    /// Sticks to the top and bottom edges (stretches vertically).
     pub const NS: Self = Self(3);
+    /// Sticks to the left and right edges (stretches horizontally).
     pub const EW: Self = Self(12);
+    /// Sticks to all four edges (fills the cell).
     pub const NSEW: Self = Self(15);
 
+    /// Returns true if every edge in `other` is also set in `self`.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }
@@ -246,29 +316,40 @@ impl Sticky {
 impl BitOr for Sticky {
     type Output = Self;
 
+    /// Combines two sticky flags with bitwise OR.
     fn bitor(self, rhs: Self) -> Self {
         Self(self.0 | rhs.0)
     }
 }
 
 impl BitOrAssign for Sticky {
+    /// Adds the sticky flags of another value in place.
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0;
     }
 }
 
+/// Options for the grid geometry manager (tkinter `grid`).
 #[derive(Clone, Copy, Debug)]
 pub struct GridOpts {
+    /// Zero-based row index (capped at 4095).
     pub row: usize,
+    /// Zero-based column index (capped at 4095).
     pub column: usize,
+    /// Number of rows the widget spans (at least 1).
     pub rowspan: usize,
+    /// Number of columns the widget spans (at least 1).
     pub columnspan: usize,
+    /// Cell edges the widget sticks to.
     pub sticky: Sticky,
+    /// Horizontal padding in logical px on each side.
     pub padx: f32,
+    /// Vertical padding in logical px on each side.
     pub pady: f32,
 }
 
 impl Default for GridOpts {
+    /// Cell `(0, 0)`, span 1, no sticky, no padding.
     fn default() -> Self {
         Self {
             row: 0,
@@ -282,18 +363,25 @@ impl Default for GridOpts {
     }
 }
 
+/// One widget's requested size and pack options, as consumed by [`pack`].
 #[derive(Clone, Copy, Debug)]
 pub struct PackItem {
+    /// The widget's natural size in logical px.
     pub requested: Size,
+    /// Its pack options.
     pub opts: PackOpts,
 }
 
+/// One widget's requested size and grid options, as consumed by [`grid`].
 #[derive(Clone, Copy, Debug)]
 pub struct GridItem {
+    /// The widget's natural size in logical px.
     pub requested: Size,
+    /// Its grid options.
     pub opts: GridOpts,
 }
 
+/// Returns the size grown by the given padding on each axis.
 fn padded(size: Size, x: f32, y: f32) -> Size {
     Size::new(
         length(size.width) + 2.0 * length(x),
@@ -301,10 +389,12 @@ fn padded(size: Size, x: f32, y: f32) -> Size {
     )
 }
 
+/// Returns whether the side is horizontal (left or right).
 fn horizontal(side: Side) -> bool {
     matches!(side, Side::Left | Side::Right)
 }
 
+/// Returns the minimum container size needed to fit all packed items.
 pub fn pack_request(items: &[PackItem]) -> Size {
     let (mut used_w, mut used_h) = (0.0_f32, 0.0_f32);
     let (mut width, mut height) = (0.0_f32, 0.0_f32);
@@ -321,6 +411,7 @@ pub fn pack_request(items: &[PackItem]) -> Size {
     Size::new(width.max(used_w), height.max(used_h))
 }
 
+/// Computes the extra space distributed to expanding items along one axis.
 fn expansion(items: &[PackItem], axis_x: bool, mut available: f32) -> f32 {
     let mut count = 0_usize;
     let mut limit = available;
@@ -340,6 +431,8 @@ fn expansion(items: &[PackItem], axis_x: bool, mut available: f32) -> f32 {
     length(limit)
 }
 
+/// Lays out packed items inside `container`, returning one rectangle per item
+/// in input order (all clamped inside the container).
 pub fn pack(container: Rect, items: &[PackItem]) -> Vec<Rect> {
     let container = container.normalized();
     let mut cavity = container;
@@ -403,11 +496,13 @@ pub fn pack(container: Rect, items: &[PackItem]) -> Vec<Rect> {
     result
 }
 
+/// Clamps a grid span to the valid track range, ensuring at least one track.
 fn span(start: usize, count: usize) -> (usize, usize) {
     let start = start.min(MAX_TRACKS - 1);
     (start, count.max(1).min(MAX_TRACKS - start))
 }
 
+/// Returns the start track, span count, and needed size for a grid item along one axis.
 fn specification(item: &GridItem, axis_x: bool) -> (usize, usize, f32) {
     let opts = item.opts;
     let size = padded(item.requested, opts.padx, opts.pady);
@@ -419,6 +514,7 @@ fn specification(item: &GridItem, axis_x: bool) -> (usize, usize, f32) {
     (start, count, if axis_x { size.width } else { size.height })
 }
 
+/// Computes the requested size of each grid track along one axis from the items.
 fn tracks(items: &[GridItem], axis_x: bool) -> Vec<f32> {
     let count = items
         .iter()
@@ -451,6 +547,7 @@ fn tracks(items: &[GridItem], axis_x: bool) -> Vec<f32> {
     tracks
 }
 
+/// Returns the minimum container size needed to fit all gridded items.
 pub fn grid_request(items: &[GridItem]) -> Size {
     Size::new(
         tracks(items, true).iter().sum(),
@@ -458,6 +555,7 @@ pub fn grid_request(items: &[GridItem]) -> Size {
     )
 }
 
+/// Distributes available space across tracks according to weights, shrinking proportionally when over budget.
 fn weighted(mut tracks: Vec<f32>, available: f32, weights: &[(usize, u32)]) -> Vec<f32> {
     let last = weights.iter().filter(|(i, _)| *i < MAX_TRACKS).map(|(i, _)| *i).max();
     if let Some(last) = last {
@@ -487,6 +585,7 @@ fn weighted(mut tracks: Vec<f32>, available: f32, weights: &[(usize, u32)]) -> V
     tracks
 }
 
+/// Returns the offset and size of a track range, clamped to the available space.
 fn track_range(tracks: &[f32], start: usize, count: usize, available: f32) -> (f32, f32) {
     let offset = tracks.get(..start).unwrap_or_default().iter().sum::<f32>().min(available);
     let size = tracks
@@ -498,6 +597,7 @@ fn track_range(tracks: &[f32], start: usize, count: usize, available: f32) -> (f
     (offset, size)
 }
 
+/// Computes the offset and size of a widget within a cell according to sticky flags.
 fn sticky_axis(start: f32, available: f32, requested: f32, low: bool, high: bool) -> (f32, f32) {
     let size = if low && high { available } else { length(requested).min(available) };
     let offset = if low {
@@ -510,6 +610,9 @@ fn sticky_axis(start: f32, available: f32, requested: f32, low: bool, high: bool
     (start + offset, size)
 }
 
+/// Lays out gridded items inside `container`, returning one rectangle per item
+/// in input order. `column_weights`/`row_weights` are `(index, weight)` pairs
+/// distributing leftover space.
 pub fn grid(
     container: Rect,
     items: &[GridItem],
@@ -547,6 +650,7 @@ pub fn grid(
 mod tests {
     use super::*;
 
+    /// Verifies that place anchors position a widget correctly within its container.
     #[test]
     fn place_anchors_test() {
         let container = Rect::new(0.0, 0.0, 100.0, 100.0);
@@ -574,10 +678,12 @@ mod tests {
 mod legacy_tests {
     use super::*;
 
+    /// Builds a pack item with the given requested size and options.
     fn slave(width: f32, height: f32, opts: PackOpts) -> PackItem {
         PackItem { requested: Size::new(width, height), opts }
     }
 
+    /// Builds a grid item with the given width at the specified row and column.
     fn cell(width: f32, row: usize, column: usize) -> GridItem {
         GridItem {
             requested: Size::new(width, 10.0),
@@ -585,6 +691,7 @@ mod legacy_tests {
         }
     }
 
+    /// Verifies that top-packed items stack vertically and are centered horizontally.
     #[test]
     fn pack_top_stacking() {
         let items = [
@@ -597,6 +704,7 @@ mod legacy_tests {
         assert_eq!(pack_request(&items), Size::new(30.0, 25.0));
     }
 
+    /// Verifies that a left-packed item with vertical fill stretches to the container height.
     #[test]
     fn pack_left_fill_y() {
         let item = slave(20.0, 10.0, PackOpts {
@@ -608,6 +716,7 @@ mod legacy_tests {
         );
     }
 
+    /// Verifies that two expanding slaves with fill Both split the container evenly along the pack axis.
     #[test]
     fn pack_expand_sharing() {
         let opts = PackOpts { fill: Fill::Both, expand: true, ..PackOpts::default() };
@@ -619,6 +728,7 @@ mod legacy_tests {
         assert_eq!(result[1], Rect::new(0.0, 50.0, 100.0, 50.0));
     }
 
+    /// Checks that padx and pady shrink the allocated slot and are included in the pack request size.
     #[test]
     fn pack_padding() {
         let opts = PackOpts { fill: Fill::X, padx: 3.0, pady: 4.0, ..PackOpts::default() };
@@ -629,6 +739,7 @@ mod legacy_tests {
         assert_eq!(pack_request(&items), Size::new(26.0, 36.0));
     }
 
+    /// Ensures an expanding item reserves space so a perpendicular side item keeps its requested extent.
     #[test]
     fn expansion_reserves_orthogonal_requests() {
         let items = [
@@ -644,6 +755,7 @@ mod legacy_tests {
         assert_eq!(result[1].height, 40.0);
     }
 
+    /// Confirms grid column widths are the maximum cell width per column and positions follow those widths.
     #[test]
     fn grid_column_widths_are_maxima() {
         let items = [cell(10.0, 0, 0), cell(30.0, 1, 0), cell(20.0, 0, 1)];
@@ -652,6 +764,7 @@ mod legacy_tests {
         assert_eq!(result[2].x, 30.0);
     }
 
+    /// Verifies that sticky E|W stretches a grid cell to fill its column width.
     #[test]
     fn grid_sticky_ew_stretches() {
         let mut item = cell(20.0, 0, 0);
@@ -660,6 +773,7 @@ mod legacy_tests {
         assert_eq!(result[0].width, 100.0);
     }
 
+    /// Checks that column and row weights distribute extra space proportionally across grid tracks.
     #[test]
     fn grid_weight_distribution() {
         let mut items = [cell(10.0, 0, 0), cell(10.0, 0, 1)];
@@ -674,6 +788,7 @@ mod legacy_tests {
         assert_eq!(result[1], Rect::new(30.0, 0.0, 70.0, 30.0));
     }
 
+    /// Validates that columnspan, rowspan, and padding affect both the grid request and the placed rectangle.
     #[test]
     fn grid_spans_and_padding() {
         let mut item = cell(40.0, 0, 0);

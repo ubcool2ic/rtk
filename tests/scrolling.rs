@@ -1,6 +1,9 @@
+//! Tests for canvas and listbox scrolling, scrollbar linking, and view clamping.
+
 use rtk::{Canvas, Color, DragPhase, Key, Listbox, PackOpts, ScrollUnit, Scrollbar, Side, Tk};
 use std::{cell::Cell, rc::Rc};
 
+/// Builds a canvas with a linked scrollbar and twenty colored bands for scrolling tests.
 fn scroll_canvas() -> (Tk, rtk::WidgetId, rtk::WidgetId) {
     let mut tk = Tk::new();
     let root = tk.root();
@@ -18,6 +21,7 @@ fn scroll_canvas() -> (Tk, rtk::WidgetId, rtk::WidgetId) {
     (tk, c, sb)
 }
 
+/// Verifies yview moveto and scroll operations with clamping to the scrollable region.
 #[test]
 fn yview_moveto_scroll_and_clamp() {
     let (mut tk, c, _) = scroll_canvas();
@@ -37,6 +41,7 @@ fn yview_moveto_scroll_and_clamp() {
     assert_eq!(tk.canvas_view(c).unwrap().1, 100.0);
 }
 
+/// Tests wheel and touchpad scrolling and confirms the rendered offset matches the view.
 #[test]
 fn wheel_touchpad_and_render_offset() {
     let (mut tk, c, _) = scroll_canvas();
@@ -52,6 +57,7 @@ fn wheel_touchpad_and_render_offset() {
     assert_eq!(&p.data()[i..i + 3], &[0, 0, 255]);
 }
 
+/// Ensures canvas drag events report content coordinates rather than widget coordinates.
 #[test]
 fn canvas_events_use_content_coordinates() {
     let (mut tk, c, _) = scroll_canvas();
@@ -64,6 +70,7 @@ fn canvas_events_use_content_coordinates() {
     assert_eq!(got.get(), (10.0, 320.0));
 }
 
+/// Confirms keyboard scrolling keys move the focused canvas view as expected.
 #[test]
 fn keyboard_scrolls_focused_canvas() {
     let (mut tk, c, _) = scroll_canvas();
@@ -79,6 +86,7 @@ fn keyboard_scrolls_focused_canvas() {
     assert_eq!(tk.canvas_view(c).unwrap().1, 0.0);
 }
 
+/// Tests scrollbar track clicks and thumb dragging to change the canvas view.
 #[test]
 fn scrollbar_click_track_and_drag_thumb() {
     let (mut tk, c, sb) = scroll_canvas();
@@ -99,6 +107,7 @@ fn scrollbar_click_track_and_drag_thumb() {
     assert!((tk.canvas_view(c).unwrap().1 - 352.0).abs() < 0.5);
 }
 
+/// Verifies that listbox scrolling via yview scroll and moveto still works correctly.
 #[test]
 fn listbox_scrolling_still_works() {
     let mut tk = Tk::new();

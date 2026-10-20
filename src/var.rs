@@ -32,12 +32,14 @@ pub struct Var<T> {
 impl<T> Copy for Var<T> {}
 
 impl<T> Clone for Var<T> {
+    /// Clones the variable handle, which is a cheap copy sharing the same slot.
     fn clone(&self) -> Self {
         *self
     }
 }
 
 impl<T> PartialEq for Var<T> {
+    /// Compares two variable handles for equality by slot index, generation and owner.
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && self.gen == other.gen && self.owner == other.owner
     }
@@ -46,6 +48,7 @@ impl<T> PartialEq for Var<T> {
 impl<T> Eq for Var<T> {}
 
 impl<T> Hash for Var<T> {
+    /// Hashes a variable handle by its slot index, generation and owner.
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.index.hash(state);
         self.gen.hash(state);
@@ -64,6 +67,7 @@ pub(crate) struct VarSlot {
 }
 
 impl<T: 'static> Var<T> {
+    /// Returns the variable's slot if the handle is still valid and holds the expected type.
     fn slot(self, tk: &Tk) -> Option<&VarSlot> {
         tk.vars.get(self.index).filter(|slot| {
             slot.gen == self.gen
@@ -72,6 +76,7 @@ impl<T: 'static> Var<T> {
         })
     }
 
+    /// Returns a mutable reference to the variable's slot if the handle is still valid and typed correctly.
     fn slot_mut(self, tk: &mut Tk) -> Option<&mut VarSlot> {
         tk.vars.get_mut(self.index).filter(|slot| {
             slot.gen == self.gen
@@ -80,6 +85,7 @@ impl<T: 'static> Var<T> {
         })
     }
 
+    /// Returns a copy of the current value, or `None` if the handle is invalid.
     pub fn get(self, tk: &Tk) -> Option<T>
     where
         T: Clone,
@@ -87,6 +93,8 @@ impl<T: 'static> Var<T> {
         self.slot(tk)?.value.as_ref()?.downcast_ref::<T>().cloned()
     }
 
+    /// Assigns a new value, running the trace if it changed. Returns false for
+    /// an invalid handle.
     pub fn set(self, tk: &mut Tk, value: T) -> bool
     where
         T: PartialEq,
@@ -106,6 +114,9 @@ impl<T: 'static> Var<T> {
         } else {
             None
         };
+        // A variable change may affect any widget bound to it; conservatively
+        // request a full redraw. Widgets that only repaint their own contents
+        // (Entry/Text editing) invalidate themselves separately.
         tk.dirty = true;
         if let Some(mut command) = command {
             command(tk);
@@ -143,6 +154,7 @@ impl<T: 'static> Var<T> {
 }
 
 impl Tk {
+    /// Allocates a new variable slot with the given value and returns a typed handle to it.
     fn make_var<T: 'static>(&mut self, value: T) -> Var<T> {
         // Variable slots are intentionally not reused. This also makes a
         // destroyed handle unambiguously invalid at generation exhaustion.
@@ -164,18 +176,22 @@ impl Tk {
         handle
     }
 
+    /// Creates a string variable (tkinter `StringVar`).
     pub fn string_var(&mut self, value: impl Into<String>) -> Var<String> {
         self.make_var(value.into())
     }
 
+    /// Creates an integer variable (tkinter `IntVar`).
     pub fn int_var(&mut self, value: i64) -> Var<i64> {
         self.make_var(value)
     }
 
+    /// Creates a boolean variable (tkinter `BooleanVar`).
     pub fn bool_var(&mut self, value: bool) -> Var<bool> {
         self.make_var(value)
     }
 
+    /// Creates a floating-point variable (tkinter `DoubleVar`).
     pub fn f64_var(&mut self, value: f64) -> Var<f64> {
         self.make_var(value)
     }

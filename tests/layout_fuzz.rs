@@ -1,9 +1,12 @@
+//! Fuzz-style tests for the pack and grid layout engines, checking invariants under random and extreme inputs.
+
 use rtk::layout::{grid, grid_request, pack, pack_request, GridItem, PackItem, Rect, Size};
 use rtk::{Anchor, Fill, GridOpts, PackOpts, Side, Sticky};
 
 struct Rng(u64);
 
 impl Rng {
+    /// Advances the xorshift random number generator and returns the next 32-bit value.
     fn next(&mut self) -> u32 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
@@ -11,6 +14,7 @@ impl Rng {
         self.0 as u32
     }
 
+    /// Produces a random dimension that occasionally includes NaN, infinities, and negative values for fuzzing.
     fn dimension(&mut self) -> f32 {
         match self.next() % 16 {
             0 => f32::NAN,
@@ -22,6 +26,7 @@ impl Rng {
     }
 }
 
+/// Asserts that each rect is finite, non-negative in size, and contained within the parent bounds.
 fn check(parent: Rect, rects: &[Rect]) {
     for rect in rects {
         for number in [rect.x, rect.y, rect.width, rect.height] {
@@ -34,6 +39,7 @@ fn check(parent: Rect, rects: &[Rect]) {
     }
 }
 
+/// Runs 500 randomized pack and grid layout configurations and validates the resulting geometry.
 #[test]
 fn five_hundred_random_pack_and_grid_configurations() {
     let mut rng = Rng(0x0123_4567_89ab_cdef);
@@ -105,6 +111,7 @@ fn five_hundred_random_pack_and_grid_configurations() {
     }
 }
 
+/// Ensures pathological grid indices and spans are bounded and do not overflow or panic.
 #[test]
 fn pathological_grid_indices_and_spans_are_bounded() {
     let parent = Rect::new(0.0, 0.0, 10.0, 10.0);

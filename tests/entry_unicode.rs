@@ -1,5 +1,8 @@
+//! Tests that the entry widget handles Unicode grapheme clusters correctly across navigation and deletion.
+
 use rtk::{Entry, Key, Opt, PackOpts, Tk};
 
+/// Checks that grapheme clusters survive cursor navigation and deletion in an Entry.
 #[test]
 fn unicode_clusters_survive_navigation_and_deletion() {
     let mut tk = Tk::new();
@@ -37,6 +40,7 @@ fn unicode_clusters_survive_navigation_and_deletion() {
     assert_eq!(value.get(&tk).as_deref(), Some("hllo  "));
 }
 
+/// Verifies external variable changes and large input are handled safely by an Entry.
 #[test]
 fn external_changes_controls_and_large_input_are_safe() {
     let mut tk = Tk::new();
@@ -55,7 +59,9 @@ fn external_changes_controls_and_large_input_are_safe() {
     tk.sim_text(&"界".repeat(30_000));
     let text = tk.entry_get(entry).expect("text");
     assert!(text.len() <= 65_536);
-    assert!(text.is_char_boundary(text.len()));
+    assert!(text.len() > 1_000, "large input should be accepted up to the cap");
+    assert!(text.starts_with('a'));
+    assert!(text["a".len()..].chars().all(|c| c == '界'));
     tk.sim_key(Key::End);
     for _ in 0..20 {
         tk.sim_key(Key::Left);
@@ -64,6 +70,7 @@ fn external_changes_controls_and_large_input_are_safe() {
     assert!(tk.entry_get(entry).expect("text").len() < text.len());
 }
 
+/// Checks that long entry text is clipped and the caret scrolls the view.
 #[test]
 fn entry_text_is_clipped_and_caret_can_scroll() {
     let mut tk = Tk::new();

@@ -1,6 +1,7 @@
 //! Timer API demo: a ticking clock (`every`), a one-shot message (`after`), and a Stop button (`after_cancel`).
 use rtk::{Button, Label, PackOpts, Tk};
 
+/// Runs a timers example with a repeating tick counter and a one-shot delayed message.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Timers");

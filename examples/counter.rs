@@ -1,5 +1,8 @@
+//! Example app demonstrating a simple counter with a label bound to a string variable and a button whose command increments an integer variable.
+
 use rtk::{Button, Label, Opt, PackOpts, Tk};
 
+/// Runs a counter app with a label bound to a variable and a button that increments it.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tk = Tk::new();
     tk.title("Counter");
