@@ -556,3 +556,8 @@ I found nothing in lines 1-155 that needs an edit.
 - [low] [bug] A stored preedit is only dropped lazily on the next `sim_ime_*` call. If focus leaves widget A and returns to A with no IME event in between, the old composition reappears (lines 34-49) -> not fixed (the fix belongs in the focus-change code, outside this chunk; the backend should send an empty Preedit on focus loss)
 - [low] [bug] `ime_cursor_area` ignores the preedit text and any Text horizontal scroll, and measures the raw value even for masked Entries. This is documented as approximate -> not fixed (approximation by design)
 
+### src/tk/image.rs lines 1-147
+- [medium] [bug] `image_set_rgba` computes `w * h * 4` in `usize` without overflow checking (line 23). Large `w`/`h` can overflow on 32-bit targets, or on 64-bit with `w` and `h` near `u32::MAX`. That panics in debug builds and wraps in release, so a mismatched buffer could be accepted. -> fixed (checked multiplication)
+- [low] [bug] `image_set_fit` on an image with no source inserts a 1x1 transparent RGBA placeholder (lines 107-113). `image_natural_size` then reports `Some((1, 1))` for an image that is logically empty, and `image_clear` drops the stored fit. Fixing this needs an empty `ImageSource` variant or an `Option` source in `ImageData`, which lies outside this chunk. -> not fixed (needs a change outside this chunk)
+- [low] [api] The verbs are inconsistent: `image_load_png` and `image_set_svg` differ from the `image_set_*` pattern, and `load_svg` has no widget prefix. The latter is deliberate, since it registers a shared `ImageId` like `register_image_rgba`. -> not fixed (renaming is a breaking change with no functional bug)
+

@@ -180,3 +180,4 @@
 | 2026-10-20 09:07 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot3, PR #8] tri-state Checkbutton, 3 calls (itemized in PR #8) | — | — | 0.0125 | (BizyBot3 PR #8 DeepSeek 0.0125; Sol 0.00) |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/chart.rs:1-155 | 4610 (0 cached) | 1042 (633 reasoning) | 0.0196 | 3.0649 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/ime.rs:1-151 | 4615 (0 cached) | 2818 (1646 reasoning) | 0.0374 | 3.1023 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/image.rs:1-147 | 4496 (0 cached) | 1733 (1069 reasoning) | 0.0263 | 3.1286 |
