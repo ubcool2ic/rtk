@@ -64,8 +64,13 @@ impl Tk {
                 max_y = max_y.max(r.y + r.height);
             }
             self.damage.clear();
-            if min_x.is_finite() && min_y.is_finite() && max_x > min_x && max_y > min_y {
-                self.damage.push(Rect::new(min_x, min_y, max_x - min_x, max_y - min_y));
+            let w = max_x - min_x;
+            let h = max_y - min_y;
+            if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+                self.damage.push(Rect::new(min_x, min_y, w, h));
+            } else {
+                // Degenerate union: never drop damage, repaint everything.
+                self.dirty = true;
             }
             self.coalesced = true;
         }
@@ -211,6 +216,7 @@ impl Tk {
             self.frame = Some(pixmap);
             self.damage.clear();
             self.partial_dirty = false;
+            self.coalesced = false;
             return Ok(FrameDamage::Full);
         };
         let union = rects.iter().skip(1).fold(rects[0], |acc, r| {

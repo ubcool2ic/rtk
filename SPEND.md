@@ -195,3 +195,5 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tooltip.rs:1-37 | 2559 (0 cached) | 1440 (671 reasoning) | 0.0195 | 3.3522 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-widgets r0 | 21291 (640 cached) | 118 (0 reasoning) | 0.0017 | 0.2221 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-dnd r0 | 7699 (3072 cached) | 520 (0 reasoning) | 0.0007 | 0.2228 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r0 | 7167 (3072 cached) | 302 (0 reasoning) | 0.0005 | 0.2233 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-damage r1 | 7310 (7040 cached) | 299 (0 reasoning) | 0.0002 | 0.2235 |

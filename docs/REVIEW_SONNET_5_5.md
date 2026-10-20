@@ -639,3 +639,5 @@ The chunk has only type definitions and a struct, and I found nothing to fix in 
 
 - RECOVERED: src/tk/dnd.rs 1-202 edits re-applied. After the fix, a hover-only binding no longer swallows drops. tests/m012_dnd.rs expected the old behaviour, where `sim_file_drop` returned true on a hover-only target, so DeepSeek updated it to expect false and to check that the Drop phase still reaches the hover callback (recover-dnd). The lead reviewed this. It matches the intended semantics of the BizyBot5 hand fix flagged for review.
 
+- RECOVERED: src/tk/damage.rs 1-251. One SEARCH block was stale; DeepSeek re-targeted it (recover-damage r1). Result: degenerate coalesced damage now forces a full repaint instead of being silently dropped, and the scratch-failure fallback resets `coalesced`. This confirms the BizyBot6 coalesce hand fix otherwise never drops damage and stays bounded.
+
