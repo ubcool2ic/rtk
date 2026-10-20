@@ -12,7 +12,7 @@ use crate::layout::Rect;
 use crate::widgets::{Color, Kind};
 use crate::{RtkError, Tk, Var, WidgetId};
 
-/// Generational handle to a menu created with [`Tk::menu_create`].
+/// Opaque handle to a menu created with [`Tk::menu_create`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct MenuId(pub(crate) u32);
 
@@ -419,8 +419,18 @@ impl Tk {
         let Some(level) = level_in else {
             return true;
         };
-        // Close deeper levels than the one hovered.
-        if self.menus.open.len() > level + 1 {
+        // Close deeper levels than the one hovered, unless the pointer is on the
+        // item that owns the currently open deeper submenu.
+        let hover_sub = self.menu_item_at(level, x, y).and_then(|i| {
+            let m = self.menus.open[level].menu;
+            self.menus.get(m).and_then(|d| match d.items.get(i).filter(|it| it.is_enabled()) {
+                Some(MenuItem::Submenu { menu, .. }) => Some(*menu),
+                _ => None,
+            })
+        });
+        if self.menus.open.len() > level + 1
+            && self.menus.open.get(level + 1).map(|o| o.menu) != hover_sub
+        {
             self.menus.open.truncate(level + 1);
             self.dirty = true;
         }
@@ -520,6 +530,7 @@ impl Tk {
             Disabled,
         }
         let kind = match self.menus.get(menu).and_then(|m| m.items.get(index)) {
+            Some(item) if !item.is_enabled() => Kind2::Disabled,
             Some(MenuItem::Command { enabled, .. }) if *enabled => Kind2::Command,
             Some(MenuItem::Command { .. }) => Kind2::Disabled,
             Some(MenuItem::Check { var, .. }) => Kind2::Check(*var),
@@ -534,7 +545,7 @@ impl Tk {
                 if let Some(mut command) = command {
                     command(self);
                     if let Some(data) = self.menus.get_mut(menu) {
-                        data.commands.insert(index, command);
+                        data.commands.entry(index).or_insert(command);
                     }
                 }
             }
@@ -587,7 +598,7 @@ impl Tk {
             }
             crate::Key::Right => {
                 let submenu = current.and_then(|idx| {
-                    self.menus.get(menu).and_then(|m| match m.items.get(idx) {
+                    self.menus.get(menu).and_then(|m| match m.items.get(idx).filter(|it| it.is_enabled()) {
                         Some(MenuItem::Submenu { menu, .. }) => Some((idx, *menu)),
                         _ => None,
                     })

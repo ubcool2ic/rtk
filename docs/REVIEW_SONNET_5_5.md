@@ -243,3 +243,24 @@ I found nothing in lines 675-888 that needs fixing. The chunk holds the tail of 
 - [severity high] [bug] The vertical scrollbar drag has the same `clamp(16.0, bar_h)` panic when `bar_h < 16` (line 116) -> fixed
 - [severity low] [bug] `drag_text_selection` for `Kind::Text` always puts the cursor at the start of the dragged line and ignores the x column. This gives coarse selection but no panic or UTF-8 error, and a proper fix needs a per-line column hit-test, which is a larger change (lines 170-176) -> not fixed (behavioural limitation, not a crash; out of scope for minimal edits)
 
+### src/tk/menu.rs lines 693-698
+- none
+
+I reviewed only lines 693-698, which hold `Menubar::new`. It has a `///` doc comment and delegates to `tk.add(Kind::Menubar, parent, String::new())`, so parent validation and arena-full errors are handled in `Tk::add` and returned through `RtkError`. This chunk has no geometry, HiDPI scaling, UTF-8 handling, arithmetic, or state-reset logic. The constructor name `new` matches the other widgets' public constructors. I did not review the HiDPI clipping or the dialog-close fix, since they are outside this chunk.
+
+### src/tk/menu.rs lines 345-692
+- [severity medium] [bug] `menu_pointer_move` truncates deeper menu levels before checking whether the hovered item is the submenu that is already open. Every pointer move over a submenu item closed and reopened the submenu, which reset its highlight and caused redraw churn, and the `already` check could never be true (lines 422-426) -> fixed
+- [severity medium] [bug] `menu_activate` activated disabled Check and Submenu items on click, because only Command checked `enabled` (lines 522-529) -> fixed
+- [severity low] [bug] The Right key opened a disabled submenu when the highlight had been set by the mouse (lines 589-594) -> fixed
+- [severity low] [bug] After a command runs, `menu_activate` re-inserted it and overwrote any command the callback had installed at the same index (lines 536-538) -> fixed
+- [severity low] [bug] `menu_pointer_move` highlights separator rows. I did not change it because the separator and disabled-item drawing is outside this chunk -> not fixed
+- [severity low] [bug] The menu item geometry (`4.0 + idx * ih`) assumes every row has the same height. If `panel_height` gives separators a different height, hit-testing and submenu anchoring drift. That code is outside this chunk -> not fixed
+- [severity low] [bug] I could not check the 2x clipping from this chunk. The geometry here is all in logical px and consistent with `item_height(font_size)`. `panel_width`, `panel_height` and `clamp_menu_anchor` are outside the chunk and are the place to look -> not fixed
+
+### src/tk/menu.rs lines 1-344
+- [severity low] [docs] `MenuId` is described as "Generational", but it is a plain monotonically increasing `u32` with no generation counter (line 15) -> fixed
+- [severity low] [api] `bind_context_menu` breaks the `<widget>_<verb>` naming pattern; `menu_bind_context` would fit better (line 276) -> not fixed (a rename would break callers outside this chunk, and the rename belongs in a coordinated API change)
+- [severity low] [bug] `next_id` uses `saturating_add`, so at `u32::MAX` a new menu would overwrite the last one (line 190) -> not fixed (unreachable in practice)
+- [severity low] [api] `menu_add` returns the `usize::MAX` sentinel for an unknown menu instead of an `Option` (line 196) -> not fixed (changing the return type would break the public API)
+- [severity low] [bug] HiDPI menu geometry (`clamp_menu_anchor`, `panel_width`, `panel_height`, `menubar_open`, `menubar_hit`) -> not fixed. The anchors, widths and heights are all in logical px and the viewport is divided by `scale_factor` consistently, so I found no clipping bug in this chunk. If `viewport` turns out to be logical rather than physical, the division on lines 247-248 is the one to remove. The dialog-closing behaviour from PR #2 is not in this chunk.
+
