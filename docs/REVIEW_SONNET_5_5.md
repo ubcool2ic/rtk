@@ -974,3 +974,9 @@ I found nothing in lines 1-75 that needs a fix, though I could only check the fi
 - [severity medium] [bug] `load_svg_button_icon` never packs the frame or the button, so the render may not draw them. It also asserts only `pixmap.width() == 120`, which is trivially true, so the test would pass even if the icon never rendered (lines 73-78) -> fixed. The frame and button are now packed. The test renders before and after `Opt::Image` and asserts that the pixels differ, and it also asserts the height.
 - Other tests in the chunk (rgba validation, PNG load, SVG red square, invalid SVG, contain aspect, wrong-kind rejection) check meaningful behaviour. I found no flakiness, helper panics or wrong expectations in them.
 
+### tests/m012_tray.rs lines 1-146
+- [low] [docs] The doc comment on the nested `assert_error` helper was copy-pasted from `tray_event_traits` and describes the wrong thing (line 131) -> fixed
+- [low] [bug] `dispatch_without_handler_is_noop` installs a no-op handler, so it never exercises the "no handler" path. Its comment also claims it clears the handler, which it does not (lines 108-116). The public API has no clear function, so a truly empty state cannot be forced -> fixed (comment made accurate, no assertion weakened). The test still cannot prove the empty-handler path; a `tray::clear_handler_for_test` would be needed for that.
+- [low] [bug] The `validate_icon` tests do not cover the exact boundaries or huge-dimension overflow of `w*h*4`. This is only a coverage gap, and the signature of `validate_icon` is not visible here -> not fixed
+- [low] [bug] The `dispatch_*` tests rely on a thread-local handler (implied by the `Rc` captures). With `--test-threads=1`, handlers may leak between tests, but they are all overwritten or harmless -> not fixed (no flakiness in practice)
+

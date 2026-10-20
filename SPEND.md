@@ -264,3 +264,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_golden_charts.rs:1-75 | 3719 (0 cached) | 895 (470 reasoning) | 0.0164 | 5.1691 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_golden_image.rs:1-89 | 3847 (0 cached) | 1469 (951 reasoning) | 0.0224 | 5.1915 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_image.rs:1-113 | 4602 (0 cached) | 1633 (964 reasoning) | 0.0255 | 5.2171 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m012_tray.rs:1-146 | 4847 (0 cached) | 1789 (1028 reasoning) | 0.0276 | 5.2446 |
