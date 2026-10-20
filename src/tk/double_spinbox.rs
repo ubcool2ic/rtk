@@ -99,10 +99,30 @@ impl Tk {
             return false;
         }
         let Some(var) = node.progress_f64 else { return false };
+        if var.get(self).is_none() {
+            return false;
+        }
         let rounded = self.dspin_round(id, value);
         var.set(self, rounded);
+        if let Some(state) = self.dspin_state_mut(id) {
+            state.dspin_buffer = None;
+        }
         self.dirty = true;
         true
+    }
+
+    /// Returns the formatted value without the suffix, used to seed the edit buffer.
+    fn dspin_edit_seed(&self, id: WidgetId) -> String {
+        let text = self.dspin_text(id).unwrap_or_default();
+        let suffix = self
+            .node(id)
+            .and_then(|n| n.inputs.as_ref())
+            .map(|s| s.dspin_suffix.clone())
+            .unwrap_or_default();
+        match text.strip_suffix(suffix.as_str()) {
+            Some(stripped) => stripped.to_string(),
+            None => text,
+        }
     }
 
     /// Returns the formatted display text (value + suffix), or `None` if `id`
@@ -126,7 +146,11 @@ impl Tk {
         let clamped = if value.is_nan() { lo } else { value.clamp(lo, hi) };
         let decimals = node.inputs.as_ref().map_or(2u8, |s| s.dspin_decimals) as i32;
         let factor = 10f64.powi(decimals);
-        (clamped * factor).round() / factor
+        let scaled = (clamped * factor).round() / factor;
+        if !scaled.is_finite() {
+            return clamped;
+        }
+        if scaled == 0.0 { 0.0 } else { scaled }
     }
 
     /// Applies a user-driven value change: rounds, writes the variable and runs
@@ -139,7 +163,7 @@ impl Tk {
         let Some(var) = node.progress_f64 else { return };
         let rounded = self.dspin_round(id, value);
         let old = var.get(self).unwrap_or(node.range_f64.0);
-        if (old - rounded).abs() > f64::EPSILON {
+        if old.is_nan() || (old - rounded).abs() > f64::EPSILON {
             var.set(self, rounded);
             self.run_command(id);
         }
@@ -154,7 +178,11 @@ impl Tk {
         let step = node.inputs.as_ref().map_or(1.0, |s| s.dspin_step);
         let current = node.progress_f64.and_then(|v| v.get(self)).unwrap_or(node.range_f64.0);
         let next = current + f64::from(direction) * step;
+        if let Some(state) = self.dspin_state_mut(id) {
+            state.dspin_buffer = None;
+        }
         self.dspin_user_set(id, next);
+        self.dirty = true;
     }
 
     /// Handles a key press on a focused double spin box. Returns true if consumed.
@@ -183,7 +211,7 @@ impl Tk {
             .inputs
             .as_ref()
             .and_then(|s| s.dspin_buffer.clone())
-            .unwrap_or_else(|| self.dspin_text(id).unwrap_or_default());
+            .unwrap_or_else(|| self.dspin_edit_seed(id));
         for ch in text.chars() {
             if ch.is_ascii_digit() || ch == '.' || ch == ',' || ch == '-' {
                 buffer.push(ch);
@@ -205,7 +233,7 @@ impl Tk {
             .inputs
             .as_ref()
             .and_then(|s| s.dspin_buffer.clone())
-            .unwrap_or_else(|| self.dspin_text(id).unwrap_or_default());
+            .unwrap_or_else(|| self.dspin_edit_seed(id));
         buffer.pop();
         if let Some(state) = self.dspin_state_mut(id) {
             state.dspin_buffer = Some(buffer);

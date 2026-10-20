@@ -158,3 +158,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/edit.rs:1-310 | 7268 (0 cached) | 3921 (2203 reasoning) | 0.0537 | 2.3305 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/a11y.rs:1-297 | 6835 (0 cached) | 2511 (1790 reasoning) | 0.0388 | 2.3692 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/tree.rs:1-296 | 6721 (0 cached) | 2489 (1943 reasoning) | 0.0383 | 2.4076 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/double_spinbox.rs:1-287 | 7609 (0 cached) | 4194 (2641 reasoning) | 0.0572 | 2.4647 |

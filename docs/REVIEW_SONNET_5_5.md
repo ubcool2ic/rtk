@@ -419,3 +419,10 @@ I found nothing in lines 1-318 that needs a fix:
 - [low] [bug] `config(Opt::Disabled(true))` leaves `hovered` and `pressed` pointing at the now-disabled widget (line 178) -> not fixed (the event code that reads those fields is outside this chunk, so I can't tell whether it is a real problem)
 - [low] [api] `set_command` and `set_selected` do not follow the `<widget>_<verb>` pattern (lines 207, 274) -> not fixed (renaming public API is a larger change than a minimal edit, and both are documented and consistent with each other)
 
+### src/tk/double_spinbox.rs lines 1-287
+- [medium] [bug] `dspin_type`/`dspin_backspace` seeded the edit buffer from the formatted text including the suffix. Typing after the seed gave e.g. "1.50 V5", which fails to parse and silently reverts on Enter. Backspace ate the suffix first. (lines 182-186, 204-208) -> fixed (seed now excludes the suffix)
+- [medium] [bug] Stepping with Up/Down/wheel left a stale edit buffer in place, so the display kept showing the old typed text instead of the new value. (line 149) -> fixed (`dspin_step` clears the buffer)
+- [medium] [bug] `dspin_set` documents returning false for dead variables but always returned true. It also left a stale edit buffer showing. (lines 96-106) -> fixed
+- [low] [bug] `dspin_round` overflowed to infinity for huge ranges (`clamped * 10^decimals`). It could also yield `-0.0`, which displays as "-0.00". (lines 126-129) -> fixed
+- [low] [bug] `dspin_user_set` never wrote the variable when its current value was NaN and the target equalled the lower bound, because `NaN.abs() > EPS` is false. (line 142) -> fixed
+
