@@ -724,3 +724,24 @@ I found nothing in lines 1-50 to fix. I could only check this chunk against `lib
 - **Grid layout:** the grid options are consistent. The submit button spans both columns with the default column 0, and column 1 is made expandable so the entries stretch.
 - **Doc comments:** the module and `main` doc comments match what the code does.
 
+### examples/gallery.rs lines 637-800
+- [medium] [bug] `--screenshot-dir` given without a value is silently ignored, so the interactive window opens instead of rendering screenshots (lines 761-765) -> fixed (now returns an error)
+- [medium] [bug] Semantic-colour swatches and the label text colour are fixed at build time (lines 644-653). `tokens` is a snapshot, and the label colour is hard-coded `rgb(25,25,25)`. After a theme switch, including the dark-theme screenshots, the swatches still show the Light colours and the labels may be unreadable on a dark canvas. -> not fixed (the canvas items have no re-theme hook visible in this chunk, and the `ColorRole` names for a themed text colour are not shown; this needs a rebuild-on-theme-change callback)
+- [low] [bug] The canvas height is hard-coded to 600 (line 646) while the swatch rows are generated from `ColorRole::ALL` at 26px each. If the role count grows past about 22, rows are clipped. -> not fixed (the window is only 760px tall, so the canvas cannot simply be sized to the role count)
+- [low] [docs] `iconphoto_rgba` errors are discarded with `let _` (line 778). -> not fixed (the icon is cosmetic and failure on some platforms is acceptable)
+- [low] [docs] The `_unused` and `_grid_defaults` placeholder functions exist only to silence warnings (lines 787-799). -> not fixed (they are harmless, documented, and a refactor is out of scope)
+
+### examples/gallery.rs lines 310-636
+- [medium] [bug] `tree_insert(...).expect("root"/"child")` panics on a fallible path in an example users copy (lines 481, 483) -> fixed (propagates an error through the function's `Result` return instead of panicking)
+- [low] [bug] `chart_add_series(...).unwrap_or(0/1)` silently falls back to a series index that may not exist, so data would go to the wrong series or be dropped (lines 546, 547, 576, 588) -> fixed (propagates an error instead)
+- [low] [docs] "Open"/"Quit" menu items show `Ctrl+O`/`Ctrl+Q` accelerators. These are display-only unless a shortcut is registered elsewhere, which this chunk cannot show -> not fixed (cannot verify from this chunk)
+- [low] [bug] `tick * 60` in the timer callback could overflow after a `wrapping_add` -> not fixed (unreachable in practice: it would take about 2^64/60 ticks at 500 ms each)
+
+I assumed `tree_insert` and `chart_add_series` return `Option`, based on how the existing code uses them. If either returns `Result`, the `ok_or` edits will not compile.
+
+### examples/gallery.rs lines 1-309
+- [medium] [bug] The "row" frame packs Normal/Accent/Disabled with the default side (Top), so the buttons stack vertically instead of sitting in one row (lines 231, 240, 244) -> fixed
+- [medium] [bug] The listbox and its scrollbar are packed in `list_row` with the default side, so the vertical scrollbar lands below the listbox instead of beside it (lines 287, 292) -> fixed. This assumes `Fill::Y` exists alongside `Fill::X` and `Fill::Both`.
+- [low] [bug] The canvas text uses a hard-coded near-black colour (line 306), which may be unreadable on dark themes -> not fixed. The palette's text-colour field isn't visible in this chunk, so a safe replacement can't be written. It is also a deliberate Okabe-Ito-style fixed colour demo.
+- NOTE: edits for examples/gallery.rs:1-309 were REVERTED (checks failed or SEARCH mismatch): '[clippy failed]\nerror: using `clone` on type `PackOpts` which implements the `Copy` trait\n   --> examples/gallery.rs:236:21\n    |\n236 |     tk.pack(normal, row_opts.clone());\n    |                     ^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `row_opts`\n    |\n    = help: for further info'
+
