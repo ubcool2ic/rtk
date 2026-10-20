@@ -118,3 +118,8 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/inputs.rs:338-567 | 6485 (0 cached) | 4315 (2526 reasoning) | 0.0561 | 0.8645 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/inputs.rs:1-337 | 8202 (0 cached) | 6464 (3789 reasoning) | 0.0810 | 0.9455 |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-style-1300 r0 | 23766 (0 cached) | 433 (0 reasoning) | 0.0019 | 0.2138 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-data r0 | 12207 (0 cached) | 627 (0 reasoning) | 0.0012 | 0.2149 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-data r1 | 12782 (0 cached) | 1398 (0 reasoning) | 0.0016 | 0.2165 |
+| 2026-10-20 | openai/gpt-6.1-sol | recover-data r2 [Sol fix] | 13992 (0 cached) | 1347 (1262 reasoning) | 0.0484 | 1.0336 |
+| 2026-10-20 | openai/gpt-6.1-sol | recover-data r3 [Sol fix] | 14029 (0 cached) | 1975 (1873 reasoning) | 0.0548 | 1.0885 |
+| hand glue | lead | Sonnet recovery of src/render/data.rs: removed dead TreeSnapshot.top field + initializer (clippy dead_code); re-blessed m011_menu 2x goldens after visual check (old goldens had a clipped 2x menu) | $0 |

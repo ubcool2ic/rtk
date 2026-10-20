@@ -119,8 +119,6 @@ impl TableSnapshot {
 struct TreeSnapshot {
     /// Selected node key.
     selected: Option<usize>,
-    /// Display row shown at the top of the body.
-    top: usize,
     /// Visible rows as `(key, depth, text, has_children, open)` for the window.
     visible_rows: Vec<(usize, usize, String, bool, bool)>,
 }
@@ -151,7 +149,6 @@ impl TreeSnapshot {
         }
         Some(Self {
             selected: state.selected,
-            top,
             visible_rows,
         })
     }
@@ -294,7 +291,7 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
     let style = tk.resolved_style(tk.root()).unwrap_or_default();
     let font_size = style.font_size;
     let ih = crate::tk::menu::item_height(font_size);
-    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32 / scale, pixmap.height() as f32 / scale);
+    let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32, pixmap.height() as f32);
 
     for level in 0..levels {
         let Some(rect) = tk.menu_panel_rect(level) else { continue };
@@ -421,7 +418,7 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
     }
 }
 
-/// Draws a small disclosure triangle with its apex at `(cx, cy)`.
+/// Draws a small disclosure triangle centred on `(cx, cy)`.
 fn tree_triangle(pixmap: &mut Pixmap, cx: f32, cy: f32, half: f32, open: bool, color: crate::Color) {
     let mut pb = PathBuilder::new();
     if open {
@@ -475,9 +472,8 @@ pub(crate) fn draw_tree(
     let opacity = resolved.opacity;
 
     // Body rows (virtualized; only the snapshot window is drawn).
-    for (key, depth, text, has_children, open) in &snap.visible_rows {
-        let display = snap.top + snap.visible_rows.iter().position(|r| r.0 == *key).unwrap_or(0);
-        let row_y = logical.y + (display - snap.top) as f32 * rh;
+    for (row_idx, (key, depth, text, has_children, open)) in snap.visible_rows.iter().enumerate() {
+        let row_y = logical.y + row_idx as f32 * rh;
         let row_rect = Rect::new(logical.x, row_y, logical.width, rh);
         let row_clip = clip.intersection(row_rect.scaled(scale));
         if row_clip.width <= 0.0 || row_clip.height <= 0.0 {
@@ -511,6 +507,8 @@ pub(crate) fn draw_tree(
             opacity,
         );
     }
+
+
 
     // Outer border.
     let border = palette.border;
@@ -590,7 +588,14 @@ pub(crate) fn draw_table(
                 if sort_col == col {
                     let cx = (cur_x + w - 10.0) * scale;
                     let cy = (logical.y + hh / 2.0) * scale;
-                    triangle(pixmap, cx, cy, 4.0 * scale, asc, palette.fg);
+                    let r = 4.0 * scale;
+                    if cx - r >= cell_clip.x
+                        && cx + r <= cell_clip.x + cell_clip.width
+                        && cy - r >= cell_clip.y
+                        && cy + r <= cell_clip.y + cell_clip.height
+                    {
+                        triangle(pixmap, cx, cy, r, asc, palette.fg);
+                    }
                 }
             }
         }

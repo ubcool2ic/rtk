@@ -171,3 +171,5 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 
 - RECOVERED: src/render/inputs.rs 338-567 edits re-applied; they had only failed because they used `clip_mask` from the not-yet-reviewed chunk above. Green with no extra calls.
 
+- RECOVERED: src/render/data.rs 287-670 edits re-applied from the saved Sonnet replies, plus DeepSeek recover-data round 0 (build fix). Later DeepSeek and Sol rounds chased a golden "failure" that was a genuine fix and were discarded. **Bug found:** menus and toasts at 2x were clipped or missing (the old 2x goldens were wrong). The m011_menu_*_2x and m011_toast_*_2x goldens were re-blessed and checked visually. Hand glue: removed the now-dead `TreeSnapshot.top` field (clippy dead_code).
+
