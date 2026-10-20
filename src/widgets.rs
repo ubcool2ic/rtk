@@ -159,6 +159,10 @@ pub type CanvasDragCallback = Box<dyn FnMut(&mut Tk, f32, f32, DragPhase)>;
 pub type ListSelectCallback = Box<dyn FnMut(&mut Tk, Option<usize>)>;
 /// Boxed Notebook tab-change callback: `(tk, selected_index)`.
 pub type NotebookChangedCallback = Box<dyn FnMut(&mut Tk, usize)>;
+/// Boxed Combobox selection callback: `(tk, index, text)`.
+pub type ComboSelectCallback = Box<dyn FnMut(&mut Tk, usize, &str)>;
+/// Boxed editable Combobox text-change callback: `(tk, text)`.
+pub type ComboTextCallback = Box<dyn FnMut(&mut Tk, &str)>;
 
 /// Configuration options accepted by `Tk::config` (tkinter `widget.config(...)`).
 pub enum Opt {
@@ -467,6 +471,39 @@ impl Combobox {
 }
 
 #[allow(clippy::new_ret_no_self)]
+impl Combobox {
+    /// Creates an editable drop-down over `values`; `var` holds the selected
+    /// index (`-1` when the free text matches no value).
+    ///
+    /// The initial text is `values[var]` when `var` is a valid index, else empty.
+    pub fn editable(
+        tk: &mut Tk,
+        parent: WidgetId,
+        values: Vec<String>,
+        var: Var<i64>,
+    ) -> Result<WidgetId, RtkError> {
+        if var.get(tk).is_none() {
+            return Err(RtkError::InvalidVariable);
+        }
+        let id = tk.add(Kind::Combobox, parent, String::new())?;
+        let initial = var
+            .get(tk)
+            .and_then(|idx| usize::try_from(idx).ok())
+            .and_then(|idx| values.get(idx).cloned())
+            .unwrap_or_default();
+        if let Some(node) = tk.node_mut(id) {
+            node.combo_values = values;
+            node.combo_var = Some(var);
+            node.combo_editable = true;
+            node.text = initial.clone();
+            node.cursor = initial.len();
+        }
+        tk.combo_recompute_filter(id);
+        Ok(id)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
 impl Notebook {
     /// Creates an empty tabbed container; add pages with the notebook APIs on `Tk`.
     pub fn new(tk: &mut Tk, parent: WidgetId) -> Result<WidgetId, RtkError> {
@@ -702,6 +739,16 @@ pub(crate) struct WidgetNode {
     pub combo_values: Vec<String>,
     pub combo_var: Option<Var<i64>>,
     pub combo_open: bool,
+    /// True when the combobox accepts free text (filter-as-you-type).
+    pub combo_editable: bool,
+    /// Indices into `combo_values` currently shown in the dropdown.
+    pub combo_filtered: Vec<usize>,
+    /// Position within `combo_filtered` of the highlighted dropdown row.
+    pub combo_highlight: Option<usize>,
+    /// Callback fired when the user picks a value.
+    pub combo_on_select: Option<ComboSelectCallback>,
+    /// Callback fired after every user edit of an editable combobox's text.
+    pub combo_on_text: Option<ComboTextCallback>,
     // Notebook
     pub notebook_pages: Vec<(WidgetId, String)>,
     pub notebook_selected: usize,
@@ -820,6 +867,11 @@ impl WidgetNode {
             combo_values: Vec::new(),
             combo_var: None,
             combo_open: false,
+            combo_editable: false,
+            combo_filtered: Vec::new(),
+            combo_highlight: None,
+            combo_on_select: None,
+            combo_on_text: None,
             notebook_pages: Vec::new(),
             notebook_selected: 0,
             notebook_changed_cb: None,

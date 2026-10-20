@@ -57,10 +57,14 @@ impl Tk {
         self.ensure_layout();
         self.mods = mods;
 
-        // (a) Text-editing chords are handled by the focused Entry/Text widget.
+        // (a) Text-editing chords are handled by the focused Entry/Text widget
+        // (or an editable Combobox, which behaves like an Entry).
         if self.is_text_editing_chord(key, mods) {
             if let Some(id) = self.focused {
-                if self.node(id).is_some_and(|n| matches!(n.kind, Kind::Entry | Kind::Text)) {
+                if self.node(id).is_some_and(|n| {
+                    matches!(n.kind, Kind::Entry | Kind::Text)
+                        || (n.kind == Kind::Combobox && n.combo_editable)
+                }) {
                     self.handle_edit_chord(id, key, mods);
                     return;
                 }

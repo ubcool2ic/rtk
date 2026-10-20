@@ -51,9 +51,10 @@ pub use tk::double_spinbox::DoubleSpinbox;
 pub use tk::scroll_area::ScrollArea;
 pub use var::Var;
 pub use widgets::{
-    Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, Combobox, Command,
-    Compound, DragPhase, Entry, Frame, Image, Label, Listbox, Notebook, Opt, ProgressBar,
-    Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Table, Text, Theme, TreeView, WidgetId,
+    Button, Canvas, CanvasDragCallback, CanvasItem, Chart, Checkbutton, Color, ComboSelectCallback,
+    ComboTextCallback, Combobox, Command, Compound, DragPhase, Entry, Frame, Image, Label, Listbox,
+    Notebook, Opt, ProgressBar, Radiobutton, Scale, Scrollbar, Sparkline, Spinbox, Table, Text,
+    Theme, TreeView, WidgetId,
 };
 
 /// Errors from widget construction and headless image allocation.

@@ -643,17 +643,84 @@ impl Tk {
                 }
                 Kind::Combobox => {
                     let inner = Rect::new(logical.x, logical.y, (logical.width - 24.0).max(0.0), logical.height);
-                    let cur_str = self.combobox_get(id).map(|(_, s)| s).unwrap_or_default();
+                    let editable = node.combo_editable;
+                    let cur_str = if editable {
+                        node.text.clone()
+                    } else {
+                        self.combobox_get(id).map(|(_, s)| s).unwrap_or_default()
+                    };
                     let origin = (
                         (inner.x + 6.0) * scale,
                         (inner.y + (inner.height - resolved.font_size * 1.3) / 2.0) * scale,
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
-                    self.text_engine.draw_styled(
-                        pixmap, &cur_str, (resolved.font_size * scale, draw_fg),
-                        resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
-                        origin, text_clip, resolved.opacity,
-                    );
+                    if editable {
+                        let text = cur_str.clone();
+                        let cursor = cursor_boundary(&text, node.cursor);
+                        let old_scroll_x = node.scroll_x;
+                        let caret = self.measure_with(text.get(..cursor).unwrap_or_default(), &resolved).width;
+                        let available = (inner.width - 1.0).max(0.0);
+                        let mut scroll = old_scroll_x.max(0.0);
+                        if caret < scroll {
+                            scroll = caret;
+                        } else if caret > scroll + available {
+                            scroll = caret - available;
+                        }
+                        let total = self.measure_with(&text, &resolved).width;
+                        scroll = scroll.min((total - available).max(0.0));
+                        if let Some(node) = self.node_mut(id) {
+                            node.scroll_x = scroll;
+                            node.cursor = cursor;
+                        }
+                        let text_origin = (
+                            (inner.x - scroll + 6.0) * scale,
+                            origin.1,
+                        );
+                        let selection = self.selection_of(id);
+                        if let Some((sel_start, sel_end)) = selection {
+                            let focused = self.focused == Some(id);
+                            let (sel_bg, _) = selection_colors(&self.style_engine.tokens().palette, focused);
+                            let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                            let x1 = self.measure_with(text.get(..sel_end).unwrap_or_default(), &resolved).width;
+                            let sel_rect = Rect::new(
+                                inner.x - scroll + 6.0 + x0,
+                                inner.y,
+                                (x1 - x0).max(1.0),
+                                inner.height,
+                            );
+                            fill(pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
+                        }
+                        self.text_engine.draw_styled(
+                            pixmap, &text, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            text_origin, text_clip, resolved.opacity,
+                        );
+                        if let Some((sel_start, sel_end)) = selection {
+                            let focused = self.focused == Some(id);
+                            let (_, sel_fg) = selection_colors(&self.style_engine.tokens().palette, focused);
+                            let x0 = self.measure_with(text.get(..sel_start).unwrap_or_default(), &resolved).width;
+                            let sel_text = text.get(sel_start..sel_end).unwrap_or_default();
+                            self.text_engine.draw_styled(
+                                pixmap, sel_text, (resolved.font_size * scale, sel_fg),
+                                resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                                ((inner.x - scroll + 6.0 + x0) * scale, origin.1),
+                                text_clip, resolved.opacity,
+                            );
+                        }
+                        if self.focused == Some(id) && !disabled {
+                            fill(
+                                pixmap,
+                                Rect::new(inner.x - scroll + 6.0 + caret, inner.y, 1.0, inner.height).scaled(scale),
+                                text_clip, draw_fg,
+                            );
+                        }
+                    } else {
+                        self.text_engine.draw_styled(
+                            pixmap, &cur_str, (resolved.font_size * scale, draw_fg),
+                            resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
+                            origin, text_clip, resolved.opacity,
+                        );
+                    }
 
                     let arrow_rect = Rect::new(logical.x + logical.width - 22.0, logical.y, 22.0, logical.height).scaled(scale);
                     let arrow_text = "▼";
@@ -1308,35 +1375,61 @@ impl Tk {
         }
 
         if let Some(combo_id) = self.open_combobox {
-            if let Some(cnode) = self.node(combo_id).map(|n| (n.rect, n.combo_values.clone(), n.combo_var)) {
-                // Owned snapshot: (rect, values, var) so drawing can borrow self mutably.
-                struct Snap { rect: Rect, combo_values: Vec<String>, combo_var: Option<Var<i64>> }
-                let cnode = Snap { rect: cnode.0, combo_values: cnode.1, combo_var: cnode.2 };
+            let rows = self.combo_rows(combo_id);
+            if let Some(cnode) = self.node(combo_id).map(|n| {
+                (n.rect, n.combo_values.clone(), n.combo_var, n.combo_editable, n.combo_highlight)
+            }).filter(|snap| !(snap.3 && rows.is_empty())) {
+                // (An editable combobox with no matching rows draws no popup.)
+                // Owned snapshot so drawing can borrow self mutably.
+                struct Snap {
+                    rect: Rect,
+                    combo_values: Vec<String>,
+                    combo_var: Option<Var<i64>>,
+                    editable: bool,
+                    highlight: Option<usize>,
+                }
+                let cnode = Snap {
+                    rect: cnode.0,
+                    combo_values: cnode.1,
+                    combo_var: cnode.2,
+                    editable: cnode.3,
+                    highlight: cnode.4,
+                };
                 let _ = &cnode;
                 let resolved = self.resolved_style(combo_id).unwrap_or_default();
                 let item_h = (resolved.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (cnode.combo_values.len() as f32 * item_h).min(240.0).max(item_h);
+                let drop_h = (rows.len() as f32 * item_h).min(240.0).max(item_h);
                 let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
                 let drop_clip = Rect::new(0.0, 0.0, width as f32, height as f32);
 
-                let bg_col = if dark_mode { Color::rgb(40, 40, 40) } else { Color::WHITE };
+                // High contrast uses its black field colour so the white row text stays readable.
+                let bg_col = if high_contrast {
+                    self.style_engine.tokens().palette.field_bg
+                } else if dark_mode { Color::rgb(40, 40, 40) } else { Color::WHITE };
                 fill(pixmap, drop_rect.scaled(scale), drop_clip, bg_col);
                 outline(pixmap, drop_rect.scaled(scale), drop_clip, scale, (resolved.border_color, resolved.border_color));
 
                 let sel_idx = cnode.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let (px, py) = self.pointer;
 
-                for (idx, val) in cnode.combo_values.iter().enumerate() {
-                    let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + idx as f32 * item_h, drop_rect.width - 2.0, item_h);
+                for (pos, &idx) in rows.iter().enumerate() {
+                    let Some(val) = cnode.combo_values.get(idx) else { continue };
+                    let row_rect = Rect::new(drop_rect.x + 1.0, drop_rect.y + 1.0 + pos as f32 * item_h, drop_rect.width - 2.0, item_h);
                     if row_rect.y >= drop_rect.y + drop_rect.height - 1.0 {
                         // Remaining rows would fall outside the popup box.
                         break;
                     }
                     let is_hovered = row_rect.contains(px, py);
-                    let is_sel = idx as i64 == sel_idx;
+                    let is_sel = if cnode.editable {
+                        cnode.highlight == Some(pos)
+                    } else {
+                        idx as i64 == sel_idx
+                    };
 
                     if is_hovered || is_sel {
-                        let hl = if is_hovered {
+                        let hl = if is_hovered && high_contrast {
+                            self.style_engine.tokens().palette.selection_bg
+                        } else if is_hovered {
                             if dark_mode { Color::rgb(60, 60, 60) } else { Color::rgb(230, 230, 230) }
                         } else {
                             self.style_engine.tokens().palette.select_bg
@@ -1344,7 +1437,7 @@ impl Tk {
                         fill(pixmap, row_rect.scaled(scale), drop_clip, hl);
                     }
 
-                    let fg_col = if is_sel && !is_hovered {
+                    let fg_col = if (is_sel && !is_hovered) || (is_hovered && high_contrast) {
                         self.style_engine.tokens().palette.select_fg
                     } else {
                         resolved.fg
