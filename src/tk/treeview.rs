@@ -109,6 +109,22 @@ impl TreeState {
         self.dirty = false;
     }
 
+    /// Rebuilds `visible` if it is dirty *or* if the cached list is empty while
+    /// the tree still holds live nodes.
+    ///
+    /// The second condition guards against a stale cache: a tree built while
+    /// its page is hidden may have had `dirty` cleared by an early layout pass
+    /// before any node existed, leaving `visible` empty even though nodes were
+    /// inserted afterwards. Rebuilding whenever the cache is empty but nodes
+    /// exist is cheap (it only happens once) and makes rendering robust.
+    pub(crate) fn ensure_visible_robust(&mut self) {
+        let has_nodes = self.nodes.iter().any(|slot| slot.is_some());
+        if self.visible.is_empty() && has_nodes {
+            self.dirty = true;
+        }
+        self.ensure_visible();
+    }
+
     /// Appends `key` and (if open) its descendants to `visible`.
     fn push_visible(&mut self, key: usize, depth: usize) {
         let Some(node) = self.get(key) else { return };
@@ -163,13 +179,22 @@ impl Tk {
     }
 
     /// Number of fully visible body rows for the current widget rect.
+    ///
+    /// Falls back to the requested height when the widget has not been laid
+    /// out yet (e.g. it lives on a notebook page that is not selected), so
+    /// callers never see a bogus zero row count.
     pub(crate) fn tree_visible_rows(&self, id: WidgetId) -> usize {
         let Some(node) = self.node(id) else { return 0 };
         let row_h = self.tree_row_height_for(id);
         if row_h <= 0.0 {
             return 0;
         }
-        (node.rect.height / row_h).floor() as usize
+        let height = if node.rect.height > 0.0 {
+            node.rect.height
+        } else {
+            node.requested.height
+        };
+        (height / row_h).floor() as usize
     }
 
     /// Clamps `top` so the view stays within the visible row count.
@@ -373,14 +398,14 @@ impl Tk {
     /// Number of rows currently shown (respecting open state).
     pub fn tree_visible_count(&mut self, id: WidgetId) -> usize {
         let Some(state) = self.tree_state_mut(id) else { return 0 };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         state.visible.len()
     }
 
     /// Display row currently shown at the top of the body.
     pub fn tree_first_visible(&mut self, id: WidgetId) -> usize {
         let Some(state) = self.tree_state_mut(id) else { return 0 };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         state.top
     }
 
@@ -389,7 +414,7 @@ impl Tk {
         self.ensure_layout();
         let visible = self.tree_visible_rows(id).max(1);
         let Some(state) = self.tree_state_mut(id) else { return false };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         let Some(display) = state.display_of(key) else { return false };
         let top = state.top;
         let new_top = if display < top {
@@ -436,7 +461,7 @@ impl Tk {
             return false;
         }
         let Some(state) = self.tree_state_mut(id) else { return false };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         let top = state.top;
         let display = top + (y / row_h).floor().max(0.0) as usize;
         let Some(&(key, depth)) = state.visible.get(display) else { return true };
@@ -459,7 +484,7 @@ impl Tk {
     /// Scrolls the tree by `lines` rows (positive scrolls down).
     pub(crate) fn tree_scroll(&mut self, id: WidgetId, lines: f32) {
         let Some(state) = self.tree_state_mut(id) else { return };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         let delta = lines.round() as i64;
         let new_top = (state.top as i64 + delta).max(0) as usize;
         state.top = new_top;
@@ -471,7 +496,7 @@ impl Tk {
     pub(crate) fn tree_key(&mut self, id: WidgetId, key: Key) -> bool {
         let visible = self.tree_visible_rows(id).max(1);
         let Some(state) = self.tree_state_mut(id) else { return false };
-        state.ensure_visible();
+        state.ensure_visible_robust();
         let total = state.visible.len();
         if total == 0 {
             return false;

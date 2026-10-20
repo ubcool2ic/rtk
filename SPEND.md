@@ -73,3 +73,12 @@
 | 2026-10-20 | (no model) | fix010-visual: the driver wrongly refused DeepSeek's round-1 rewrite of its own new test file (overwrite guard bug), so the two Sol rounds lacked context. I applied the refused DeepSeek output from the log and fixed the guard. ScrollArea got one DeepSeek self-fix, then Sol fixed it | — | — | 0 | — |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot4, PR #7] 0.11 table, tree, menus, toasts, modal stack (itemized in PR #7) | — | — | 0.1011 | (BizyBot4 DeepSeek 0.1011; Sol 0.00) |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | docs-c r0 | 38532 (0 cached) | 1244 (0 reasoning) | 0.0033 | 0.1326 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery r0 | 89053 (256 cached) | 60000 (0 reasoning) | 0.0362 | 0.1688 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery2 r0 | 23380 (3072 cached) | 7856 (0 reasoning) | 0.0054 | 0.1742 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery2 r1 | 23864 (23040 cached) | 168 (0 reasoning) | 0.0003 | 0.1745 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery-fix r0 | 25666 (2560 cached) | 8738 (0 reasoning) | 0.0060 | 0.1805 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery-fix r1 | 27147 (256 cached) | 474 (0 reasoning) | 0.0021 | 0.1826 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery-fix2 r0 | 37048 (256 cached) | 5799 (0 reasoning) | 0.0055 | 0.1881 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery-fix2 r1 | 37716 (3328 cached) | 110 (0 reasoning) | 0.0025 | 0.1906 |
+| 2026-10-20 | openai/gpt-6.1-sol | gallery-fix2 r2 [Sol fix] | 35119 (0 cached) | 1164 (908 reasoning) | 0.0994 | 0.8936 |
+| 2026-10-20 | openai/gpt-6.1-sol | gallery-fix2 r3 [Sol fix] | 34986 (0 cached) | 418 (200 reasoning) | 0.0916 | 0.9852 |

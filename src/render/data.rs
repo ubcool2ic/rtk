@@ -127,12 +127,20 @@ struct TreeSnapshot {
 
 impl TreeSnapshot {
     /// Builds a snapshot from the tree state of `id`, or `None` if `id` is not a TreeView.
+    ///
+    /// The flattened visible list is rebuilt first when it is stale or empty
+    /// while nodes exist, so a tree that was populated while its page was
+    /// hidden still renders its rows on the first visible frame.
     fn capture(tk: &mut Tk, id: crate::WidgetId, visible: usize) -> Option<Self> {
-        let node = tk.node(id)?;
-        if node.kind != Kind::TreeView {
-            return None;
+        {
+            let node = tk.node(id)?;
+            if node.kind != Kind::TreeView {
+                return None;
+            }
+            node.tree.as_deref()?;
         }
-        let state = node.tree.as_deref()?;
+        let state = tk.tree_state_mut(id)?;
+        state.ensure_visible_robust();
         let top = state.top;
         let end = (top + visible + 1).min(state.visible.len());
         let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
@@ -453,7 +461,14 @@ pub(crate) fn draw_tree(
         return;
     }
 
-    let visible = (logical.height / rh).floor().max(0.0) as usize;
+    // When the widget has no laid-out height yet (hidden page), fall back to
+    // the requested height so the first visible frame still draws rows.
+    let height = if logical.height > 0.0 {
+        logical.height
+    } else {
+        tk.node(id).map(|n| n.requested.height).unwrap_or(0.0)
+    };
+    let visible = (height / rh).floor().max(0.0) as usize;
     let Some(snap) = TreeSnapshot::capture(tk, id, visible) else { return };
 
     let palette = tk.style_engine.tokens().palette;
