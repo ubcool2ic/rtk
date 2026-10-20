@@ -8,7 +8,7 @@
 
 use rtk::dialog;
 use rtk::testing::compare_pixmaps;
-use rtk::{Color, Tk};
+use rtk::Tk;
 
 /// Opens a message box on a fresh toolkit and lays it out at `w`x`h`.
 ///
@@ -58,10 +58,9 @@ fn scrim_covers_window_from_origin() {
 
 /// The card centred inside the scrim must be horizontally and vertically centred.
 ///
-/// The card is the first child of the scrim; we locate it by scanning the
-/// scrim's laid-out children through the public geometry API. Since the card
-/// is the only child placed at the centre, we verify centring by rendering and
-/// checking that the darkened scrim is symmetric around the window centre.
+/// The scrim must be centred on the window, and the rendered card (found by
+/// scanning the centre row and column for pixels that differ from the plain
+/// scrim-darkened background) must be centred within a small tolerance.
 #[test]
 fn card_is_centred_in_window() {
     let mut tk = open_message_box(640, 480);
@@ -101,6 +100,26 @@ fn card_is_centred_in_window() {
     assert_eq!(
         sums[0], sums[2],
         "top-left and bottom-left scrim corners should match"
+    );
+
+    // Locate the card's extents along the centre row/column.
+    let px_at = |x: u32, y: u32| -> [u8; 4] {
+        let i = ((y * 640 + x) * 4) as usize;
+        pixmap.data()[i..i + 4].try_into().unwrap()
+    };
+    let bg = px_at(0, 0);
+    let xs: Vec<u32> = (0..640).filter(|&x| px_at(x, 240) != bg).collect();
+    let ys: Vec<u32> = (0..480).filter(|&y| px_at(320, y) != bg).collect();
+    assert!(!xs.is_empty() && !ys.is_empty(), "card should be rendered");
+    let card_cx = (xs[0] + *xs.last().unwrap()) as f32 / 2.0 + 0.5;
+    let card_cy = (ys[0] + *ys.last().unwrap()) as f32 / 2.0 + 0.5;
+    assert!(
+        (card_cx - 320.0).abs() <= 4.0,
+        "card should be horizontally centred, centre x = {card_cx}"
+    );
+    assert!(
+        (card_cy - 240.0).abs() <= 8.0,
+        "card should be vertically centred, centre y = {card_cy}"
     );
 }
 
@@ -187,7 +206,4 @@ fn scrim_style_is_translucent_black() {
         (dr - dg).abs() <= 8 && (dg - db).abs() <= 8,
         "scrim should darken channels roughly equally (black overlay): {dr},{dg},{db}"
     );
-
-    // Keep the Color import meaningful for downstream readers of this test.
-    let _ = Color::BLACK;
 }

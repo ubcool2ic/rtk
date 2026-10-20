@@ -833,3 +833,10 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [bug] Pixel coordinates in both tests come from `widget_rect`, which is called before any render. If layout runs lazily it could be stale, but the canvas fills the whole window, so I did not change this -> not fixed
 - [severity low] [bug] The `h_big > 28.0` assertion depends on the font's line height being at least the font size. That is true for normal fonts and I left it as is -> not fixed
 
+### tests/dialog_anchor.rs lines 1-194
+- [medium] [bug] `card_is_centred_in_window` never checks the card. It only compares the four window corners, which the scrim darkens identically even if the card is off-centre, so the test passes whatever the card position. I added a check that measures the card's horizontal and vertical extents in the rendered frame and requires their centre to be near the window centre. The vertical tolerance is wider to allow for a shadow offset. I could not run this, so the tolerances are unverified. -> fixed
+- [low] [docs] The doc comment on `card_is_centred_in_window` (line 61) says the card is found by scanning the scrim's children through the geometry API, which the test does not do. -> fixed
+- [low] [bug] The `let _ = Color::BLACK;` line and the `Color` import (lines 11 and 191-192) exist only to keep an import alive and assert nothing. -> fixed (removed both)
+- [low] [bug] The "black overlay" check in `scrim_style_is_translucent_black` only compares absolute channel drops, which is weak but not wrong. -> not fixed (the assertion is correct, and tightening it would depend on the unknown theme background)
+- [low] [bug] `tk.modal` is accessed directly (lines 39 and 68), and `let mut tk` may trigger an `unused_mut` warning if `widget_rect` takes `&self`. -> not fixed (I can't see `Tk`'s field visibility or method signatures from here)
+
