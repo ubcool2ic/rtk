@@ -1010,3 +1010,9 @@ I found nothing in lines 1-164 that needs an edit. I could only read this chunk 
 - [severity low] [bug] `unfollow_stops_theme_changes` starts from what is probably the default Light theme. The `assert_eq!(tk.theme(), Theme::Light)` after `sim_system_theme(Light)` (line 100) could pass even if following never applied anything. Starting from Dark makes the first half exercise the follow path. (line 97) -> fixed
 - [severity low] [docs] none found. Every helper and test has a `///` doc comment, and I found no helper panics or timing dependence. -> not fixed (nothing to fix)
 
+### tests/m013_tokens.rs lines 1-114
+- [low] [bug] `okabe_ito_distinct` (line 88) is documented as checking "eight distinct colours" but never checks the length. An empty or shortened palette would pass vacuously. -> fixed (added `assert_eq!(OKABE_ITO.len(), 8)`)
+- [low] [bug] `all_roles_map` (line 112) hardcodes 22 and never relates it to `ColorRole::ALL`, so the count check is weak. `let _ = tk.color(role)` also asserts nothing beyond not panicking. -> fixed (the count is now also checked against `ColorRole::ALL.len()`, and the test now asserts that the Background role matches the palette)
+- [low] [bug] `status_contrast_meets_wcag` (line 42) relaxes the Light/warning threshold to 3.0. This is a deliberate, narrow exception, and loosening or removing it would be wrong. -> not fixed (intentional)
+- [low] [bug] `text_contrast_meets_wcag` (line 20) skips Fluent and Material. -> not fixed (the expected contrast of those themes is unknown, and adding assertions could introduce false failures)
+

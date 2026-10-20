@@ -86,6 +86,7 @@ fn accent_updates_role() {
 /// The Okabe-Ito palette has eight distinct colours.
 #[test]
 fn okabe_ito_distinct() {
+    assert_eq!(OKABE_ITO.len(), 8);
     for (i, a) in OKABE_ITO.iter().enumerate() {
         for b in OKABE_ITO.iter().skip(i + 1) {
             assert_ne!(a, b);
@@ -109,5 +110,7 @@ fn all_roles_map() {
         let _ = tk.color(role);
         count += 1;
     }
+    assert_eq!(count, ColorRole::ALL.len());
     assert_eq!(count, 22);
+    assert_eq!(tk.color(ColorRole::Background), tk.tokens().palette.bg);
 }
