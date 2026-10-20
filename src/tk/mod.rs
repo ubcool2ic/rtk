@@ -45,6 +45,9 @@ mod progress;
 mod tooltip;
 mod theme;
 mod ime;
+mod damage;
+
+pub use damage::FrameDamage;
 
 pub(crate) use entry::{clean_entry, clusters, cursor_boundary};
 pub(crate) use events::floor_char_boundary;
@@ -201,6 +204,17 @@ pub struct Tk {
     pub(crate) follow_system: Option<(Theme, Theme)>,
     /// Active IME composition: `(widget, text, byte cursor range)`.
     pub(crate) ime_preedit: Option<ImePreedit>,
+    /// Damaged logical-pixel rectangles awaiting a partial redraw.
+    pub(crate) damage: Vec<Rect>,
+    /// True when at least one damaged rectangle needs repainting.
+    pub(crate) partial_dirty: bool,
+    /// True when `damage` has been folded into a single union rectangle and
+    /// further invalidations must keep merging into it.
+    pub(crate) coalesced: bool,
+    /// Last presented full frame, used as the base for partial redraws.
+    pub(crate) frame: Option<Pixmap>,
+    /// Reusable offscreen pixmap for partial redraws (allocated per size).
+    pub(crate) scratch: Option<Pixmap>,
 }
 
 impl Default for Tk {
@@ -267,6 +281,11 @@ impl Tk {
             system_theme: None,
             follow_system: None,
             ime_preedit: None,
+            damage: Vec::new(),
+            partial_dirty: false,
+            coalesced: false,
+            frame: None,
+            scratch: None,
         }
     }
 

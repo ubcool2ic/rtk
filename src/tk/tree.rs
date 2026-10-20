@@ -245,11 +245,17 @@ impl Tk {
 
     pub(crate) fn write_entry(&mut self, id: WidgetId, text: String) {
         let binding = self.node(id).and_then(|node| node.binding);
+        let mut changed = false;
         if let Some(node) = self.node_mut(id) {
             if node.text != text {
                 node.text.clone_from(&text);
-                self.dirty = true;
+                changed = true;
             }
+        }
+        if changed {
+            // The entry's own contents changed; repaint only its area rather
+            // than requesting a full redraw.
+            self.invalidate_widget(id);
         }
         if let Some(Binding::Text(var)) = binding {
             var.set(self, text.clone());

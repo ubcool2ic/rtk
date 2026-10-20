@@ -99,16 +99,25 @@ impl Tk {
         }
 
         let cur_line = text[..cursor].matches('\n').count();
+        let mut scrolled = false;
         if let Some(node) = self.node_mut(id) {
             node.text = text;
             node.cursor = cursor;
             if cur_line < node.text_scroll_row {
                 node.text_scroll_row = cur_line;
+                scrolled = true;
             } else if cur_line >= node.text_scroll_row + vis_rows {
                 node.text_scroll_row = cur_line + 1 - vis_rows;
+                scrolled = true;
             }
         }
-        self.dirty = true;
+        if scrolled {
+            // Scrolling shifts every visible line; repaint the whole widget.
+            self.dirty = true;
+        } else {
+            // Only the text/caret inside the widget changed.
+            self.invalidate_widget(id);
+        }
     }
 
 

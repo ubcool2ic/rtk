@@ -106,6 +106,9 @@ impl<T: 'static> Var<T> {
         } else {
             None
         };
+        // A variable change may affect any widget bound to it; conservatively
+        // request a full redraw. Widgets that only repaint their own contents
+        // (Entry/Text editing) invalidate themselves separately.
         tk.dirty = true;
         if let Some(mut command) = command {
             command(tk);

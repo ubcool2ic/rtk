@@ -13,7 +13,7 @@ use winit::window::{Icon, Theme as WinitTheme, Window, WindowId};
 
 use crate::tk::RtkUserEvent;
 use crate::theme::SystemTheme;
-use crate::{Key, Tk};
+use crate::{FrameDamage, Key, Tk};
 
 struct App {
     tk: Tk,
@@ -141,7 +141,7 @@ impl App {
             } else {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
             }
-        } else if self.tk.dirty && !self.occluded {
+        } else if self.tk.needs_redraw() && !self.occluded {
             // Animations measure time from when they start, not from the last one.
             self.last_frame = now;
             if now >= next_frame {
@@ -199,31 +199,68 @@ impl App {
         }
         self.last_draw = Instant::now();
         let t_render = Instant::now();
-        let pixmap = self.tk.render_to_pixmap(size.width, size.height)?;
+        let damage = self.tk.render_frame(size.width, size.height)?;
         let render_time = t_render.elapsed();
+        if damage == FrameDamage::None {
+            return Ok(());
+        }
         let t_present = Instant::now();
         let Some(surface) = &mut self.surface else { return Ok(()) };
         surface.resize(width, height)?;
         let mut buffer = surface.buffer_mut()?;
-        for (pixel, rgba) in buffer.iter_mut().zip(pixmap.data().chunks_exact(4)) {
-            let [r, g, b, a] = rgba else { continue };
-            if *a == 255 {
-                // Opaque (the common case): premultiplied equals straight colour.
-                *pixel = (u32::from(*r) << 16) | (u32::from(*g) << 8) | u32::from(*b);
-                continue;
+        let Some(frame) = self.tk.frame() else { return Ok(()) };
+        let frame_data = frame.data();
+        let stride = size.width as usize;
+        let mut damaged_pixels = 0usize;
+        let partial_rects: Option<Vec<softbuffer::Rect>> = match &damage {
+            FrameDamage::Partial(rects) if buffer.age() == 1 => Some(
+                rects
+                    .iter()
+                    .filter_map(|r| {
+                        let w = NonZeroU32::new(r.width as u32)?;
+                        let h = NonZeroU32::new(r.height as u32)?;
+                        Some(softbuffer::Rect {
+                            x: r.x as u32,
+                            y: r.y as u32,
+                            width: w,
+                            height: h,
+                        })
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+        match &partial_rects {
+            Some(rects) => {
+                for rect in rects {
+                    let x0 = rect.x as usize;
+                    let y0 = rect.y as usize;
+                    let x1 = (rect.x + rect.width.get()) as usize;
+                    let y1 = (rect.y + rect.height.get()) as usize;
+                    for y in y0..y1 {
+                        let row = y * stride;
+                        for x in x0..x1 {
+                            let idx = (row + x) * 4;
+                            let Some(rgba) = frame_data.get(idx..idx + 4) else { continue };
+                            let Some(pixel) = buffer.get_mut(row + x) else { continue };
+                            *pixel = pack_pixel(rgba);
+                            damaged_pixels += 1;
+                        }
+                    }
+                }
+                buffer.present_with_damage(rects)?;
             }
-            let alpha = u32::from(*a);
-            let channel = |value: u8| {
-                (u32::from(value) * 255 + alpha / 2)
-                    .checked_div(alpha)
-                    .map_or(0, |v| v.min(255))
-            };
-            *pixel = (channel(*r) << 16) | (channel(*g) << 8) | channel(*b);
+            None => {
+                for (pixel, rgba) in buffer.iter_mut().zip(frame_data.chunks_exact(4)) {
+                    *pixel = pack_pixel(rgba);
+                }
+                damaged_pixels = stride * size.height as usize;
+                buffer.present()?;
+            }
         }
-        buffer.present()?;
         if std::env::var_os("RTK_STATS").is_some() {
             eprintln!(
-                "rtk: frame render {:.2} ms, convert+present {:.2} ms",
+                "rtk: frame render {:.2} ms, convert+present {:.2} ms, {damaged_pixels} damaged px",
                 render_time.as_secs_f64() * 1000.0,
                 t_present.elapsed().as_secs_f64() * 1000.0
             );
@@ -411,6 +448,22 @@ impl ApplicationHandler<RtkUserEvent> for App {
 
 pub(crate) fn accepts_key_input(ctrl: bool, alt: bool, logo: bool) -> bool {
     !logo && (!ctrl || alt)
+}
+
+/// Converts a premultiplied RGBA pixel to softbuffer's packed `0x00RRGGBB`.
+fn pack_pixel(rgba: &[u8]) -> u32 {
+    let [r, g, b, a] = [rgba[0], rgba[1], rgba[2], rgba[3]];
+    if a == 255 {
+        // Opaque (the common case): premultiplied equals straight colour.
+        return (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
+    }
+    let alpha = u32::from(a);
+    let channel = |value: u8| {
+        (u32::from(value) * 255 + alpha / 2)
+            .checked_div(alpha)
+            .map_or(0, |v| v.min(255))
+    };
+    (channel(r) << 16) | (channel(g) << 8) | channel(b)
 }
 
 /// Maps a winit window theme to the toolkit's [`SystemTheme`].

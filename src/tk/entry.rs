@@ -91,7 +91,8 @@ impl Tk {
         } else if let Some(node) = self.node_mut(id) {
             node.cursor = cursor;
         }
-        self.dirty = true;
+        // Only the entry's own contents/caret changed; repaint just its area.
+        self.invalidate_widget(id);
     }
 
 }
