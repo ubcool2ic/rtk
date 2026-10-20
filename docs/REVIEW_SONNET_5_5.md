@@ -1074,3 +1074,16 @@ I found nothing in lines 1-244 that needs fixing.
 - [low] [bug] `dspin_packed_no_overlap` (lines 26-28, 40-45) gives `b` a suffix and `a` none, while the right-edge alignment check only holds if both have equal widths. The test could fail if the suffix changes the requested width. -> not fixed (it is correct for the intended behaviour, and the DoubleSpinbox sizing code is not visible here)
 - [low] [bug] `scrollarea_content_fills_width` (lines 79-80) packs the vertical scrollbar with default `Side::Top`, so it sits below the area rather than beside it. The expectation still holds because it subtracts the scrollbar's own width. -> not fixed (changing the layout could mask the behaviour under test without being able to run it)
 
+### tests/paint_order.rs lines 1-86
+- none
+
+I found nothing in lines 1-86 that needs an edit. Two observations, neither changed:
+- `placed_overlay_wins_hit_test` is `#[ignore]`d with an explicit reason. Un-ignoring it, or changing its assertion, would be a product decision about whether non-interactive placed frames block hit-testing, so I did not touch it.
+- `render_is_stable` is a weak sanity check on its own, since it only compares two renders of the same scene. The pixel assertion in `placed_overlay_paints_above_packed_sibling` covers actual content, so this is acceptable.
+
+I also checked the rest of the chunk and found no problems:
+- **Helpers:** `scene()` has no panic paths beyond its `expect` calls on construction.
+- **Pixel indexing:** the sampled point lies inside the 200x100 pixmap, and `idx..idx + 4` stays in bounds.
+- **Assertions:** the overlay-size check is exact, because `relwidth` 1.0 × 200 and `relheight` 1.0 × 100 are exact in floating point. There is no timing dependence.
+- **Docs and imports:** every function has a `///` comment and every import is used.
+
