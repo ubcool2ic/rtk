@@ -175,3 +175,6 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/fonts.rs:1-187 | 5939 (0 cached) | 958 (676 reasoning) | 0.0215 | 2.9946 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/image.rs:1-181 | 5200 (0 cached) | 1452 (800 reasoning) | 0.0249 | 3.0196 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/entry.rs:1-162 | 4454 (0 cached) | 1677 (1121 reasoning) | 0.0257 | 3.0452 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | checkbox-tokens r0 | 22020 (768 cached) | 1981 (0 reasoning) | 0.0025 | 0.2190 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | checkbox-border r0 | 21005 (2816 cached) | 156 (0 reasoning) | 0.0014 | 0.2204 |
+| 2026-10-20 09:07 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot3, PR #8] tri-state Checkbutton, 3 calls (itemized in PR #8) | — | — | 0.0125 | (BizyBot3 PR #8 DeepSeek 0.0125; Sol 0.00) |
