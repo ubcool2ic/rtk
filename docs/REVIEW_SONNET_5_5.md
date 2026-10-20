@@ -485,3 +485,8 @@ I found nothing that needs fixing in this chunk.
 - [low] [docs] `heatmap_to_rgba` maps infinite values to `t = 0.5` when `min == max`, which the doc does not say (line 173) -> not fixed. This is harmless and consistent with the degenerate-span handling.
 - No other bugs found. NaN is handled in `sample` before the table lookup, so `interpolate_table` never sees it. Its index is clamped to `len - 2`, so there is no out-of-bounds access. The degenerate-span, infinite and NaN cases in `heatmap_to_rgba` behave as documented.
 
+### src/a11y_accesskit.rs lines 1-207
+- [severity medium] [bug] The focus node is not checked against the emitted node set (line 69-72). A focused widget that is hidden or unmapped, or otherwise missing from `accessibility_tree()`, makes AccessKit receive a focus id that is not in the tree. Platform adapters can panic or reject that update. -> fixed (falls back to the root)
+- [severity medium] [bug] Child ids are emitted without checking that they exist in the update (line 53). A child pruned from the tree, such as a hidden widget, leaves a dangling `NodeId`, which AccessKit treats as an invalid tree. -> fixed (children are filtered to emitted nodes)
+- [severity medium] [bug] `map_action` drops `ActionData::NumericValue` (line 133-136). Screen readers set sliders and spin buttons through `SetValue` with a numeric payload, so the toolkit received `SetValue` with `None` and the request was silently lost. -> fixed (the number is passed as a string)
+

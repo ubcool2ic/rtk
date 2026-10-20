@@ -3,7 +3,7 @@
 //!
 //! Compiled only with the `accesskit` feature.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Rect as AkRect, Role, Toggled, TreeId,
@@ -23,6 +23,7 @@ pub(crate) fn tree_update(tk: &Tk, scale: f64) -> TreeUpdate {
     let root_id = NodeId(root.a11y_key());
     let mut map: HashMap<NodeId, Node> = HashMap::new();
     let mut order: Vec<NodeId> = Vec::new();
+    let present: HashSet<NodeId> = nodes.iter().map(|n| NodeId(n.id.a11y_key())).collect();
     for a11y in &nodes {
         let node_id = NodeId(a11y.id.a11y_key());
         let mut node = Node::new(map_role(a11y.role));
@@ -50,7 +51,12 @@ pub(crate) fn tree_update(tk: &Tk, scale: f64) -> TreeUpdate {
             x1: f64::from(bounds.x + bounds.width) * scale,
             y1: f64::from(bounds.y + bounds.height) * scale,
         });
-        let children: Vec<NodeId> = a11y.children.iter().map(|c| NodeId(c.a11y_key())).collect();
+        let children: Vec<NodeId> = a11y
+            .children
+            .iter()
+            .map(|c| NodeId(c.a11y_key()))
+            .filter(|c| present.contains(c))
+            .collect();
         node.set_children(children);
         for action in &a11y.actions {
             if let Some(action) = map_action_kind(*action) {
@@ -69,6 +75,7 @@ pub(crate) fn tree_update(tk: &Tk, scale: f64) -> TreeUpdate {
     let focus = tk
         .focused_widget()
         .map(|id| NodeId(id.a11y_key()))
+        .filter(|id| present.contains(id))
         .unwrap_or(root_id);
     let nodes: Vec<(NodeId, Node)> = order
         .into_iter()
@@ -132,6 +139,7 @@ pub(crate) fn map_action(req: &ActionRequest) -> Option<(u64, A11yAction, Option
     };
     let value = match &req.data {
         Some(ActionData::Value(v)) => Some(v.to_string()),
+        Some(ActionData::NumericValue(n)) => Some(n.to_string()),
         _ => None,
     };
     Some((req.target_node.0, action, value))

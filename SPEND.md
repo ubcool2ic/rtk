@@ -167,3 +167,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/testing.rs:1-232 | 5900 (0 cached) | 998 (593 reasoning) | 0.0218 | 2.6980 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/tk/slider.rs:1-228 | 6421 (0 cached) | 4395 (2785 reasoning) | 0.0568 | 2.7548 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/colormap.rs:1-218 | 5660 (0 cached) | 1337 (811 reasoning) | 0.0247 | 2.7795 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/a11y_accesskit.rs:1-207 | 5793 (0 cached) | 1935 (879 reasoning) | 0.0309 | 2.8104 |
