@@ -13,6 +13,8 @@ mod render;
 pub mod style;
 pub mod testing;
 mod timer;
+#[cfg(feature = "tray")]
+pub mod tray;
 mod tk;
 mod var;
 mod widgets;
