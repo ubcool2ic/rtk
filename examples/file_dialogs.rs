@@ -46,7 +46,7 @@ fn build_buttons(tk: &mut Tk, parent: rtk::WidgetId, status: rtk::WidgetId) {
             .directory(open_file_dir.clone())
             .add_filter("Rust sources", &["rs"])
             .add_filter("All files", &["*"]);
-        tk.open_file_dialog(&opts, move |tk, path| {
+        tk.file_dialog_open(&opts, move |tk, path| {
             let text = describe(path.map(|p| vec![p]));
             tk.config(status, Opt::Text(text));
         });
@@ -69,7 +69,7 @@ fn build_buttons(tk: &mut Tk, parent: rtk::WidgetId, status: rtk::WidgetId) {
             .directory(open_files_dir.clone())
             .add_filter("Rust sources", &["rs"])
             .add_filter("All files", &["*"]);
-        tk.open_files_dialog(&opts, move |tk, paths| {
+        tk.file_dialog_open_many(&opts, move |tk, paths| {
             let text = describe(paths);
             tk.config(status, Opt::Text(text));
         });
@@ -93,7 +93,7 @@ fn build_buttons(tk: &mut Tk, parent: rtk::WidgetId, status: rtk::WidgetId) {
             .file_name("untitled.txt")
             .add_filter("Rust sources", &["rs"])
             .add_filter("All files", &["*"]);
-        tk.save_file_dialog(&opts, move |tk, path| {
+        tk.file_dialog_save(&opts, move |tk, path| {
             let text = describe(path.map(|p| vec![p]));
             tk.config(status, Opt::Text(text));
         });
@@ -114,7 +114,7 @@ fn build_buttons(tk: &mut Tk, parent: rtk::WidgetId, status: rtk::WidgetId) {
         let opts = FileDialog::new()
             .title("Pick folder")
             .directory(pick_folder_dir.clone());
-        tk.pick_folder_dialog(&opts, move |tk, path| {
+        tk.file_dialog_pick_folder(&opts, move |tk, path| {
             let text = describe(path.map(|p| vec![p]));
             tk.config(status, Opt::Text(text));
         });

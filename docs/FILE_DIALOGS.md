@@ -4,10 +4,10 @@ Added in 0.11. One API covers four dialog kinds and hides which implementation s
 
 | Kind | Convenience method | Result |
 |---|---|---|
-| `FileDialogKind::OpenFile` | `tk.open_file_dialog(&opts, \|tk, Option<PathBuf>\| ..)` | one file |
-| `FileDialogKind::OpenFiles` | `tk.open_files_dialog(&opts, \|tk, Option<Vec<PathBuf>>\| ..)` | one or more files |
-| `FileDialogKind::SaveFile` | `tk.save_file_dialog(&opts, \|tk, Option<PathBuf>\| ..)` | destination path |
-| `FileDialogKind::PickFolder` | `tk.pick_folder_dialog(&opts, \|tk, Option<PathBuf>\| ..)` | one directory |
+| `FileDialogKind::OpenFile` | `tk.file_dialog_open(&opts, \|tk, Option<PathBuf>\| ..)` | one file |
+| `FileDialogKind::OpenFiles` | `tk.file_dialog_open_many(&opts, \|tk, Option<Vec<PathBuf>>\| ..)` | one or more files |
+| `FileDialogKind::SaveFile` | `tk.file_dialog_save(&opts, \|tk, Option<PathBuf>\| ..)` | destination path |
+| `FileDialogKind::PickFolder` | `tk.file_dialog_pick_folder(&opts, \|tk, Option<PathBuf>\| ..)` | one directory |
 
 `None` means the user cancelled. An empty selection also comes back as `None`.
 The generic entry point is `tk.file_dialog(kind, &opts, |tk, FileDialogResult| ..)`.
@@ -23,7 +23,7 @@ let opts = FileDialog::new()
     .file_name("untitled.txt")          // suggested name (save dialogs)
     .add_filter("Rust sources", &["rs"])
     .add_filter("All files", &["*"]);
-tk.open_file_dialog(&opts, |tk, path| {
+tk.file_dialog_open(&opts, |tk, path| {
     if let Some(path) = path {
         println!("picked {}", path.display());
     }
@@ -48,7 +48,7 @@ modal dialogs. A backend implements `FileDialogBackend::show` and must call `don
 rtk = { version = "0.8", features = ["native-dialogs"] }
 ```
 
-`tk.set_file_dialog_backend(backend)` installs a custom backend, and `tk.reset_file_dialog_backend()`
+`tk.file_dialog_set_backend(backend)` installs a custom backend, and `tk.file_dialog_reset_backend()`
 goes back to the default. `tk.file_dialog_uses_native()` reports whether the native backend is active.
 
 ### Testing
@@ -59,7 +59,7 @@ use std::path::PathBuf;
 
 let mock = MockFileDialog::new();
 mock.push_response(Some(vec![PathBuf::from("/tmp/a.txt")]));
-tk.set_file_dialog_backend(mock.clone());   // clones share state
+tk.file_dialog_set_backend(mock.clone());   // clones share state
 // ... drive the UI that opens the dialog ...
 assert_eq!(mock.request_count(), 1);
 ```

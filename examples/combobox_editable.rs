@@ -67,7 +67,7 @@ fn build_country_picker(tk: &mut Tk, parent: rtk::WidgetId, status: rtk::WidgetI
         tk.config(status, Opt::Text(msg));
     });
     tk.combobox_on_text_change(combo, move |tk, text| {
-        let n = tk.combobox_filtered(combo).len();
+        let n = tk.combobox_get_filtered(combo).len();
         let msg = format!("Typing: {text} — {n} matches");
         tk.config(status, Opt::Text(msg));
     });

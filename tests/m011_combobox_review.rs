@@ -139,7 +139,7 @@ fn set_values_closes_when_empty_and_resyncs() {
     tk.sim_text("ap");
     assert!(tk.combobox_is_open(combo));
     assert!(tk.combobox_set_values(combo, vec!["Kiwi".to_string(), "Lime".to_string()]));
-    assert!(tk.combobox_filtered(combo).is_empty());
+    assert!(tk.combobox_get_filtered(combo).is_empty());
     assert!(!tk.combobox_is_open(combo));
     assert_eq!(var.get(&tk), Some(-1));
     // A value equal to the current text re-syncs the index.
@@ -156,13 +156,13 @@ fn set_text_closes_when_empty() {
     tk.sim_text("ap");
     tk.sim_key(Key::Down);
     assert!(tk.combobox_is_open(combo));
-    assert!(tk.combobox_highlighted(combo).is_some());
+    assert!(tk.combobox_get_highlighted(combo).is_some());
     assert!(tk.combobox_set_text(combo, "zzz"));
-    assert_eq!(tk.combobox_highlighted(combo), None);
+    assert_eq!(tk.combobox_get_highlighted(combo), None);
     assert!(!tk.combobox_is_open(combo));
     // A matching text keeps the highlight cleared but does not open.
     assert!(tk.combobox_set_text(combo, "ap"));
-    assert_eq!(tk.combobox_highlighted(combo), None);
+    assert_eq!(tk.combobox_get_highlighted(combo), None);
     assert!(!tk.combobox_is_open(combo));
 }
 
@@ -175,10 +175,10 @@ fn clear_input_resets_highlight() {
     tk.sim_text("ap");
     tk.sim_key(Key::Down);
     assert!(tk.combobox_is_open(combo));
-    assert_eq!(tk.combobox_highlighted(combo), Some(0));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(0));
     tk.sim_window_focus_lost();
     assert!(!tk.combobox_is_open(combo));
-    assert_eq!(tk.combobox_highlighted(combo), None);
+    assert_eq!(tk.combobox_get_highlighted(combo), None);
 }
 
 /// Finding 6: a press on the arrow zone followed by a pointer move does not

@@ -49,7 +49,7 @@ fn new_dialog_tk(theme: Theme) -> Tk {
     tk.set_theme(theme);
     tk.geometry(820, 580);
     tk.sim_resize(820, 580);
-    tk.set_file_dialog_backend(InAppFileDialog);
+    tk.file_dialog_set_backend(InAppFileDialog);
     tk
 }
 
@@ -61,7 +61,7 @@ fn shot_open(dir: &Path, theme: Theme) -> Result<PathBuf, Box<dyn Error>> {
         .directory(examples_dir())
         .add_filter("Rust source", &["rs"])
         .add_filter("All files", &["*"]);
-    tk.open_file_dialog(&opts, |_tk, _path| {});
+    tk.file_dialog_open(&opts, |_tk, _path| {});
     let path = dir.join(format!("dialog_open_{}.png", slug(theme)));
     tk.save_png(&path, 820, 580)?;
     Ok(path)
@@ -74,7 +74,7 @@ fn shot_save(dir: &Path, theme: Theme) -> Result<PathBuf, Box<dyn Error>> {
         .title("Save report")
         .directory(examples_dir())
         .file_name("report.csv");
-    tk.save_file_dialog(&opts, |_tk, _path| {});
+    tk.file_dialog_save(&opts, |_tk, _path| {});
     let path = dir.join(format!("dialog_save_{}.png", slug(theme)));
     tk.save_png(&path, 820, 580)?;
     Ok(path)
@@ -86,7 +86,7 @@ fn shot_folder(dir: &Path, theme: Theme) -> Result<PathBuf, Box<dyn Error>> {
     let opts = FileDialog::new()
         .title("Choose folder")
         .directory(examples_dir());
-    tk.pick_folder_dialog(&opts, |_tk, _path| {});
+    tk.file_dialog_pick_folder(&opts, |_tk, _path| {});
     let path = dir.join(format!("dialog_folder_{}.png", slug(theme)));
     tk.save_png(&path, 820, 580)?;
     Ok(path)

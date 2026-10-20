@@ -51,18 +51,18 @@ fn mock_answers_all_kinds_in_order() {
     mock.push_response(Some(vec![PathBuf::from("/b.txt"), PathBuf::from("/c.txt")]));
     mock.push_response(Some(vec![PathBuf::from("/save.txt")]));
     mock.push_response(Some(vec![PathBuf::from("/dir")]));
-    tk.set_file_dialog_backend(mock.clone());
+    tk.file_dialog_set_backend(mock.clone());
 
     let opts = FileDialog::new().title("T").directory("/tmp");
 
     let got_open = Arc::new(Mutex::new(None));
     let g = got_open.clone();
-    tk.open_file_dialog(&opts, move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open(&opts, move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(got_open.lock().unwrap().as_deref(), Some(Path::new("/a.txt")));
 
     let got_many = Arc::new(Mutex::new(None));
     let g = got_many.clone();
-    tk.open_files_dialog(&opts, move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open_many(&opts, move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(
         got_many.lock().unwrap().as_deref(),
         Some(&[PathBuf::from("/b.txt"), PathBuf::from("/c.txt")][..])
@@ -70,12 +70,12 @@ fn mock_answers_all_kinds_in_order() {
 
     let got_save = Arc::new(Mutex::new(None));
     let g = got_save.clone();
-    tk.save_file_dialog(&opts, move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_save(&opts, move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(got_save.lock().unwrap().as_deref(), Some(Path::new("/save.txt")));
 
     let got_dir = Arc::new(Mutex::new(None));
     let g = got_dir.clone();
-    tk.pick_folder_dialog(&opts, move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_pick_folder(&opts, move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(got_dir.lock().unwrap().as_deref(), Some(Path::new("/dir")));
 
     let reqs = mock.requests();
@@ -94,10 +94,10 @@ fn mock_answers_all_kinds_in_order() {
 fn mock_empty_queue_returns_none() {
     let mut tk = Tk::new();
     let mock = MockFileDialog::new();
-    tk.set_file_dialog_backend(mock.clone());
+    tk.file_dialog_set_backend(mock.clone());
     let got = Arc::new(Mutex::new(Some(PathBuf::from("/x"))));
     let g = got.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
     assert!(got.lock().unwrap().is_none());
     assert_eq!(mock.request_count(), 1);
 }
@@ -108,10 +108,10 @@ fn empty_vec_normalises_to_none() {
     let mut tk = Tk::new();
     let mock = MockFileDialog::new();
     mock.push_response(Some(Vec::new()));
-    tk.set_file_dialog_backend(mock.clone());
+    tk.file_dialog_set_backend(mock.clone());
     let got = Arc::new(Mutex::new(Some(vec![PathBuf::from("/x")])));
     let g = got.clone();
-    tk.open_files_dialog(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open_many(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
     assert!(got.lock().unwrap().is_none());
 }
 
@@ -121,19 +121,19 @@ fn backend_installed_in_callback_survives() {
     let mut tk = Tk::new();
     let first = MockFileDialog::new();
     first.push_response(None);
-    tk.set_file_dialog_backend(first.clone());
+    tk.file_dialog_set_backend(first.clone());
 
     let second = MockFileDialog::new();
     second.push_response(Some(vec![PathBuf::from("/second.txt")]));
     let second_for_cb = second.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |t, _p| {
-        t.set_file_dialog_backend(second_for_cb.clone());
+    tk.file_dialog_open(&FileDialog::new(), move |t, _p| {
+        t.file_dialog_set_backend(second_for_cb.clone());
     });
 
     // The newly installed backend is now in use.
     let got = Arc::new(Mutex::new(None));
     let g = got.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(got.lock().unwrap().as_deref(), Some(Path::new("/second.txt")));
     assert_eq!(second.request_count(), 1);
     assert_eq!(first.request_count(), 1);
@@ -156,7 +156,7 @@ fn in_app_open_cancels_with_escape() {
     let got = Arc::new(Mutex::new(Some(PathBuf::from("/x"))));
     let f = fired.clone();
     let g = got.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |_t, p| {
+    tk.file_dialog_open(&FileDialog::new(), move |_t, p| {
         *g.lock().unwrap() = p;
         f.store(true, Ordering::SeqCst);
     });
@@ -176,7 +176,7 @@ fn in_app_folder_cancels_with_escape() {
     let got = Arc::new(Mutex::new(Some(PathBuf::from("/x"))));
     let f = fired.clone();
     let g = got.clone();
-    tk.pick_folder_dialog(&FileDialog::new(), move |_t, p| {
+    tk.file_dialog_pick_folder(&FileDialog::new(), move |_t, p| {
         *g.lock().unwrap() = p;
         f.store(true, Ordering::SeqCst);
     });
@@ -196,7 +196,7 @@ fn in_app_save_cancels_with_escape() {
     let got = Arc::new(Mutex::new(Some(PathBuf::from("/x"))));
     let f = fired.clone();
     let g = got.clone();
-    tk.save_file_dialog(&FileDialog::new().file_name("out.txt"), move |_t, p| {
+    tk.file_dialog_save(&FileDialog::new().file_name("out.txt"), move |_t, p| {
         *g.lock().unwrap() = p;
         f.store(true, Ordering::SeqCst);
     });
@@ -211,9 +211,9 @@ fn in_app_save_cancels_with_escape() {
 #[test]
 fn reset_restores_default() {
     let mut tk = Tk::new();
-    tk.set_file_dialog_backend(MockFileDialog::new());
+    tk.file_dialog_set_backend(MockFileDialog::new());
     assert!(!tk.file_dialog_uses_native());
-    tk.reset_file_dialog_backend();
+    tk.file_dialog_reset_backend();
     assert_eq!(tk.file_dialog_uses_native(), cfg!(feature = "native-dialogs"));
 }
 

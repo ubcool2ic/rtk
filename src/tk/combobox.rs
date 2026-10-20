@@ -75,7 +75,7 @@ impl Tk {
     ///
     /// Editable comboboxes return their free text; read-only comboboxes return
     /// the value at the bound index.
-    pub fn combobox_text(&self, id: WidgetId) -> Option<String> {
+    pub fn combobox_get_text(&self, id: WidgetId) -> Option<String> {
         let node = self.node(id)?;
         if node.kind != Kind::Combobox { return None; }
         if node.combo_editable {
@@ -148,7 +148,7 @@ impl Tk {
     }
 
     /// Returns the values currently shown in the dropdown.
-    pub fn combobox_filtered(&self, id: WidgetId) -> Vec<String> {
+    pub fn combobox_get_filtered(&self, id: WidgetId) -> Vec<String> {
         let Some(node) = self.node(id) else { return Vec::new() };
         if node.kind != Kind::Combobox { return Vec::new(); }
         self.combo_rows(id)
@@ -158,7 +158,7 @@ impl Tk {
     }
 
     /// Returns the index into `combo_values` of the highlighted dropdown row.
-    pub fn combobox_highlighted(&self, id: WidgetId) -> Option<usize> {
+    pub fn combobox_get_highlighted(&self, id: WidgetId) -> Option<usize> {
         let node = self.node(id)?;
         if node.kind != Kind::Combobox { return None; }
         let pos = node.combo_highlight?;

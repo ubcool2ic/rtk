@@ -36,11 +36,11 @@ tk.combobox_on_text_change(combo, |tk, text| println!("typing: {text}"));
 | Method | Notes |
 |---|---|
 | `combobox_is_editable(id)` | |
-| `combobox_text(id)` / `combobox_set_text(id, text)` | `set_text` updates the filter and var, but does not open the list or fire callbacks |
+| `combobox_get_text(id)` / `combobox_set_text(id, text)` | `set_text` updates the filter and var, but does not open the list or fire callbacks |
 | `combobox_get(id)` | `(var, text)`. For an editable combobox the text is the free text |
 | `combobox_on_select(id, f)` | Works on both editable and read-only comboboxes |
 | `combobox_on_text_change(id, f)` | Editable only |
-| `combobox_filtered(id)` / `combobox_highlighted(id)` | The visible rows, and the value index of the highlighted row |
+| `combobox_get_filtered(id)` / `combobox_get_highlighted(id)` | The visible rows, and the value index of the highlighted row |
 | `combobox_open(id)` / `combobox_close(id)` / `combobox_is_open(id)` | |
 | `combobox_set_values(id, values)` | Also runs the filter again |
 

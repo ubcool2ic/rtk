@@ -61,7 +61,7 @@ fn popup_scrolls_to_highlight_and_enter_selects() {
     // First Down opens the dropdown and highlights row 0.
     tk.sim_key(Key::Down);
     assert!(tk.combobox_is_open(combo));
-    assert_eq!(tk.combobox_highlighted(combo), Some(0));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(0));
 
     // Snapshot of the popup with highlight 0 for comparison below.
     let top_pixels = popup_pixels(&mut tk);
@@ -70,7 +70,7 @@ fn popup_scrolls_to_highlight_and_enter_selects() {
     for _ in 0..19 {
         tk.sim_key(Key::Down);
     }
-    assert_eq!(tk.combobox_highlighted(combo), Some(19));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(19));
 
     // The scrolled popup must still paint rows: its area is not a single
     // uniform colour and differs from the highlight-0 render.
@@ -101,5 +101,5 @@ fn overflowing_text_renders_without_panic() {
     let long = "x".repeat(200);
     tk.sim_text(&long);
     let _ = tk.render_to_pixmap(400, 300);
-    assert_eq!(tk.combobox_text(combo).as_deref(), Some(long.as_str()));
+    assert_eq!(tk.combobox_get_text(combo).as_deref(), Some(long.as_str()));
 }

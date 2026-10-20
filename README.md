@@ -45,7 +45,7 @@ cargo run --example gallery -- --screenshot-dir shots/   # headless PNGs, no dis
 | `svg` | yes | 1.85 | SVG images via `resvg` (`tk.load_svg`). |
 | `tray` | no | 1.90 | System tray icon via `tray-icon`. |
 | `accesskit` | no | 1.87 | Screen-reader bridge via `accesskit` / `accesskit_winit`. |
-| `native-dialogs` | no | stable (not 1.85) | Native file dialogs via `rfd` 0.17.2 (XDG portal on Linux, no GTK). Without it, `Tk::open_file_dialog` & co. use the in-app dialogs. See `docs/FILE_DIALOGS.md`. |
+| `native-dialogs` | no | stable (not 1.85) | Native file dialogs via `rfd` 0.17.2 (XDG portal on Linux, no GTK). Without it, `Tk::file_dialog_open` & co. use the in-app dialogs. See `docs/FILE_DIALOGS.md`. |
 
 The crate MSRV is **1.85**. Enabling `tray` raises the effective MSRV to **1.90** and
 `accesskit` to **1.87**; the default feature set stays at 1.85. The dependency-free

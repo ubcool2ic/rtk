@@ -87,7 +87,7 @@ fn editable_initial_text() {
     let values = vec!["A".to_string(), "B".to_string(), "C".to_string()];
     let combo = Combobox::editable(&mut tk, root, values, var).expect("combo");
     assert!(tk.combobox_is_editable(combo));
-    assert_eq!(tk.combobox_text(combo), Some("C".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("C".to_string()));
     assert_eq!(tk.combobox_get(combo), Some((2, "C".to_string())));
 }
 
@@ -99,7 +99,7 @@ fn editable_initial_empty_for_bad_index() {
     let var = tk.int_var(99);
     let values = vec!["A".to_string(), "B".to_string()];
     let combo = Combobox::editable(&mut tk, root, values, var).expect("combo");
-    assert_eq!(tk.combobox_text(combo), Some(String::new()));
+    assert_eq!(tk.combobox_get_text(combo), Some(String::new()));
 }
 
 /// Typing filters case-insensitively and opens the dropdown.
@@ -108,10 +108,10 @@ fn typing_filters_and_opens() {
     let (mut tk, combo, _var) = editable_fruit();
     focus_text_area(&mut tk, combo);
     tk.sim_text("ap");
-    assert_eq!(tk.combobox_text(combo), Some("ap".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("ap".to_string()));
     assert!(tk.combobox_is_open(combo));
     assert_eq!(
-        tk.combobox_filtered(combo),
+        tk.combobox_get_filtered(combo),
         vec![
             "Apple".to_string(),
             "Apricot".to_string(),
@@ -128,21 +128,21 @@ fn highlight_movement_and_clamping() {
     focus_text_area(&mut tk, combo);
     tk.sim_text("ap");
     tk.sim_key(Key::Down);
-    assert_eq!(tk.combobox_highlighted(combo), Some(0));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(0));
     tk.sim_key(Key::Down);
-    assert_eq!(tk.combobox_highlighted(combo), Some(1));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(1));
     tk.sim_key(Key::Down);
     tk.sim_key(Key::Down);
     tk.sim_key(Key::Down);
-    // `combobox_highlighted` reports the index into the full value list:
+    // `combobox_get_highlighted` reports the index into the full value list:
     // the filtered rows are Apple(0), Apricot(1), Grape(5), Papaya(7).
-    assert_eq!(tk.combobox_highlighted(combo), Some(7));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(7));
     tk.sim_key(Key::Up);
-    assert_eq!(tk.combobox_highlighted(combo), Some(5));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(5));
     tk.sim_key(Key::Up);
     tk.sim_key(Key::Up);
     tk.sim_key(Key::Up);
-    assert_eq!(tk.combobox_highlighted(combo), Some(0));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(0));
 }
 
 /// Enter on a highlighted row selects it, updates the var and fires on_select.
@@ -159,7 +159,7 @@ fn enter_selects_highlighted() {
     tk.sim_key(Key::Down);
     tk.sim_key(Key::Down);
     tk.sim_key(Key::Enter);
-    assert_eq!(tk.combobox_text(combo), Some("Apricot".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("Apricot".to_string()));
     assert_eq!(var.get(&tk), Some(1));
     assert!(!tk.combobox_is_open(combo));
     assert_eq!(*got.borrow(), Some((1, "Apricot".to_string())));
@@ -173,7 +173,7 @@ fn enter_without_highlight_keeps_text() {
     tk.sim_text("zzz");
     assert!(!tk.combobox_is_open(combo));
     tk.sim_key(Key::Enter);
-    assert_eq!(tk.combobox_text(combo), Some("zzz".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("zzz".to_string()));
     assert_eq!(var.get(&tk), Some(-1));
 }
 
@@ -187,7 +187,7 @@ fn escape_closes() {
     assert!(tk.combobox_is_open(combo));
     tk.sim_key(Key::Escape);
     assert!(!tk.combobox_is_open(combo));
-    assert_eq!(tk.combobox_highlighted(combo), None);
+    assert_eq!(tk.combobox_get_highlighted(combo), None);
 }
 
 /// Backspace re-filters the dropdown.
@@ -196,10 +196,10 @@ fn backspace_refilters() {
     let (mut tk, combo, _var) = editable_fruit();
     focus_text_area(&mut tk, combo);
     tk.sim_text("app");
-    assert_eq!(tk.combobox_filtered(combo), vec!["Apple".to_string()]);
+    assert_eq!(tk.combobox_get_filtered(combo), vec!["Apple".to_string()]);
     tk.sim_key(Key::Backspace);
-    assert_eq!(tk.combobox_text(combo), Some("ap".to_string()));
-    assert_eq!(tk.combobox_filtered(combo).len(), 4);
+    assert_eq!(tk.combobox_get_text(combo), Some("ap".to_string()));
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 4);
 }
 
 /// on_text_change fires once per edit with the new text.
@@ -226,7 +226,7 @@ fn set_text_is_silent() {
         *sink.borrow_mut() += 1;
     }));
     assert!(tk.combobox_set_text(combo, "Cherry"));
-    assert_eq!(tk.combobox_text(combo), Some("Cherry".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("Cherry".to_string()));
     assert_eq!(var.get(&tk), Some(4));
     assert!(!tk.combobox_is_open(combo));
     assert_eq!(*fired.borrow(), 0);
@@ -245,7 +245,7 @@ fn click_filtered_row_selects() {
     tk.sim_text("ap");
     // Filtered rows: Apple(0), Apricot(1), Grape(5), Papaya(7).
     click_dropdown_row(&mut tk, combo, 1);
-    assert_eq!(tk.combobox_text(combo), Some("Apricot".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("Apricot".to_string()));
     assert_eq!(var.get(&tk), Some(1));
     assert_eq!(*got.borrow(), Some(1));
 }
@@ -306,8 +306,8 @@ fn paste_refilters() {
     tk.clipboard_clear();
     tk.clipboard_append("ap");
     tk.sim_key_with(Key::Char('v'), Modifiers::CTRL);
-    assert_eq!(tk.combobox_text(combo), Some("ap".to_string()));
-    assert_eq!(tk.combobox_filtered(combo).len(), 4);
+    assert_eq!(tk.combobox_get_text(combo), Some("ap".to_string()));
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 4);
 }
 
 /// Undo after typing re-filters the dropdown.
@@ -316,10 +316,10 @@ fn undo_refilters() {
     let (mut tk, combo, _var) = editable_fruit();
     focus_text_area(&mut tk, combo);
     tk.sim_text("ap");
-    assert_eq!(tk.combobox_filtered(combo).len(), 4);
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 4);
     tk.sim_key_with(Key::Char('z'), Modifiers::CTRL);
-    assert_eq!(tk.combobox_text(combo), Some(String::new()));
-    assert_eq!(tk.combobox_filtered(combo).len(), 8);
+    assert_eq!(tk.combobox_get_text(combo), Some(String::new()));
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 8);
 }
 
 /// IME commit inserts text into an editable combobox.
@@ -329,8 +329,8 @@ fn ime_commit_inserts() {
     focus_text_area(&mut tk, combo);
     assert!(tk.ime_wanted());
     tk.sim_ime_commit("ap");
-    assert_eq!(tk.combobox_text(combo), Some("ap".to_string()));
-    assert_eq!(tk.combobox_filtered(combo).len(), 4);
+    assert_eq!(tk.combobox_get_text(combo), Some("ap".to_string()));
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 4);
 }
 
 /// Non-combobox ids return false/None from the combobox API.
@@ -340,12 +340,12 @@ fn non_combobox_ids_rejected() {
     let root = tk.root();
     let label = Label::new(&mut tk, root, "hi").expect("label");
     assert!(!tk.combobox_is_editable(label));
-    assert_eq!(tk.combobox_text(label), None);
+    assert_eq!(tk.combobox_get_text(label), None);
     assert!(!tk.combobox_set_text(label, "x"));
     assert!(!tk.combobox_on_select(label, |_tk, _i, _s| {}));
     assert!(!tk.combobox_on_text_change(label, |_tk, _s| {}));
-    assert!(tk.combobox_filtered(label).is_empty());
-    assert_eq!(tk.combobox_highlighted(label), None);
+    assert!(tk.combobox_get_filtered(label).is_empty());
+    assert_eq!(tk.combobox_get_highlighted(label), None);
     assert!(!tk.combobox_is_open(label));
     assert_eq!(tk.combobox_get(label), None);
 }
@@ -357,7 +357,7 @@ fn frame_ids_rejected() {
     let root = tk.root();
     let frame = Frame::new(&mut tk, root).expect("frame");
     assert!(!tk.combobox_is_editable(frame));
-    assert_eq!(tk.combobox_text(frame), None);
+    assert_eq!(tk.combobox_get_text(frame), None);
     assert!(!tk.combobox_set_text(frame, "x"));
 }
 
@@ -369,7 +369,7 @@ fn select_all_then_type_replaces() {
     tk.sim_text("ap");
     tk.entry_select_range(combo, 0, 2);
     tk.sim_text("ch");
-    assert_eq!(tk.combobox_text(combo), Some("ch".to_string()));
+    assert_eq!(tk.combobox_get_text(combo), Some("ch".to_string()));
 }
 
 /// Cut removes the selection and re-filters.
@@ -380,8 +380,8 @@ fn cut_refilters() {
     tk.sim_text("ap");
     tk.entry_select_range(combo, 0, 2);
     tk.sim_key_with(Key::Char('x'), Modifiers::CTRL);
-    assert_eq!(tk.combobox_text(combo), Some(String::new()));
-    assert_eq!(tk.combobox_filtered(combo).len(), 8);
+    assert_eq!(tk.combobox_get_text(combo), Some(String::new()));
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 8);
 }
 
 /// combobox_set_values recomputes the filter and clears the highlight.
@@ -391,10 +391,10 @@ fn set_values_refilters() {
     focus_text_area(&mut tk, combo);
     tk.sim_text("ap");
     tk.sim_key(Key::Down);
-    assert_eq!(tk.combobox_highlighted(combo), Some(0));
+    assert_eq!(tk.combobox_get_highlighted(combo), Some(0));
     assert!(tk.combobox_set_values(combo, vec!["Apple".to_string(), "Kiwi".to_string()]));
-    assert_eq!(tk.combobox_filtered(combo), vec!["Apple".to_string()]);
-    assert_eq!(tk.combobox_highlighted(combo), None);
+    assert_eq!(tk.combobox_get_filtered(combo), vec!["Apple".to_string()]);
+    assert_eq!(tk.combobox_get_highlighted(combo), None);
 }
 
 /// combobox_open shows the filter for the current text.
@@ -404,7 +404,7 @@ fn open_uses_filter() {
     assert!(tk.combobox_set_text(combo, "ap"));
     tk.combobox_open(combo);
     assert!(tk.combobox_is_open(combo));
-    assert_eq!(tk.combobox_filtered(combo).len(), 4);
+    assert_eq!(tk.combobox_get_filtered(combo).len(), 4);
     tk.combobox_close(combo);
     assert!(!tk.combobox_is_open(combo));
 }

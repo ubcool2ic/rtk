@@ -23,10 +23,10 @@
 //! let mut tk = Tk::new();
 //! let mock = MockFileDialog::new();
 //! mock.push_response(Some(vec!["/tmp/a.txt".into()]));
-//! tk.set_file_dialog_backend(mock.clone());
+//! tk.file_dialog_set_backend(mock.clone());
 //!
 //! let opts = FileDialog::new().title("Open").add_filter("Text", &[".txt"]);
-//! tk.open_file_dialog(&opts, |_tk, path| {
+//! tk.file_dialog_open(&opts, |_tk, path| {
 //!     assert_eq!(path.as_deref(), Some(std::path::Path::new("/tmp/a.txt")));
 //! });
 //! ```
@@ -390,13 +390,13 @@ impl FileDialogBackend for NativeFileDialog {
 
 impl Tk {
     /// Installs a custom file dialog backend.
-    pub fn set_file_dialog_backend(&mut self, backend: impl FileDialogBackend + 'static) {
+    pub fn file_dialog_set_backend(&mut self, backend: impl FileDialogBackend + 'static) {
         let boxed: Box<dyn FileDialogBackend> = Box::new(backend);
         self.file_dialog_backend = Some(Rc::new(RefCell::new(boxed)));
     }
 
     /// Removes any custom backend, restoring the default.
-    pub fn reset_file_dialog_backend(&mut self) {
+    pub fn file_dialog_reset_backend(&mut self) {
         self.file_dialog_backend = None;
     }
 
@@ -413,7 +413,7 @@ impl Tk {
     ///
     /// The installed backend stays in place while it runs, so a callback may
     /// open another dialog (which reuses the same backend) or call
-    /// [`Tk::reset_file_dialog_backend`] / [`Tk::set_file_dialog_backend`] and
+    /// [`Tk::file_dialog_reset_backend`] / [`Tk::file_dialog_set_backend`] and
     /// have that change stick. A backend must not re-enter itself
     /// synchronously (i.e. call `Tk::file_dialog` from inside its own `show`);
     /// in that case the default backend is used for the nested call instead of
@@ -474,7 +474,7 @@ impl Tk {
     }
 
     /// Opens a single-file chooser and reports the chosen path.
-    pub fn open_file_dialog(
+    pub fn file_dialog_open(
         &mut self,
         opts: &FileDialog,
         done: impl FnOnce(&mut Tk, Option<PathBuf>) + 'static,
@@ -485,7 +485,7 @@ impl Tk {
     }
 
     /// Opens a multi-file chooser and reports the chosen paths.
-    pub fn open_files_dialog(
+    pub fn file_dialog_open_many(
         &mut self,
         opts: &FileDialog,
         done: impl FnOnce(&mut Tk, Option<Vec<PathBuf>>) + 'static,
@@ -496,7 +496,7 @@ impl Tk {
     }
 
     /// Opens a save chooser and reports the destination path.
-    pub fn save_file_dialog(
+    pub fn file_dialog_save(
         &mut self,
         opts: &FileDialog,
         done: impl FnOnce(&mut Tk, Option<PathBuf>) + 'static,
@@ -507,7 +507,7 @@ impl Tk {
     }
 
     /// Opens a folder chooser and reports the chosen directory.
-    pub fn pick_folder_dialog(
+    pub fn file_dialog_pick_folder(
         &mut self,
         opts: &FileDialog,
         done: impl FnOnce(&mut Tk, Option<PathBuf>) + 'static,

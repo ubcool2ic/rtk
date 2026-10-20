@@ -16,12 +16,12 @@ fn nested_dialog_uses_same_backend() {
     let mock = MockFileDialog::new();
     mock.push_response(Some(vec![PathBuf::from("/first.txt")]));
     mock.push_response(Some(vec![PathBuf::from("/second.txt")]));
-    tk.set_file_dialog_backend(mock.clone());
+    tk.file_dialog_set_backend(mock.clone());
 
     let inner = Arc::new(Mutex::new(None));
     let inner_for_cb = inner.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |t, _p| {
-        t.open_file_dialog(&FileDialog::new(), move |_t, p| {
+    tk.file_dialog_open(&FileDialog::new(), move |t, _p| {
+        t.file_dialog_open(&FileDialog::new(), move |_t, p| {
             *inner_for_cb.lock().unwrap() = p;
         });
     });
@@ -33,22 +33,22 @@ fn nested_dialog_uses_same_backend() {
     assert_eq!(mock.request_count(), 2);
 }
 
-/// A `reset_file_dialog_backend` called inside a callback is not undone.
+/// A `file_dialog_reset_backend` called inside a callback is not undone.
 #[test]
 fn reset_inside_callback_sticks() {
     let mut tk = Tk::new();
     let mock = MockFileDialog::new();
     mock.push_response(Some(vec![PathBuf::from("/a.txt")]));
-    tk.set_file_dialog_backend(mock.clone());
+    tk.file_dialog_set_backend(mock.clone());
 
-    tk.open_file_dialog(&FileDialog::new(), |t, _p| {
-        t.reset_file_dialog_backend();
+    tk.file_dialog_open(&FileDialog::new(), |t, _p| {
+        t.file_dialog_reset_backend();
     });
 
     // The mock is gone: a further request must not reach it.
     let got = Arc::new(Mutex::new(Some(PathBuf::from("/x"))));
     let g = got.clone();
-    tk.open_file_dialog(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
+    tk.file_dialog_open(&FileDialog::new(), move |_t, p| *g.lock().unwrap() = p);
     assert_eq!(mock.request_count(), 1);
     // Without the native feature the default in-app chooser opened a modal.
     #[cfg(not(feature = "native-dialogs"))]
