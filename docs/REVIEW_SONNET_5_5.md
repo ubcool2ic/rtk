@@ -715,3 +715,12 @@ Within what is visible:
 - [low] [bug] The canvas drag callback adds one oval per Press/Move event with no cap. A long drag grows the item list without bound, but the "Clear Canvas" button already resets it, so this is acceptable for a demo. (line 122) -> not fixed (demo behaviour, user-clearable)
 - [low] [api] Several calls cannot be checked against the reference, because only lib.rs is shown. These are `listbox_insert(.., usize::MAX, ..)` as an append, `Var::trace`, `Var::get` returning `Option`, and `Theme: PartialEq`. -> not fixed (no evidence of a bug in the visible code)
 
+### examples/form.rs lines 1-50
+- none
+
+I found nothing in lines 1-50 to fix. I could only check this chunk against `lib.rs`, so I could not confirm the signatures of `Tk` methods such as `mainloop`, `grid`, `set_command` and `entry_get`, or the `GridOpts` field types and the `Sticky::EW` variant.
+
+- **Error handling:** every fallible constructor uses `?`, and `main` returns a boxed error, so nothing can panic from a bad parent or arena-full condition. `unwrap_or_default()` on `entry_get` is a safe fallback for a destroyed widget.
+- **Grid layout:** the grid options are consistent. The submit button spans both columns with the default column 0, and column 1 is made expandable so the entries stretch.
+- **Doc comments:** the module and `main` doc comments match what the code does.
+
