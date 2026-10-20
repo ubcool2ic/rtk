@@ -1177,7 +1177,16 @@ impl Tk {
                         let check_border = if high_contrast { Color::WHITE } else if dark_mode { Color::rgb(180, 180, 180) } else { draw_border };
                         fill(pixmap, square.scaled(scale), clip, check_bg);
                         outline(pixmap, square.scaled(scale), clip, if high_contrast { 2.0 * scale } else { scale }, (check_border, check_border));
-                        if check.and_then(|var| var.get(self)).unwrap_or(false) {
+                        if self.checkbutton_is_mixed(id) {
+                            let dash_c = self.style_engine.tokens().palette.accent;
+                            let dash = Rect::new(
+                                square.x + 3.0,
+                                square.y + (square.height - 3.0) / 2.0,
+                                (square.width - 6.0).max(0.0),
+                                3.0,
+                            );
+                            fill(pixmap, dash.scaled(scale), clip, dash_c);
+                        } else if check.and_then(|var| var.get(self)).unwrap_or(false) {
                             let fill_c = self.style_engine.tokens().palette.accent;
                             fill(
                                 pixmap, square.inset(3.0, 3.0).scaled(scale),
