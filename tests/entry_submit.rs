@@ -50,10 +50,13 @@ fn no_callback_and_wrong_kind() {
 #[test]
 fn disabled_entry_does_not_submit() {
     let (mut tk, entry) = focused_entry();
-    let seen = Rc::new(Cell::new(false));
+    let seen = Rc::new(Cell::new(0));
     let s = seen.clone();
-    tk.entry_bind_submit(entry, move |_| s.set(true));
+    assert!(tk.entry_bind_submit(entry, move |_| s.set(s.get() + 1)));
+    // Positive control: while enabled, Enter submits.
+    tk.sim_key(Key::Enter);
+    assert_eq!(seen.get(), 1);
     tk.config(entry, rtk::Opt::Disabled(true));
     tk.sim_key(Key::Enter);
-    assert!(!seen.get());
+    assert_eq!(seen.get(), 1);
 }

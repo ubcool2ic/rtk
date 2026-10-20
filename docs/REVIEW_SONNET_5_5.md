@@ -846,3 +846,7 @@ I found nothing in lines 1-31 to fix. Only `lib.rs` was supplied, not the `Tk`, 
 - [severity low] [bug] `unicode_boundaries` is named for the combining mark but never checks that the selection includes it (lines 223-229). A selection of an empty or wrong range would still pass the boundary checks -> fixed
 - [severity low] [bug] No panics in the helpers, timing dependence, or wrong expectations found in the rest of the file. The `mouse_drag_selects` and golden tests have weak but valid assertions -> not fixed (valid as written; the exact selection offsets depend on font metrics and would be brittle)
 
+### tests/entry_submit.rs lines 1-60
+- [severity medium] [bug] `disabled_entry_does_not_submit` could pass without testing anything (lines 49-59). It never shows that Enter submits before the entry is disabled, so it would still pass if Enter never reached the callback, for example if focus were lost. The `entry_bind_submit` return value is also ignored. -> fixed: added a positive control (Enter submits while enabled), asserted the bind result, and checked that the count does not increase after disabling.
+- [severity low] [bug] The focus assertion and the other two tests (lines 7-47) have no timing dependence, helper panics or wrong expectations. -> not fixed (nothing to fix)
+
