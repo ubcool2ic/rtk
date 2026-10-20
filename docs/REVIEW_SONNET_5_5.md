@@ -1087,3 +1087,6 @@ I also checked the rest of the chunk and found no problems:
 - **Assertions:** the overlay-size check is exact, because `relwidth` 1.0 × 200 and `relheight` 1.0 × 100 are exact in floating point. There is no timing dependence.
 - **Docs and imports:** every function has a `///` comment and every import is used.
 
+### tests/reentrancy.rs lines 1-106
+- none
+

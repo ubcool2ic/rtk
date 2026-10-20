@@ -281,3 +281,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_tristate.rs:1-244 | 7359 (0 cached) | 1054 (766 reasoning) | 0.0253 | 5.5912 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/m0_10_visual_fixes.rs:1-120 | 4602 (0 cached) | 2278 (1193 reasoning) | 0.0320 | 5.6231 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/paint_order.rs:1-86 | 3800 (0 cached) | 1040 (636 reasoning) | 0.0180 | 5.6411 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/reentrancy.rs:1-106 | 4029 (0 cached) | 790 (778 reasoning) | 0.0160 | 5.6571 |
