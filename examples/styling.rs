@@ -62,8 +62,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         Theme::Light => 0,
         Theme::Dark => 1,
         Theme::Fluent => 2,
+        Theme::Material => 3,
         Theme::HighContrast => 4,
-        // Modern themes (v0.8) are not in this demo picker.
+        // Any other theme is not in this demo picker.
         _ => 0,
     });
 
@@ -136,7 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let scale = Scale::new(&mut tk, card, 0, 100, sc_var)?;
         tk.pack(scale, PackOpts { side: Side::Top, pady: 3.0, fill: rtk::Fill::X, ..Default::default() });
 
-        let prog = ProgressBar::new(&mut tk, card, 120.0, sc_var)?;
+        let prog = ProgressBar::new(&mut tk, card, 100.0, sc_var)?;
         tk.pack(prog, PackOpts { side: Side::Top, pady: 4.0, fill: rtk::Fill::X, ..Default::default() });
 
         // Disabled button showcase on card 4

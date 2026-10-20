@@ -801,3 +801,7 @@ I reviewed lines 1-23 and found nothing to fix. The reference API surface does n
 - **Width:** The canvas is 400 wide plus a scrollbar in a 420-wide window. The scrollbar width is theme-dependent and unknown here, so I left it alone.
 - **Doc comment:** `main` has its `///` doc comment, and the module-level `//!` comment matches the behavior shown.
 
+### examples/styling.rs lines 1-157
+- [medium] [bug] `--theme material` initialises `theme_var` to 0 (the `_ => 0` arm), so the "Light" radio is selected while the Material theme is active. Material is in the picker with value 3, and the comment saying it isn't is wrong (lines 61-68) -> fixed
+- [low] [bug] The `ProgressBar` maximum is 120.0 but it shares `sc_var` with a `Scale` ranging 0..100, so the bar can never reach full. Assuming the `120.0` argument is the maximum, as in tkinter's `ProgressBar` (the signature wasn't checked), I changed it to 100.0 (line 139) -> fixed
+
