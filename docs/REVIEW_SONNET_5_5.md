@@ -1100,3 +1100,7 @@ I also checked the rest of the chunk and found no problems:
 - [severity low] [bug] The same discarded `render_to_pixmap` result in the press-leave-release test (line 78) -> fixed
 - [severity low] [bug] The first test (line 21) asserts the value is exactly `i64::MIN` after a click 1px from the left edge plus 3 `Left` key presses. This relies on the click clamping to the minimum, which I could not confirm from this chunk, so it may be fragile -> not fixed (the assertion is correct, so I did not weaken it)
 
+### tests/review_fable.rs lines 1-17
+- [severity low] [bug] `inferno_brightens` claims monotonic brightness but only checks three points (1.0, 0.75, 0.25). A fold-back to black near t=0 or a dip at 0.5 would go undetected (line 15) -> fixed: now checks a chain of anchor points 0.0 < 0.25 < 0.5 < 0.75 < 1.0.
+- [severity low] [docs] Viridis test: assertion and doc comment are consistent and meaningful (line 8) -> not fixed (nothing to fix).
+

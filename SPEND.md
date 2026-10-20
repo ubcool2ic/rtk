@@ -284,3 +284,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/reentrancy.rs:1-106 | 4029 (0 cached) | 790 (778 reasoning) | 0.0160 | 5.6571 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/render.rs:1-62 | 3337 (0 cached) | 1113 (669 reasoning) | 0.0178 | 5.6749 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/review.rs:1-102 | 4161 (0 cached) | 1856 (1414 reasoning) | 0.0269 | 5.7018 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/review_fable.rs:1-17 | 2462 (0 cached) | 1071 (694 reasoning) | 0.0156 | 5.7174 |

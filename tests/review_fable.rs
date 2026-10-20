@@ -12,5 +12,8 @@ fn viridis_endpoint_is_yellow() {
 #[test]
 fn inferno_brightens() {
     let lum = |t| { let c = sample(Colormap::Inferno, t); c.r as u32 + c.g as u32 + c.b as u32 };
-    assert!(lum(1.0) > lum(0.75) && lum(0.75) > lum(0.25));
+    let ts = [0.0, 0.25, 0.5, 0.75, 1.0];
+    for w in ts.windows(2) {
+        assert!(lum(w[1]) > lum(w[0]), "luminance not increasing between t={} and t={}", w[0], w[1]);
+    }
 }
