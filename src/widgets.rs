@@ -583,6 +583,26 @@ pub(crate) struct WidgetNode {
     pub transition: Option<TransitionState>,
     /// Milestone 0.10 input-widget state (ProgressRing, Switch, ProgressBar polish).
     pub inputs: Option<Box<crate::tk::inputs_state::InputsState>>,
+    // Selection (Entry/Text): anchor byte index; selection = anchor..cursor.
+    pub selection_anchor: Option<usize>,
+    // Undo/redo history for Entry/Text.
+    pub undo_stack: Vec<EditSnapshot>,
+    pub redo_stack: Vec<EditSnapshot>,
+    /// Time (ms) of the last coalescable edit, for typing coalescing.
+    pub last_edit_ms: u64,
+    /// True when the last edit was a single-character insertion (coalescable).
+    pub last_edit_typing: bool,
+}
+
+/// A snapshot of editable text state for undo/redo.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditSnapshot {
+    /// The full text at the time of the snapshot.
+    pub text: String,
+    /// Cursor byte offset.
+    pub cursor: usize,
+    /// Selection anchor byte offset, if any.
+    pub anchor: Option<usize>,
 }
 
 impl WidgetNode {
@@ -660,6 +680,11 @@ impl WidgetNode {
             compound: Compound::Left,
             transition: None,
             inputs: None,
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            last_edit_ms: 0,
+            last_edit_typing: false,
         }
     }
 }

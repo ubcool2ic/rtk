@@ -80,6 +80,7 @@ impl<T: 'static> Var<T> {
         })
     }
 
+    /// Returns a copy of the current value, or `None` if the handle is invalid.
     pub fn get(self, tk: &Tk) -> Option<T>
     where
         T: Clone,
@@ -87,6 +88,8 @@ impl<T: 'static> Var<T> {
         self.slot(tk)?.value.as_ref()?.downcast_ref::<T>().cloned()
     }
 
+    /// Assigns a new value, running the trace if it changed. Returns false for
+    /// an invalid handle.
     pub fn set(self, tk: &mut Tk, value: T) -> bool
     where
         T: PartialEq,
@@ -164,18 +167,22 @@ impl Tk {
         handle
     }
 
+    /// Creates a string variable (tkinter `StringVar`).
     pub fn string_var(&mut self, value: impl Into<String>) -> Var<String> {
         self.make_var(value.into())
     }
 
+    /// Creates an integer variable (tkinter `IntVar`).
     pub fn int_var(&mut self, value: i64) -> Var<i64> {
         self.make_var(value)
     }
 
+    /// Creates a boolean variable (tkinter `BooleanVar`).
     pub fn bool_var(&mut self, value: bool) -> Var<bool> {
         self.make_var(value)
     }
 
+    /// Creates a floating-point variable (tkinter `DoubleVar`).
     pub fn f64_var(&mut self, value: f64) -> Var<f64> {
         self.make_var(value)
     }

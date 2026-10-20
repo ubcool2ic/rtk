@@ -99,6 +99,7 @@ impl Tk {
         true
     }
 
+    /// Binds a callback invoked with the new selection when it changes.
     pub fn listbox_bind_select(&mut self, id: WidgetId, cb: impl FnMut(&mut Tk, Option<usize>) + 'static) -> bool {
         let Some(node) = self.node_mut(id) else { return false };
         if node.kind != Kind::Listbox {
