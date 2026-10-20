@@ -490,3 +490,10 @@ I found nothing that needs fixing in this chunk.
 - [severity medium] [bug] Child ids are emitted without checking that they exist in the update (line 53). A child pruned from the tree, such as a hidden widget, leaves a dangling `NodeId`, which AccessKit treats as an invalid tree. -> fixed (children are filtered to emitted nodes)
 - [severity medium] [bug] `map_action` drops `ActionData::NumericValue` (line 133-136). Screen readers set sliders and spin buttons through `SetValue` with a numeric payload, so the toolkit received `SetValue` with `None` and the request was silently lost. -> fixed (the number is passed as a string)
 
+### src/tk/progress.rs lines 1-203
+- [severity low] [bug] `progress_advance` called `get_or_insert_with(Default::default)` on every tick, so it allocated an `InputsState` for every visible progress bar even when smooth easing was never enabled (line 152). `progress_is_animating` already treats a missing state as "not smooth". -> fixed
+- [severity low] [docs] The `progress_bind` rustdoc says "live in `tk`", but there is no `tk` parameter (line 14). -> not fixed (wording only, no behaviour impact)
+- [severity low] [api] `progress_bind` is slightly off the `progress_set_*` naming used by its siblings. -> not fixed (renaming a public method this late is churn, and I can't see the other widgets' conventions from this chunk)
+- [severity low] [bug] `progress_requested` measures `"{label} 100%"` even when `show_percent` is false, so the bar can be slightly wider than needed (line 120). -> not fixed (this only over-reserves width and is harmless; changing it would shift layout and goldens for little gain)
+- [severity none] [bug] I found no panics, overflow or borrow problems in the rest of the chunk. The easing math is stable for `ms = 0` and for very large `ms`, and NaN or out-of-range values are clamped. -> none
+

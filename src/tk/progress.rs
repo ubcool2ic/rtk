@@ -149,7 +149,7 @@ impl Tk {
         };
         let target = if target.is_nan() { 0.0 } else { target.clamp(0.0, 1.0) } as f32;
         let Some(node) = self.node_mut(id) else { return false };
-        let state = node.inputs.get_or_insert_with(Default::default);
+        let Some(state) = node.inputs.as_mut() else { return false };
         if !state.progress_smooth {
             return false;
         }
