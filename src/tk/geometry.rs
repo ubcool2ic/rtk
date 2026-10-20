@@ -285,6 +285,7 @@ impl Tk {
         (size.width.ceil().max(200.0) as u32, size.height.ceil().max(100.0) as u32)
     }
 
+    /// Measures and lays out the mapped widget tree in logical pixels.
     pub(crate) fn layout(&mut self) {
         self.update_requested();
         for slot in &mut self.nodes {
@@ -323,7 +324,20 @@ impl Tk {
                 let (ox, oy) = node.inputs.as_ref().map_or((0.0, 0.0), |s| s.scroll_area_offset);
                 if let Some(content_id) = content {
                     let requested = self.node(content_id).map(|c| c.requested).unwrap_or_default();
-                    let cw = requested.width.max(rect.width);
+                    // Vertical-only areas fill the width left after reserving
+                    // the attached vertical scrollbar. With an attached
+                    // horizontal scrollbar, preserve the full-width minimum:
+                    // horizontal scrolling uses rect.width as its page size.
+                    // Natural content requests may exceed either minimum.
+                    let vbar_w = self.scrollarea_vbar_width(id);
+                    let viewport_w = (rect.width - vbar_w).max(0.0);
+                    let has_hbar = self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|bar| {
+                        bar.kind == Kind::Scrollbar
+                            && bar.scroll_target == Some(id)
+                            && bar.inputs.as_ref().is_some_and(|state| state.scrollbar_horizontal)
+                    });
+                    let min_width = if has_hbar { rect.width } else { viewport_w };
+                    let cw = requested.width.max(min_width);
                     let ch = requested.height.max(rect.height);
                     let content_rect = Rect::new(rect.x - ox, rect.y - oy, cw, ch);
                     pending.push((content_id, content_rect, clip));

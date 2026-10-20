@@ -198,5 +198,42 @@ impl Tk {
         let pad_h = resolved.padding.top + resolved.padding.bottom;
         Size::new(w + pad_w, h + pad_h)
     }
+
+    /// Returns the width in logical px reserved for a visible vertical
+    /// scrollbar attached to `area` (0 when none is attached or it is hidden).
+    ///
+    /// A scrollbar counts as attached when its `scroll_target` points at
+    /// `area`; it may live anywhere in the widget tree (typically a sibling of
+    /// the area under the same parent), not only as a direct child. The
+    /// reserved width is the bar's laid-out width when available, falling back
+    /// to its requested width (and finally to the 16 px default) before the
+    /// first layout pass has run.
+    pub(crate) fn scrollarea_vbar_width(&self, area: WidgetId) -> f32 {
+        if !self.node(area).is_some_and(|n| n.kind == Kind::ScrollArea) {
+            return 0.0;
+        }
+        let mut width = 0.0_f32;
+        for slot in &self.nodes {
+            let Some(bar) = slot.node.as_ref() else { continue };
+            if bar.kind != Kind::Scrollbar || bar.scroll_target != Some(area) {
+                continue;
+            }
+            let horizontal = bar.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal);
+            if horizontal {
+                continue;
+            }
+            let laid_out = bar.rect.width;
+            let requested = bar.requested.width;
+            let candidate = if laid_out > 0.0 {
+                laid_out
+            } else if requested > 0.0 {
+                requested
+            } else {
+                16.0
+            };
+            width = width.max(candidate);
+        }
+        width
+    }
 }
 

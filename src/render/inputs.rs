@@ -268,24 +268,29 @@ pub(super) fn draw_progress_bar(
                 (logical.y + (logical.height - m.height) / 2.0) * scale,
             );
             let palette = tk.style_engine.tokens().palette;
-            // First pass: the more readable of fg/bg over the track colour
-            // (resolved.bg), so HighContrast's white-on-white track is fixed.
+            let filled_clip = clip.intersection(filled_rect.scaled(scale));
+            let unfilled_clip = clip.intersection(unfilled_rect(logical, filled_rect).scaled(scale));
+            // Track (unfilled) pass: the more readable of fg/bg over the track
+            // colour (resolved.bg), so HighContrast's white-on-white track is
+            // fixed. Clipped to the unfilled part so it never bleeds over the
+            // fill.
             let track_text = readable_on(resolved.bg, palette.fg, palette.bg);
-            tk.text_engine.draw_styled_pub(
-                pixmap,
-                &text,
-                (resolved.font_size * scale, track_text),
-                resolved.font_family.as_deref(),
-                400,
-                false,
-                origin,
-                clip,
-                resolved.opacity,
-            );
-            // Second pass: the more readable of fg/bg over the fill colour
+            if unfilled_clip.width > 0.0 && unfilled_clip.height > 0.0 {
+                tk.text_engine.draw_styled_pub(
+                    pixmap,
+                    &text,
+                    (resolved.font_size * scale, track_text),
+                    resolved.font_family.as_deref(),
+                    400,
+                    false,
+                    origin,
+                    unfilled_clip,
+                    resolved.opacity,
+                );
+            }
+            // Fill pass: the more readable of fg/bg over the fill colour
             // (resolved.fg), clipped to the filled rectangle so the text stays
             // readable where it overlaps the fill.
-            let filled_clip = clip.intersection(filled_rect.scaled(scale));
             if filled_clip.width > 0.0 && filled_clip.height > 0.0 {
                 let fill_text = readable_on(resolved.fg, palette.fg, palette.bg);
                 tk.text_engine.draw_styled_pub(
@@ -302,6 +307,14 @@ pub(super) fn draw_progress_bar(
             }
         }
     }
+}
+
+/// Returns the unfilled part of a progress bar: `logical` minus the filled
+/// rectangle on the horizontal axis (the fill always grows from the left).
+fn unfilled_rect(logical: Rect, filled: Rect) -> Rect {
+    let start = (filled.x + filled.width).max(logical.x);
+    let end = (logical.x + logical.width).max(start);
+    Rect::new(start, logical.y, end - start, logical.height)
 }
 
 /// Returns whichever of `a` or `b` has the larger WCAG contrast ratio against
@@ -495,10 +508,13 @@ pub(super) fn draw_dspin(
     let palette = tk.style_engine.tokens().palette;
     let fg = if disabled { palette.muted } else { resolved.fg };
 
-    let inner = Rect::new(logical.x, logical.y, (logical.width - 20.0).max(0.0), logical.height);
+    // Arrow column width in logical px; the text field occupies the rest.
+    let arrow_w = 20.0_f32.min(logical.width);
+    let inner = Rect::new(logical.x, logical.y, (logical.width - arrow_w).max(0.0), logical.height);
+    let m = tk.measure_with(&text, resolved);
     let origin = (
         (inner.x + 6.0) * scale,
-        (inner.y + (inner.height - resolved.font_size * 1.3) / 2.0) * scale,
+        (inner.y + (inner.height - m.height) / 2.0) * scale,
     );
     let text_clip = clip.intersection(inner.scaled(scale));
     tk.text_engine.draw_styled_pub(
@@ -516,7 +532,7 @@ pub(super) fn draw_dspin(
     // Buttons on the right, matching the integer Spinbox in `render.rs`:
     // resolved.bg background, resolved.border_color outline and separator,
     // resolved.fg arrow glyphs (visible in HighContrast).
-    let btn_rect = Rect::new(logical.x + logical.width - 20.0, logical.y, 20.0, logical.height).scaled(scale);
+    let btn_rect = Rect::new(logical.x + logical.width - arrow_w, logical.y, arrow_w, logical.height).scaled(scale);
     fill(pixmap, btn_rect, clip, resolved.bg);
     outline(pixmap, btn_rect, clip, scale, (resolved.border_color, resolved.border_color));
     let half_h = btn_rect.height / 2.0;

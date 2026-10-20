@@ -96,21 +96,43 @@ impl Tk {
     }
 
     /// Requested size of a progress bar, growing in height when percent text or
-    /// a label is shown so the text fits.
+    /// a label is shown so the text fits, and never narrower than the measured
+    /// label text plus padding.
     pub(crate) fn progress_requested(&mut self, id: WidgetId, resolved: &ResolvedStyle) -> Size {
         let length = self.node(id).map(|n| n.progress_length).unwrap_or(100.0);
         let pad_w = resolved.padding.left + resolved.padding.right;
         let pad_h = resolved.padding.top + resolved.padding.bottom;
-        let show_text = self
+        let (show_percent, label) = self
             .node(id)
             .and_then(|n| n.inputs.as_ref())
-            .is_some_and(|s| s.progress_show_percent || s.progress_label.is_some());
+            .map_or((false, None), |s| (s.progress_show_percent, s.progress_label.clone()));
+        let show_text = show_percent || label.is_some();
         let height = if show_text {
             resolved.font_size * 1.3 + 6.0
         } else {
             20.0
         };
-        Size::new(length + pad_w, height + pad_h)
+        let mut width = length;
+        if show_text {
+            // Measure the widest text the bar can display: the label with a
+            // 100% suffix (the longest percent string) and the bare percent.
+            let candidates = [
+                label.as_ref().map(|l| format!("{l} 100%")),
+                label.clone(),
+                show_percent.then(|| "100%".to_string()),
+            ];
+            let mut text_w = 0.0_f32;
+            let mut text_h = 0.0_f32;
+            for candidate in candidates.into_iter().flatten() {
+                let m = self.measure_with(&candidate, resolved);
+                text_w = text_w.max(m.width);
+                text_h = text_h.max(m.height);
+            }
+            width = width.max(text_w + 8.0);
+            let height = height.max(text_h + 6.0);
+            return Size::new(width + pad_w, height + pad_h);
+        }
+        Size::new(width + pad_w, height + pad_h)
     }
 
     /// Advances the smooth-easing fraction of a progress bar toward its bound

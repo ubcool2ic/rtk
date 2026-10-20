@@ -249,12 +249,38 @@ impl Tk {
         self.dspin_text(id).unwrap_or_default()
     }
 
-    /// Requested size of a double spin box (matches the integer Spinbox geometry).
+    /// Requested size of a double spin box: the widest of the formatted value
+    /// (including suffix) and the range endpoints, plus the 20 px arrow column,
+    /// 6 px text inset on each side and the resolved padding. The height fits
+    /// the measured text line plus 12 px of vertical padding.
     pub(crate) fn dspin_requested(&mut self, id: WidgetId, resolved: &ResolvedStyle) -> Size {
-        let text = self.dspin_text(id).unwrap_or_default();
-        let m = self.measure_with(&text, resolved);
+        let (from, to) = self
+            .node(id)
+            .filter(|n| n.kind == Kind::DoubleSpinbox)
+            .map_or((0.0, 1.0), |n| n.range_f64);
+        let mut widest = self.dspin_text(id).unwrap_or_default();
+        for endpoint in [from, to] {
+            let candidate = self.dspin_format_value(id, endpoint);
+            if self.measure_with(&candidate, resolved).width > self.measure_with(&widest, resolved).width {
+                widest = candidate;
+            }
+        }
+        let m = self.measure_with(&widest, resolved);
         let pad_w = resolved.padding.left + resolved.padding.right;
         let pad_h = resolved.padding.top + resolved.padding.bottom;
-        Size::new(m.width + 50.0 + pad_w, resolved.font_size * 1.3 + 12.0 + pad_h)
+        let text_w = m.width.max(resolved.font_size * 4.0);
+        let text_h = m.height.max(resolved.font_size * 1.3);
+        Size::new(text_w + 12.0 + 20.0 + pad_w, text_h + 12.0 + pad_h)
+    }
+
+    /// Formats `value` like [`Tk::dspin_text`] would for `id` (decimals and
+    /// suffix), without reading the bound variable.
+    fn dspin_format_value(&self, id: WidgetId, value: f64) -> String {
+        let node = self.node(id).filter(|n| n.kind == Kind::DoubleSpinbox);
+        let (decimals, suffix) = node
+            .and_then(|n| n.inputs.as_ref())
+            .map_or((2u8, String::new()), |s| (s.dspin_decimals, s.dspin_suffix.clone()));
+        let value = if value.is_nan() { 0.0 } else { value };
+        format!("{:.*}{}", decimals as usize, value, suffix)
     }
 }

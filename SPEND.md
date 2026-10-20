@@ -62,3 +62,12 @@
 | 2026-10-20 | openai/gpt-6.1-sol | 10-docs-b r2 [Sol fix] | 32683 (0 cached) | 785 (695 reasoning) | 0.0896 | 0.4868 |
 | 2026-10-20 | openai/gpt-6.1-sol | 10-docs-b r3 [Sol fix] | 32683 (0 cached) | 895 (459 reasoning) | 0.0907 | 0.5775 |
 | 2026-10-20 | (no model) | 10-docs-b: DeepSeek round 1 rewrote src/render.rs with a FILE block even though the file wasn't in its context, and the two Sol rounds couldn't repair it. I reverted render.rs by hand (git checkout); the style.rs docs-only additions were kept. Fixed the driver so it now rejects FILE blocks for existing files outside the context | — | — | 0 | — |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | fix010-visual r0 | 36060 (256 cached) | 6401 (0 reasoning) | 0.0057 | 0.1233 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | fix010-visual r1 | 37663 (0 cached) | 1651 (0 reasoning) | 0.0035 | 0.1267 |
+| 2026-10-20 | openai/gpt-6.1-sol | fix010-visual r2 [Sol fix] | 12586 (0 cached) | 1470 (1421 reasoning) | 0.0462 | 0.6237 |
+| 2026-10-20 | openai/gpt-6.1-sol | fix010-visual r3 [Sol fix] | 12538 (0 cached) | 1052 (985 reasoning) | 0.0419 | 0.6655 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | fix010-scrollarea r0 | 31625 (3072 cached) | 1022 (0 reasoning) | 0.0025 | 0.1293 |
+| 2026-10-20 | openai/gpt-6.1-sol | fix010-scrollarea r1 [Sol fix] | 33056 (0 cached) | 4595 (3624 reasoning) | 0.1286 | 0.7941 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | [BizyBot3, PR #6] 0.10 progress and inputs: 23+ calls (itemized in PR #6) | — | — | 0.174 | (BizyBot3 DeepSeek 0.174) |
+| 2026-10-20 | openai/gpt-6.1-sol | [BizyBot3, PR #6] Sol fixes (itemized in PR #6) | — | — | 0.563 | (BizyBot3 Sol fixes 0.563) |
+| 2026-10-20 | (no model) | fix010-visual: the driver wrongly refused DeepSeek's round-1 rewrite of its own new test file (overwrite guard bug), so the two Sol rounds lacked context. I applied the refused DeepSeek output from the log and fixed the guard. ScrollArea got one DeepSeek self-fix, then Sol fixed it | — | — | 0 | — |
