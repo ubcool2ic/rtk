@@ -470,3 +470,12 @@ I found nothing that needs fixing in this chunk.
 - **Unused `name` parameter (not fixed):** `write_png` takes `name` only to discard it. It is harmless and in a private function, so I left it.
 - **Docs:** every function has a `///` comment.
 
+### src/tk/slider.rs lines 1-228
+- [medium] [bug] `slider_key` ignores inverted ranges (`from > to`). Right/Up and Home/End moved the opposite way from the pointer mapping and the documented direction inversion (lines 210-223) -> fixed
+- [medium] [bug] `slider_user_set` used an absolute `f64::EPSILON` threshold, so changes on small ranges (e.g. `0..1e-12`) were silently dropped and the command never fired (line 150) -> fixed
+- [low] [bug] `slider_set` is documented to return false for dead variables but always returned true (lines 118-122) -> fixed
+- [low] [bug] `slider_fraction` returned NaN as `f32` when the bound variable held NaN, whereas `slider_get` maps NaN to `from` (line 165) -> fixed
+- [low] [bug] `slider_set_length` replaced `±inf` with 160 instead of clamping as documented (line 98) -> fixed
+- [low] [docs] `slider_fraction` doc mentioned a `value` parameter that does not exist (line 156) -> fixed
+- [low] [bug] The `slider_set_orient`, `slider_set_length` and `slider_set_ticks` setters only set `dirty`. This may not trigger relayout, though they change the requested size. Layout invalidation lives outside this chunk -> not fixed (cannot verify)
+

@@ -95,7 +95,7 @@ impl Tk {
     /// Returns false for non-sliders.
     pub fn slider_set_length(&mut self, id: WidgetId, px: f32) -> bool {
         let Some(state) = self.slider_state_mut(id) else { return false };
-        state.slider_length = if px.is_finite() { px.clamp(20.0, 10_000.0) } else { 160.0 };
+        state.slider_length = if px.is_nan() { 160.0 } else { px.clamp(20.0, 10_000.0) };
         self.dirty = true;
         true
     }
@@ -116,6 +116,9 @@ impl Tk {
             return false;
         }
         let Some(var) = node.progress_f64 else { return false };
+        if var.get(self).is_none() {
+            return false;
+        }
         let snapped = self.slider_snap(id, value);
         var.set(self, snapped);
         self.dirty = true;
@@ -147,14 +150,14 @@ impl Tk {
         let Some(var) = node.progress_f64 else { return };
         let snapped = self.slider_snap(id, value);
         let old = var.get(self).unwrap_or(node.range_f64.0);
-        if (old - snapped).abs() > f64::EPSILON {
+        if old != snapped {
             var.set(self, snapped);
             self.run_command(id);
         }
     }
 
-    /// Returns the fraction of the slider's range that `value` represents
-    /// (`0.0` at `from`, `1.0` at `to`).
+    /// Returns the fraction of the slider's range that its current value
+    /// represents (`0.0` at `from`, `1.0` at `to`).
     pub(crate) fn slider_fraction(&self, id: WidgetId) -> f32 {
         let Some(node) = self.node(id).filter(|n| n.kind == Kind::Slider) else { return 0.0 };
         let (from, to) = node.range_f64;
@@ -162,7 +165,11 @@ impl Tk {
             return 0.0;
         }
         let value = node.progress_f64.and_then(|v| v.get(self)).unwrap_or(from);
-        (((value - from) / (to - from)).clamp(0.0, 1.0)) as f32
+        let ratio = (value - from) / (to - from);
+        if ratio.is_nan() {
+            return 0.0;
+        }
+        ratio.clamp(0.0, 1.0) as f32
     }
 
     /// Requested size of a slider: `length x 28` horizontal, `28 x length` vertical.
@@ -209,14 +216,15 @@ impl Tk {
         }
         let (from, to) = node.range_f64;
         let step = node.inputs.as_ref().map_or(0.0, |s| s.slider_step);
-        let unit = if step > 0.0 { step } else { (to - from).abs() * 0.01 };
+        // Signed so that "increase" always moves toward `to`, even when inverted.
+        let dir = if from <= to { 1.0 } else { -1.0 };
+        let unit = dir * if step > 0.0 { step } else { (to - from).abs() * 0.01 };
         let current = node.progress_f64.and_then(|v| v.get(self)).unwrap_or(from);
-        let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
         let next = match key {
             Key::Left | Key::Down => current - unit,
             Key::Right | Key::Up => current + unit,
-            Key::Home => lo,
-            Key::End => hi,
+            Key::Home => from,
+            Key::End => to,
             Key::PageUp => current + unit * 10.0,
             Key::PageDown => current - unit * 10.0,
             _ => return false,
