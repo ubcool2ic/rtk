@@ -752,3 +752,11 @@ I assumed `tree_insert` and `chart_add_series` return `Option`, based on how the
 - [low] [docs] The comment says x is "seconds since 2026-01-01T00:00Z", but the time axis may interpret x as Unix-epoch seconds, so labels could read as 1970 (line 103) -> not fixed. I can't confirm the axis semantics from this chunk.
 - [low] [docs] The tray "Show" menu item (index 0) has no handler, and a `Tray::new` error is silently ignored (lines 144-153) -> not fixed. This is acceptable demo behaviour and can't panic.
 
+### examples/gallery_m011.rs lines 1-189
+- none
+
+I found nothing to fix in this chunk. I could only check it against `lib.rs`, so the widget and `Tk` method signatures it calls are unverified.
+
+- **Error handling:** The `.expect(...)` calls sit inside the example's builder helpers, which return `WidgetId` rather than `Result`. That is a style choice, not a panic on a path where users supply input, so I left it.
+- **Accelerator labels (lines 17, 22):** `with_accel("Ctrl+O")` and `with_accel("Ctrl+Q")` may be display-only labels rather than bound shortcuts. I couldn't confirm this from the reference, so I left it.
+
