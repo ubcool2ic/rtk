@@ -1139,3 +1139,8 @@ I found nothing in lines 1-349 that needs fixing.
 
 I did not run the tests. The assertions that depend on rendering details I could not see are the `sim_advance_time(60)` boundary at line 189, the `box-shadow` parsing at line 242, and the corner-pixel position at line 340.
 
+### tests/timers.rs lines 1-31
+- none
+
+The two tests look correct and deterministic. They use simulated time through `sim_advance_timers`, so there is no wall-clock flakiness. The first test's assertions are meaningful: the fire count of 4, the widget text "4", `after_cancel` returning true, no further firings after cancel, and no pending timers. The second test asserts the quit flag after the timer fires. I can't see the `Tk` implementation, so I'm assuming `every` and `after` have the signatures these calls use.
+

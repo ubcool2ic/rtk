@@ -290,3 +290,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/shortcuts.rs:1-137 | 4918 (0 cached) | 1057 (865 reasoning) | 0.0204 | 5.7720 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/styling.rs:350-487 | 4848 (0 cached) | 1177 (1165 reasoning) | 0.0215 | 5.7935 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/styling.rs:1-349 | 8318 (0 cached) | 1446 (1201 reasoning) | 0.0311 | 5.8246 |
+| 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet tests/timers.rs:1-31 | 2695 (0 cached) | 169 (0 reasoning) | 0.0071 | 5.8316 |
