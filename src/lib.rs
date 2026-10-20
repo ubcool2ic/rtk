@@ -79,3 +79,8 @@ impl std::fmt::Display for RtkError {
 }
 
 impl std::error::Error for RtkError {}
+
+/// Compiles the code samples in docs/GUIDE.md as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../docs/GUIDE.md")]
+pub struct GuideDoctests;

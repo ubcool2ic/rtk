@@ -5,6 +5,51 @@ advanced styling layer (design tokens, ttk-style named styles, state maps with a
 transitions, rounded corners, shadows, gradients, fonts, CSS-like stylesheets with hot reload,
 five built-in themes) on top of the unchanged basic API.
 
+> **1.0 (unreleased).** The crate is consumed as a **git dependency**; the crates.io
+> name `rtk` is taken by an unrelated project, so it is not published there.
+>
+> ```toml
+> [dependencies]
+> rtk = { git = "https://github.com/rtk-rs/rtk", tag = "v1.0.0" }
+> ```
+
+## Documentation
+
+- [docs/GUIDE.md](docs/GUIDE.md) — task-oriented guide: widgets, layout, styling, events, testing.
+- [docs/RTK_1.0_ROADMAP.md](docs/RTK_1.0_ROADMAP.md) — what 1.0 covers and what is deferred.
+- [CHANGELOG.md](CHANGELOG.md) — release notes, including the unreleased 1.0 section.
+- API reference: `cargo doc --open` (rustdoc for every public item).
+
+## Gallery
+
+The gallery example exercises every widget, theme and chart in one window.
+
+```sh
+cargo run --example gallery
+cargo run --example gallery -- --screenshot-dir shots/   # headless PNGs, no display needed
+```
+
+| Basics (light) | Data widgets (modern dark) |
+|---|---|
+| ![Gallery basics, light theme](docs/screenshots/gallery_light_basics.png) | ![Gallery data widgets, modern dark theme](docs/screenshots/gallery_moderndark_data.png) |
+
+| Charts (high contrast) | Inputs (dark) |
+|---|---|
+| ![Gallery charts, high contrast theme](docs/screenshots/gallery_highcontrast_charts.png) | ![Gallery inputs, dark theme](docs/screenshots/gallery_dark_inputs.png) |
+
+## Cargo features
+
+| Feature | Default | MSRV | Description |
+|---|---|---|---|
+| `clipboard` | yes | 1.85 | System clipboard via `arboard`. |
+| `svg` | yes | 1.85 | SVG images via `resvg` (`tk.load_svg`). |
+| `tray` | no | 1.90 | System tray icon via `tray-icon`. |
+| `accesskit` | no | 1.87 | Screen-reader bridge via `accesskit` / `accesskit_winit`. |
+
+The crate MSRV is **1.85**. Enabling `tray` raises the effective MSRV to **1.90** and
+`accesskit` to **1.87**; the default feature set stays at 1.85. The dependency-free
+`Tk::accessibility_tree()` snapshot works without the `accesskit` feature.
+
 ## New in 0.8
 Text, Combobox, Notebook (+ `pack_forget`), Listbox select callbacks, ProgressBar bound to `Var<f64>`,
 tooltips, monospace, Canvas RGBA images + colormaps, thread-safe `TkProxy`, in-app dialogs (file open/save,
@@ -302,6 +347,10 @@ cargo clippy --all-targets -- -D warnings
 cargo run --example demo
 cargo run --example demo -- --dark
 cargo run --example demo -- --png docs/demo.png
+
+cargo run --example gallery
+cargo run --example gallery -- --screenshot-dir shots/
+cargo doc --open
 ```
 
 ## Limitations

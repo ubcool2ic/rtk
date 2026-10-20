@@ -82,3 +82,8 @@
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | gallery-fix2 r1 | 37716 (3328 cached) | 110 (0 reasoning) | 0.0025 | 0.1906 |
 | 2026-10-20 | openai/gpt-6.1-sol | gallery-fix2 r2 [Sol fix] | 35119 (0 cached) | 1164 (908 reasoning) | 0.0994 | 0.8936 |
 | 2026-10-20 | openai/gpt-6.1-sol | gallery-fix2 r3 [Sol fix] | 34986 (0 cached) | 418 (200 reasoning) | 0.0916 | 0.9852 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | guide r0 | 30536 (256 cached) | 5493 (0 reasoning) | 0.0049 | 0.1955 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | guide-doctest r0 | 29074 (256 cached) | 7774 (0 reasoning) | 0.0059 | 0.2014 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | guide-doctest2 r0 | 44323 (256 cached) | 748 (0 reasoning) | 0.0035 | 0.2048 |
+| hand glue | lead | docs/GUIDE.md: 2 doctest one-liners (drop nonexistent `Opt::Variable` line; mark Window API block `no_run` since it feeds empty PNG bytes) + `GuideDoctests` include in src/lib.rs | $0 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | readme r0 | 8406 (7680 cached) | 958 (0 reasoning) | 0.0006 | 0.2054 |
