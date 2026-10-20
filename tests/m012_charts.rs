@@ -137,11 +137,17 @@ fn bar_bounds_include_zero() {
 fn chart_render_not_flat() {
     let mut tk = Tk::new();
     let chart = make_chart(&mut tk, ChartKind::Line);
+    let baseline = tk
+        .render_to_pixmap(320, 240)
+        .expect("baseline render")
+        .data()
+        .to_vec();
     let s = tk.chart_add_series(chart, "a").expect("series");
     assert!(tk.chart_set_data(chart, s, &[(0.0, 0.0), (1.0, 5.0), (2.0, 2.0)]));
     assert!(tk.chart_set_series_color(chart, s, Color::rgb(200, 30, 30)));
     let pixmap = tk.render_to_pixmap(320, 240).expect("render");
     let data = pixmap.data();
+    assert_ne!(data, &baseline[..], "adding series data must change the output");
     let first = &data[0..4];
     let distinct = data.chunks_exact(4).any(|px| px != first);
     assert!(distinct);

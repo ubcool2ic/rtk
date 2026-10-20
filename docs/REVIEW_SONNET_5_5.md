@@ -933,3 +933,8 @@ I found nothing in lines 1-131 that needs a fix.
 - [low] [bug] `test_tree_keyboard_nav`, `test_tree_left_right_semantics` and the 10k test click at a hard-coded `rect.y + 4.0` (lines 68, 92, 232). This assumes the row height is over 8 px, while the other tests use `tree_row_height` -> not fixed (works with the current row height; avoids churn).
 - [low] [docs] `test_tree_renders` only checks `is_ok()` and does not inspect the pixmap -> not fixed (the return type is not visible from this chunk, so a stronger assertion would be a guess).
 
+### tests/m012_charts.rs lines 1-150
+- [severity medium] [bug] `chart_render_not_flat` (lines 135-148) can pass without any chart drawing. Any window background, frame or border already gives more than one colour in the full 320x240 render, so the test asserts nothing about the chart. -> fixed. It now renders a baseline before adding the series and data, then asserts the output changes after the data and a red series colour are set. The existing multi-colour check stays.
+- [severity low] [docs] `sparkline_has_one_series` (lines 98-106) says the series is named `value` but only checks the count. -> not fixed. I can't see a public series-name accessor to assert against, so I won't invent one.
+- [severity low] [bug] The `OKABE_ITO` import from `rtk::chart` (line 3) depends on `chart` re-exporting it. -> not fixed. It may compile fine, but I can't verify it from the given reference. `rtk::OKABE_ITO` is the root re-export if it doesn't.
+
