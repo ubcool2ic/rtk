@@ -227,8 +227,13 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let row = Frame::new(tk, col_a)?;
     tk.pack(row, PackOpts::default());
 
+    let row_opts = PackOpts {
+        side: Side::Left,
+        padx: 2.0,
+        ..PackOpts::default()
+    };
     let normal = Button::new(tk, row, "Normal")?;
-    tk.pack(normal, PackOpts::default());
+    tk.pack(normal, row_opts);
     tk.tooltip(normal, "A plain button");
     if let Some(img) = icons::icon(tk, Icon::Bolt, 16, Color::rgb(79, 140, 255)) {
         tk.config(normal, Opt::Image(img));
@@ -237,11 +242,11 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
 
     let accent = Button::new(tk, row, "Accent")?;
     tk.config(accent, Opt::Style("Accent.TButton".into()));
-    tk.pack(accent, PackOpts::default());
+    tk.pack(accent, row_opts);
 
     let disabled = Button::new(tk, row, "Disabled")?;
     tk.config(disabled, Opt::Disabled(true));
-    tk.pack(disabled, PackOpts::default());
+    tk.pack(disabled, row_opts);
 
     let entry = Entry::new(tk, col_a)?;
     tk.pack(entry, PackOpts::default());
@@ -284,12 +289,25 @@ fn build_basics(tk: &mut Tk, parent: WidgetId) -> Result<(), Box<dyn Error>> {
     let list_row = Frame::new(tk, col_b)?;
     tk.pack(list_row, PackOpts::default());
     let listbox = Listbox::new(tk, list_row, 6)?;
-    tk.pack(listbox, PackOpts::default());
+    tk.pack(
+        listbox,
+        PackOpts {
+            side: Side::Left,
+            ..PackOpts::default()
+        },
+    );
     for i in 0..20 {
         tk.listbox_insert(listbox, i, format!("Item {i}"));
     }
     let list_bar = Scrollbar::new(tk, list_row)?;
-    tk.pack(list_bar, PackOpts::default());
+    tk.pack(
+        list_bar,
+        PackOpts {
+            side: Side::Left,
+            fill: Fill::Y,
+            ..PackOpts::default()
+        },
+    );
     tk.link_scrollbar(list_bar, listbox);
 
     // --- Column C: text, canvas ------------------------------------------
