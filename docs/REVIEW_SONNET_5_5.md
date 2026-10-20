@@ -167,3 +167,5 @@ Four things look inconsistent, but I left them alone because I can't tell from t
 - [severity low] [bug] The smooth-mode `progress_drawn` fraction is not clamped, so an overshoot or NaN can make the fill wider than the bar or empty (line 242) -> fixed
 - [severity low] [bug] The indeterminate fill is drawn in accent, but the overlaid percent/label text picks its contrast against `resolved.fg` (lines 232, 295) -> fixed (the contrast colour now matches the colour actually drawn)
 
+- RECOVERED: the reverted src/style.rs 1300-1639 edits (comment parsing, gradient slicing panic, etc.) were re-applied from the saved Sonnet reply; DeepSeek fixed the clippy `manual_strip` error (recover-style-1300). Checks green.
+

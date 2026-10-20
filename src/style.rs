@@ -1319,6 +1319,9 @@ impl TransitionState {
 // Stylesheet Parser
 // ---------------------------------------------------------------------------
 
+/// A parsed stylesheet rule: its selector list and the declarations it applies.
+type StylesheetRule = (Vec<(String, Option<State>)>, StyleSpec);
+
 /// Parser for the CSS-like stylesheet syntax accepted by [`StyleEngine`].
 pub struct StylesheetParser<'a> {
     input: &'a str,
@@ -1336,8 +1339,8 @@ impl<'a> StylesheetParser<'a> {
     fn skip_whitespace_and_comments(&mut self) {
         while self.pos < self.input.len() {
             let rest = &self.input[self.pos..];
-            if rest.starts_with("/*") {
-                if let Some(end) = rest.find("*/") {
+            if let Some(stripped) = rest.strip_prefix("/*") {
+                if let Some(end) = stripped.find("*/").map(|e| e + 2) {
                     let comment = &rest[..end + 2];
                     self.line += comment.matches('\n').count();
                     self.pos += end + 2;
@@ -1363,6 +1366,7 @@ impl<'a> StylesheetParser<'a> {
     /// Parses the whole stylesheet into `engine`, returning the rule count.
     pub fn parse(mut self, engine: &mut StyleEngine) -> Result<usize, StyleError> {
         let mut count = 0;
+        let mut rules: Vec<StylesheetRule> = Vec::new();
         loop {
             self.skip_whitespace_and_comments();
             if self.pos >= self.input.len() {
@@ -1376,7 +1380,11 @@ impl<'a> StylesheetParser<'a> {
             }
             self.pos += 1; // skip '{'
             let spec = self.parse_block()?;
-            // Apply spec according to selector
+            rules.push((selector, spec));
+            count += 1;
+        }
+        // Apply only once the whole sheet parsed, so errors leave the engine untouched.
+        for (selector, spec) in rules {
             for (name, state) in selector {
                 if let Some(st) = state {
                     engine.map(name, st, spec.clone());
@@ -1384,7 +1392,6 @@ impl<'a> StylesheetParser<'a> {
                     engine.configure(name, spec.clone());
                 }
             }
-            count += 1;
         }
         Ok(count)
     }
@@ -1503,6 +1510,7 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
         "border" => {
             // CSS-like: any order of width, colour and an ignored style keyword.
             let mut any = false;
+            let mut none = false;
             for part in val.split_whitespace() {
                 if let Some(width) = css_number(part) {
                     spec.border_width = Some(width);
@@ -1510,12 +1518,18 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
                 } else if let Some(color) = parse_color(part) {
                     spec.border_color = Some(color);
                     any = true;
-                } else if !matches!(part, "solid" | "none") {
+                } else if part == "none" {
+                    none = true;
+                    any = true;
+                } else if part != "solid" {
                     return Err(err("invalid border value"));
                 }
             }
             if !any {
                 return Err(err("invalid border value"));
+            }
+            if none {
+                spec.border_width = Some(0.0);
             }
         }
         "border-color" => {
@@ -1523,10 +1537,16 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
         }
         "border-width" => {
             let w = val.trim_end_matches("px").trim().parse::<f32>().map_err(|_| err("invalid number"))?;
+            if !w.is_finite() || w < 0.0 {
+                return Err(err("invalid number"));
+            }
             spec.border_width = Some(w);
         }
         "border-radius" => {
             let r = val.trim_end_matches("px").trim().parse::<f32>().map_err(|_| err("invalid number"))?;
+            if !r.is_finite() || r < 0.0 {
+                return Err(err("invalid number"));
+            }
             spec.radius = Some(r);
         }
         "padding" => {
@@ -1545,6 +1565,9 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
         }
         "opacity" => {
             let op = val.parse::<f32>().map_err(|_| err("invalid opacity number"))?;
+            if !op.is_finite() {
+                return Err(err("invalid opacity number"));
+            }
             spec.opacity = Some(op);
         }
         "font-family" => {
@@ -1553,6 +1576,9 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
         }
         "font-size" => {
             let sz = val.trim_end_matches("pt").trim_end_matches("px").trim().parse::<f32>().map_err(|_| err("invalid font size"))?;
+            if !sz.is_finite() || sz <= 0.0 {
+                return Err(err("invalid font size"));
+            }
             spec.font_size = Some(sz);
         }
         "font-weight" => {
@@ -1585,7 +1611,10 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
 /// Parses one, two, or four whitespace-separated lengths into edge spacing.
 fn parse_edges(val: &str) -> Option<Edges> {
     let parts: Vec<&str> = val.split_whitespace().collect();
-    let nums: Vec<f32> = parts.iter().filter_map(|p| p.trim_end_matches("px").parse::<f32>().ok()).collect();
+    let nums: Vec<f32> = parts
+        .iter()
+        .map(|p| p.trim_end_matches("px").parse::<f32>().ok().filter(|v| v.is_finite()))
+        .collect::<Option<Vec<f32>>>()?;
     match nums.len() {
         1 => Some(Edges::all(nums[0])),
         2 => Some(Edges::symmetrical(nums[0], nums[1])),
@@ -1603,6 +1632,9 @@ fn parse_shadow(val: &str) -> Option<Shadow> {
     let dx = parts[0].trim_end_matches("px").parse::<f32>().ok()?;
     let dy = parts[1].trim_end_matches("px").parse::<f32>().ok()?;
     let blur = parts[2].trim_end_matches("px").parse::<f32>().ok()?;
+    if !(dx.is_finite() && dy.is_finite() && blur.is_finite()) {
+        return None;
+    }
     let color = if parts.len() >= 4 {
         parse_color(parts[3])?
     } else {
@@ -1615,6 +1647,9 @@ fn parse_shadow(val: &str) -> Option<Shadow> {
 fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
     let start = val.find('(')?;
     let end = val.rfind(')')?;
+    if end <= start {
+        return None;
+    }
     let inner = &val[start + 1..end];
     let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
     if parts.len() < 2 {

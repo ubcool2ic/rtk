@@ -117,3 +117,4 @@
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/data.rs:1-286 | 7447 (0 cached) | 1831 (1153 reasoning) | 0.0332 | 0.8084 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/inputs.rs:338-567 | 6485 (0 cached) | 4315 (2526 reasoning) | 0.0561 | 0.8645 |
 | 2026-10-20 | anthropic/claude-sonnet-5.5 | sonnet src/render/inputs.rs:1-337 | 8202 (0 cached) | 6464 (3789 reasoning) | 0.0810 | 0.9455 |
+| 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | recover-style-1300 r0 | 23766 (0 cached) | 433 (0 reasoning) | 0.0019 | 0.2138 |
