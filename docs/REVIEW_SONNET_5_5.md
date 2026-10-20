@@ -1116,3 +1116,6 @@ I reviewed lines 1-58 and found nothing that needs changing.
 
 I could not check the signatures of `Scrollbar::horizontal`, `scrollarea_content_size` or `render_to_pixmap` against the API, because only `lib.rs` was given. They are assumed to exist as used.
 
+### tests/scrolling.rs lines 1-123
+- none
+
