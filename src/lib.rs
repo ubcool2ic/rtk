@@ -8,6 +8,7 @@ pub mod icons;
 pub mod layout;
 mod render;
 pub mod style;
+pub mod testing;
 mod timer;
 mod tk;
 mod var;
