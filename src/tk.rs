@@ -881,6 +881,20 @@ impl Tk {
         self.config(id, Opt::Command(Box::new(command)))
     }
 
+    /// Runs `callback` when Enter is pressed in the single-line Entry `id`
+    /// (tkinter `entry.bind("<Return>", ...)`), e.g. to submit a search box.
+    /// Inside an open dialog, Enter still accepts the dialog first.
+    /// Returns false if `id` is not a live Entry. Calling it again replaces the callback.
+    pub fn entry_bind_submit(&mut self, id: WidgetId, callback: impl FnMut(&mut Tk) + 'static) -> bool {
+        match self.node_mut(id) {
+            Some(node) if node.kind == Kind::Entry => {
+                node.command = Some(Box::new(callback));
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Current text of an Entry (tkinter `entry.get()`); `None` for other kinds.
     pub fn entry_get(&self, id: WidgetId) -> Option<String> {
         if self.node(id)?.kind != Kind::Entry {
@@ -2027,6 +2041,9 @@ impl Tk {
             Kind::Entry => {
                 if key == Key::Space {
                     self.sim_text(" ");
+                } else if key == Key::Enter {
+                    // Submit callback from `entry_bind_submit` (no-op if none).
+                    self.run_command(id);
                 } else {
                     self.edit_entry(id, Some(key), "");
                 }

@@ -2,6 +2,7 @@
 
 ## 0.8.2
 - **Fix: garbled button labels on Windows.** `TButton`, `Ghost.TButton`, `Sidebar.TButton` and `Chip.*` used font weight 500. Windows' default sans-serif (Arial) has no 500 face, so the matcher picked an unrelated face and labels drew as boxes/symbols. These styles now use 400 (bold variants stay 700). A unit test checks that every built-in theme style and state map uses only 400 or 700.
+- **New: Enter-to-submit for Entry.** `Tk::entry_bind_submit(entry, |tk| ...)` runs a callback when Enter is pressed in a focused single-line Entry (tkinter `bind("<Return>")`). It's additive and non-breaking: Enter in an Entry with no callback stays a no-op, and Enter in an open dialog still accepts the dialog first. Tests: `tests/entry_submit.rs`.
 
 ## 0.8.1
 
