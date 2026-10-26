@@ -104,6 +104,41 @@ pub(crate) fn install(db: &mut Database, bundled: &[&'static [u8]]) -> DefaultFo
     choice
 }
 
+/// Snaps a requested weight and italic flag to a face that `family` really has.
+///
+/// cosmic-text 0.12 only shapes with the requested family when that family has a face at
+/// exactly the requested weight and style. Otherwise it uses the first font anywhere in the
+/// database with that exact weight and style. On Windows that is often a symbol font, so
+/// every letter becomes an icon (the "garbled button labels" bug: buttons asked for weight
+/// 500, which Arial and the bundled Noto Sans don't have). Snapping here means a style sheet,
+/// canvas `text_ex` weight or app-chosen family can never trigger that fallback.
+///
+/// Picks the nearest available weight (ties go lighter at or below 500, heavier above, as in
+/// CSS). Italic falls back to upright when the family has no italic face. If the family has
+/// no faces at all, the request is returned unchanged and normal glyph fallback applies.
+pub(crate) fn snap_to_family_face(db: &Database, family: Family<'_>, weight: u16, italic: bool) -> (u16, bool) {
+    let name = db.family_name(&family).to_string();
+    let weights = |style: Style| -> Vec<u16> {
+        db.faces()
+            .filter(|f| f.style == style && f.stretch == Stretch::Normal && f.families.iter().any(|(n, _)| *n == name))
+            .map(|f| f.weight.0)
+            .collect()
+    };
+    let (mut available, mut italic_out) = (Vec::new(), italic);
+    if italic {
+        available = weights(Style::Italic);
+    }
+    if available.is_empty() {
+        available = weights(Style::Normal);
+        italic_out = false;
+    }
+    let lighter_first = weight <= 500;
+    match available.into_iter().min_by_key(|&w| (w.abs_diff(weight), if lighter_first { w > weight } else { w < weight })) {
+        Some(w) => (w, italic_out),
+        None => (weight, italic),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Bundled font parsing, fallback, and theme coverage.
@@ -183,5 +218,23 @@ mod tests {
                 assert!(has_face(&db, fam, weight), "theme {theme}: style {name} wants {fam} {weight}");
             }
         }
+    }
+
+    /// Weights and italics the bundled font lacks snap to its real faces, so cosmic-text never
+    /// falls back to an unrelated font (regression: garbled Windows button labels).
+    #[test]
+    fn snaps_to_real_faces() {
+        let mut db = Database::new();
+        install(&mut db, &BUNDLED_FACES);
+        let sans = Family::SansSerif;
+        assert_eq!(snap_to_family_face(&db, sans, 400, false), (400, false));
+        assert_eq!(snap_to_family_face(&db, sans, 500, false), (400, false));
+        assert_eq!(snap_to_family_face(&db, sans, 550, false), (700, false), "tie above 500 goes heavier");
+        assert_eq!(snap_to_family_face(&db, sans, 600, false), (700, false));
+        assert_eq!(snap_to_family_face(&db, sans, 900, false), (700, false));
+        assert_eq!(snap_to_family_face(&db, sans, 100, false), (400, false));
+        assert_eq!(snap_to_family_face(&db, sans, 700, true), (700, false), "no italic face: upright");
+        assert_eq!(snap_to_family_face(&db, Family::Name(BUNDLED_FAMILY), 500, false), (400, false));
+        assert_eq!(snap_to_family_face(&db, Family::Name("No Such Family"), 500, true), (500, true), "unknown family unchanged");
     }
 }
