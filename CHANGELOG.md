@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: text never falls back to an unrelated font when a weight or italic face is missing. cosmic-text 0.12 uses the requested family only at an exact weight and style, and otherwise picks the first font anywhere with that weight (on Windows often a symbol font, which drew button labels as icons). rtk now snaps every request to the nearest face the family really has (`fonts::snap_to_family_face`, in the one text path all widgets use), so style sheets (`font-weight: 500`), canvas `text_ex` weights and app-chosen families are safe. v0.8.2 fixed the built-in themes; this closes the remaining paths. Tests: `tests/font_weight_snap.rs`, `fonts::tests::snaps_to_real_faces`.
+
 ## 1.0.1 (2026-10-20)
 
 - **File dialogs** (`rtk::file_dialog`): `Tk::file_dialog_open`, `file_dialog_open_many`, `file_dialog_save`, `file_dialog_pick_folder` (or `file_dialog(kind, ..)`) with a `FileDialog` builder (title, start directory, suggested file name, `FileFilter`s). The `FileDialogBackend` trait has three backends. `NativeFileDialog` uses `rfd` 0.17.2 and is behind the new optional `native-dialogs` feature (XDG portal on Linux, no GTK). `InAppFileDialog` is the default without the feature and wraps the existing `dialog::ask_*` overlays. `MockFileDialog` gives scripted, headless tests. See `docs/FILE_DIALOGS.md`. Tests: `tests/m011_file_dialog.rs`. Example: `file_dialogs`.

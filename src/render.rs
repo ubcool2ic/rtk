@@ -34,6 +34,8 @@ pub(crate) struct TextEngine {
     measured: std::collections::HashMap<TextKey, Size>,
     /// Which family became the default sans-serif (bundled Noto Sans normally).
     default_font: crate::fonts::DefaultFont,
+    /// (family, weight, italic) requests mapped to a face the family really has.
+    snapped: std::collections::HashMap<(Option<String>, u16, bool), (u16, bool)>,
 }
 
 impl TextEngine {
@@ -47,6 +49,7 @@ impl TextEngine {
             cache: SwashCache::new(),
             shaped: std::collections::HashMap::new(),
             measured: std::collections::HashMap::new(),
+            snapped: std::collections::HashMap::new(),
         }
     }
 
@@ -96,17 +99,18 @@ impl TextEngine {
         buffer.set_size(&mut self.fonts, None, None);
         buffer.set_wrap(&mut self.fonts, Wrap::None);
 
-        let mut attrs = Attrs::new();
-        if let Some(name) = family_name {
-            if name.eq_ignore_ascii_case("monospace") {
-                attrs = attrs.family(Family::Monospace);
-            } else {
-                attrs = attrs.family(Family::Name(name));
-            }
-        } else {
-            attrs = attrs.family(Family::SansSerif);
-        }
-        attrs = attrs.weight(Weight(weight));
+        let family = match family_name {
+            Some(name) if name.eq_ignore_ascii_case("monospace") => Family::Monospace,
+            Some(name) => Family::Name(name),
+            None => Family::SansSerif,
+        };
+        // Ask only for a face the family has; see `fonts::snap_to_family_face`.
+        let db = self.fonts.db();
+        let (weight, italic) = *self
+            .snapped
+            .entry((family_name.map(str::to_owned), weight, italic))
+            .or_insert_with(|| crate::fonts::snap_to_family_face(db, family, weight, italic));
+        let mut attrs = Attrs::new().family(family).weight(Weight(weight));
         if italic {
             attrs = attrs.style(Style::Italic);
         }
