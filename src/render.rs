@@ -24,14 +24,38 @@ const TEXT_CACHE_LIMIT: usize = 2048;
 /// Upper bound on cached text measurements.
 const MEASURE_CACHE_LIMIT: usize = 65_536;
 
+/// Hashes the parts of a [`TextKey`] without allocating an owned key.
+fn text_key_hash(text: &str, size_bits: u32, family: Option<&str>, weight: u16, italic: bool) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    size_bits.hash(&mut hasher);
+    family.hash(&mut hasher);
+    weight.hash(&mut hasher);
+    italic.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// True when a stored [`TextKey`] equals the borrowed parts (guards against hash collisions).
+fn text_key_matches(
+    key: &TextKey,
+    text: &str,
+    size_bits: u32,
+    family: Option<&str>,
+    weight: u16,
+    italic: bool,
+) -> bool {
+    key.0 == text && key.1 == size_bits && key.2.as_deref() == family && key.3 == weight && key.4 == italic
+}
+
 /// Font system, glyph cache and shaping/measurement caches used for all text drawing.
 pub(crate) struct TextEngine {
     fonts: FontSystem,
     cache: SwashCache,
     /// Shaped buffers reused across frames so unchanged text is not reshaped.
-    shaped: std::collections::HashMap<TextKey, Buffer>,
+    shaped: std::collections::HashMap<u64, (TextKey, Buffer)>,
     /// Measured sizes; much smaller than buffers, so it can hold many more entries.
-    measured: std::collections::HashMap<TextKey, Size>,
+    measured: std::collections::HashMap<u64, (TextKey, Size)>,
     /// Which family became the default sans-serif (bundled Noto Sans normally).
     default_font: crate::fonts::DefaultFont,
     /// (family, weight, italic) requests mapped to a face the family really has.
@@ -59,6 +83,7 @@ impl TextEngine {
     }
 
     /// Returns a cached shaped buffer, shaping and caching it on a miss.
+    #[allow(dead_code)]
     fn shaped(
         &mut self,
         text: &str,
@@ -67,15 +92,35 @@ impl TextEngine {
         weight: u16,
         italic: bool,
     ) -> Option<&Buffer> {
-        let key: TextKey = (text.to_owned(), size.to_bits(), family_name.map(str::to_owned), weight, italic);
-        if !self.shaped.contains_key(&key) {
+        let hash = self.ensure_shaped(text, size, family_name, weight, italic)?;
+        self.shaped.get(&hash).map(|(_, buffer)| buffer)
+    }
+
+    /// Makes sure a shaped buffer for the text is cached and returns its cache slot.
+    /// Cache hits do not allocate.
+    fn ensure_shaped(
+        &mut self,
+        text: &str,
+        size: f32,
+        family_name: Option<&str>,
+        weight: u16,
+        italic: bool,
+    ) -> Option<u64> {
+        let bits = size.to_bits();
+        let hash = text_key_hash(text, bits, family_name, weight, italic);
+        let hit = self
+            .shaped
+            .get(&hash)
+            .is_some_and(|(key, _)| text_key_matches(key, text, bits, family_name, weight, italic));
+        if !hit {
             let buffer = self.buffer(text, size, family_name, weight, italic)?;
             if self.shaped.len() >= TEXT_CACHE_LIMIT {
                 self.shaped.clear();
             }
-            self.shaped.insert(key.clone(), buffer);
+            let key: TextKey = (text.to_owned(), bits, family_name.map(str::to_owned), weight, italic);
+            self.shaped.insert(hash, (key, buffer));
         }
-        self.shaped.get(&key)
+        Some(hash)
     }
 
     /// Reports whether any font faces are loaded in the font database.
@@ -134,9 +179,12 @@ impl TextEngine {
         weight: u16,
         italic: bool,
     ) -> Size {
-        let key: TextKey = (text.to_owned(), size.to_bits(), family.map(str::to_owned), weight, italic);
-        if let Some(size) = self.measured.get(&key) {
-            return *size;
+        let bits = size.to_bits();
+        let hash = text_key_hash(text, bits, family, weight, italic);
+        if let Some((key, cached)) = self.measured.get(&hash) {
+            if text_key_matches(key, text, bits, family, weight, italic) {
+                return *cached;
+            }
         }
         let width = if let Some(buffer) = self.buffer(text, size, family, weight, italic) {
             buffer.layout_runs().map(|run| run.line_w).fold(0.0_f32, f32::max)
@@ -147,7 +195,8 @@ impl TextEngine {
         if self.measured.len() >= MEASURE_CACHE_LIMIT {
             self.measured.clear();
         }
-        self.measured.insert(key, result);
+        let key: TextKey = (text.to_owned(), bits, family.map(str::to_owned), weight, italic);
+        self.measured.insert(hash, (key, result));
         result
     }
 
@@ -195,11 +244,8 @@ impl TextEngine {
         let origin = (origin.0.round().clamp(-1.0e7, 1.0e7), origin.1.round().clamp(-1.0e7, 1.0e7));
         let effective_alpha = (color.a as f32 * opacity).round().clamp(0.0, 255.0) as u8;
         let draw_color = cosmic_text::Color::rgba(color.r, color.g, color.b, effective_alpha);
-        let key: TextKey = (text.to_owned(), size.to_bits(), family.map(str::to_owned), weight, italic);
-        if self.shaped(text, size, family, weight, italic).is_none() {
-            return;
-        }
-        let Some(buffer) = self.shaped.get(&key) else { return };
+        let Some(hash) = self.ensure_shaped(text, size, family, weight, italic) else { return };
+        let Some((_, buffer)) = self.shaped.get(&hash) else { return };
         // Integer clip bounds in device pixels.
         let (width, height) = (pixmap.width() as i32, pixmap.height() as i32);
         let x0 = (clip.x.floor() as i32).clamp(0, width);
@@ -335,6 +381,17 @@ fn fill_circle(pixmap: &mut Pixmap, cx: f32, cy: f32, r: f32, clip: Rect, color:
         paint.set_color_rgba8(color.r, color.g, color.b, color.a);
         paint.anti_alias = true;
         if let Some(clip_rect) = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height) {
+            // Fast path: when the circle plus an anti-aliasing margin lies fully inside the
+            // clip, the mask would be fully opaque over every touched pixel, so skip
+            // allocating and rasterising a full-surface mask.
+            if clip.x <= (cx - r).floor() - 1.0
+                && clip.y <= (cy - r).floor() - 1.0
+                && clip.x + clip.width >= (cx + r).ceil() + 1.0
+                && clip.y + clip.height >= (cy + r).ceil() + 1.0
+            {
+                pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                return;
+            }
             let mut clip_mask = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
             if let Some(mask) = clip_mask.as_mut() {
                 mask.fill_path(&tiny_skia::PathBuilder::from_rect(clip_rect), tiny_skia::FillRule::Winding, false, Transform::identity());
@@ -479,7 +536,10 @@ impl Tk {
         let high_contrast = self.theme == Theme::HighContrast;
         let dark_mode = self.theme == Theme::Dark;
 
-        for id in self.paint_order.clone() {
+        // Walk by index so the paint order is not cloned every frame.
+        let mut paint_index = 0;
+        while let Some(id) = self.paint_order.get(paint_index).copied() {
+            paint_index += 1;
             let Some(node) = self.node(id) else { continue };
             let (kind, logical, logical_clip) = (node.kind, node.rect, node.clip);
             if let Some(only) = only {
@@ -581,14 +641,14 @@ impl Tk {
                     let text_cursor = node.cursor;
                     let preedit = self.ime_preedit().and_then(|(pid, s, _)| if pid == id { Some(s.to_owned()) } else { None });
                     let caret = floor_char_boundary(&full_text, text_cursor);
-                    let display = if let Some(p) = &preedit {
+                    let display: std::borrow::Cow<'_, str> = if let Some(p) = &preedit {
                         let mut s = String::with_capacity(full_text.len() + p.len());
                         s.push_str(full_text.get(..caret).unwrap_or_default());
                         s.push_str(p);
                         s.push_str(full_text.get(caret..).unwrap_or_default());
-                        s
+                        std::borrow::Cow::Owned(s)
                     } else {
-                        full_text.clone()
+                        std::borrow::Cow::Borrowed(full_text.as_str())
                     };
                     let lines: Vec<&str> = display.split('\n').collect();
                     let text_clip = clip.intersection(inner.scaled(scale));
@@ -701,7 +761,7 @@ impl Tk {
                     );
                     let text_clip = clip.intersection(inner.scaled(scale));
                     if editable {
-                        let text = cur_str.clone();
+                        let text: &str = cur_str.as_str();
                         let cursor = cursor_boundary(&text, node.cursor);
                         let old_scroll_x = node.scroll_x;
                         let caret = self.measure_with(text.get(..cursor).unwrap_or_default(), &resolved).width;
@@ -1259,6 +1319,24 @@ impl Tk {
                             }
                             let int_clip = clip.intersection(rect);
                             if let Some(clip_rect) = tiny_skia::Rect::from_xywh(int_clip.x, int_clip.y, int_clip.width, int_clip.height) {
+                                // When every blitted pixel lies inside the clip the mask would be
+                                // fully opaque there; skip the full-surface mask allocation.
+                                let (blit_x, blit_y) = (rect.x.round() as i32, rect.y.round() as i32);
+                                let covered = int_clip.x <= blit_x as f32
+                                    && int_clip.y <= blit_y as f32
+                                    && int_clip.x + int_clip.width >= (i64::from(blit_x) + i64::from(w)) as f32
+                                    && int_clip.y + int_clip.height >= (i64::from(blit_y) + i64::from(h)) as f32;
+                                if covered {
+                                    pixmap.draw_pixmap(
+                                        blit_x,
+                                        blit_y,
+                                        sub.as_ref(),
+                                        &tiny_skia::PixmapPaint::default(),
+                                        Transform::identity(),
+                                        None,
+                                    );
+                                    continue;
+                                }
                                 let mut mask = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
                                 if let Some(m) = mask.as_mut() {
                                     m.fill_path(&tiny_skia::PathBuilder::from_rect(clip_rect), tiny_skia::FillRule::Winding, false, Transform::identity());
@@ -1474,6 +1552,13 @@ impl Tk {
 
                 let sel_idx = cnode.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let (px, py) = self.pointer;
+                // When the list is taller than the capped popup, the last (partial) row must
+                // not paint past the popup box or over its border.
+                let rows_clip = if rows.len() as f32 * item_h > drop_h {
+                    drop_clip.intersection(drop_rect.inset(1.0, 1.0).scaled(scale))
+                } else {
+                    drop_clip
+                };
 
                 // Scroll the popup so the keyboard-highlighted row is always
                 // visible; the same offset is used by hit testing so clicks pick
@@ -1511,7 +1596,7 @@ impl Tk {
                         } else {
                             self.style_engine.tokens().palette.select_bg
                         };
-                        fill(pixmap, row_rect.scaled(scale), drop_clip, hl);
+                        fill(pixmap, row_rect.scaled(scale), rows_clip, hl);
                     }
 
                     let fg_col = if (is_sel && !hover_active) || (hover_active && high_contrast) {
@@ -1527,7 +1612,7 @@ impl Tk {
                     self.text_engine.draw_styled(
                         pixmap, val, (resolved.font_size * scale, fg_col),
                         resolved.font_family.as_deref(), resolved.font_weight, false,
-                        origin, drop_clip.intersection(row_rect.scaled(scale)), 1.0,
+                        origin, rows_clip.intersection(row_rect.scaled(scale)), 1.0,
                     );
                 }
             }
