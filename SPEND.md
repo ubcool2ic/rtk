@@ -344,3 +344,26 @@ Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were nee
 | 2026-10-20 | note | hand glue (1.0.1) | Moved PR #9's three CHANGELOG bullets into a new `## 1.0.1` section + version bump; kept `clear_input` crate-private and added `Tk::sim_window_focus_lost` (calls it) for the review test instead of DeepSeek's `pub #[doc(hidden)] clear_input` | | | |
 | 2026-10-20 | deepseek/deepseek-v4.1-flash-1017 | ds-1.0.1-changelog r0 | 11225 (0 cached) | 447 (0 reasoning) | 0.0010 | 0.2853 |
 | 2026-10-20 | note | 1.0.1 renames (scripted, $0) | perl word-boundary rename approved by Tyler: open_file_dialog/open_files_dialog/save_file_dialog/pick_folder_dialog/set_file_dialog_backend/reset_file_dialog_backend -> file_dialog_open/_open_many/_save/_pick_folder/_set_backend/_reset_backend; combobox_text/filtered/highlighted -> combobox_get_text/_filtered/_highlighted (14 files, no aliases) | | | |
+
+### 1.0.2 Fable 5.2 pass (branch fable-5.2-1.0.2)
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | Running total |
+|---|---|---|---|---|---|---|
+| 2026-11-13 | anthropic/claude-fable-5.2 | c1-render [hit max_tokens on reasoning, no output; re-run as c1-render-r2] | 34882 (0 cached) | 16000 (16000 reasoning) | 0.9191 | 0.9191 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c1-render-r2 | 34928 (0 cached) | 26729 (22085 reasoning) | 1.3486 | 2.2676 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c2-style | 28499 (0 cached) | 3666 (2100 reasoning) | 0.3746 | 2.6423 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c5-app | 16162 (0 cached) | 3183 (2041 reasoning) | 0.2566 | 2.8989 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c3-layout | 20439 (0 cached) | 3943 (2137 reasoning) | 0.3212 | 3.2201 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c4-events | 19227 (0 cached) | 6585 (4092 reasoning) | 0.4172 | 3.6373 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c6-renderdata | 21718 (0 cached) | 8568 (4049 reasoning) | 0.5165 | 4.1538 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c9-widgets | 23117 (0 cached) | 2370 (1609 reasoning) | 0.2797 | 4.4335 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c7-charts | 13343 (0 cached) | 4523 (2182 reasoning) | 0.2877 | 4.7212 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c10-edit | 26012 (0 cached) | 5640 (3327 reasoning) | 0.4337 | 5.1549 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c8-data | 26458 (0 cached) | 7518 (4303 reasoning) | 0.5124 | 5.6673 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c12-assets | 19495 (0 cached) | 4515 (2000 reasoning) | 0.3366 | 6.0038 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c13-tkwidgets | 20709 (0 cached) | 5067 (2179 reasoning) | 0.3684 | 6.3722 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c11-anim | 14516 (0 cached) | 5201 (3263 reasoning) | 0.3242 | 6.6964 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c14-dialog | 16983 (0 cached) | 5535 (3287 reasoning) | 0.3573 | 7.0536 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c15-tests | 46220 (0 cached) | 5581 (1892 reasoning) | 0.5930 | 7.6466 |
+| 2026-11-13 | anthropic/claude-fable-5.2 | c16-docs | 8959 (0 cached) | 5233 (2321 reasoning) | 0.2810 | 7.9276 |
+| 2026-11-13 | note | hand glue (1.0.2) | Reverted two Fable edits: always-rebuilt `:disabled` state map in style.rs (changed the blessed dark tristate golden: disabled text got lighter) and a render_frame "nothing pending" early return in damage.rs (combobox popup/menu hover is drawn from the pointer without setting `dirty`, so it could leave stale hover). `cargo clippy --fix` (3 needless borrows). Added `sim_resize` to one Fable test. README line rewrap. `.gitignore` for the GUIDE doctest outputs `out.png` / `my_widget_light_1x.png/`. Version bump in Cargo.toml + Cargo.lock | | | |
