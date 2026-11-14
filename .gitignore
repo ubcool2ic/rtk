@@ -3,3 +3,6 @@ Cargo.lock.bak
 .or/
 tests/golden/*.actual.png
 tests/golden/*.diff.png
+# written by the docs/GUIDE.md doctests during `cargo test`
+/out.png
+/my_widget_light_1x.png/

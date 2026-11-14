@@ -66,12 +66,12 @@ fn render_svg(tree: &resvg::usvg::Tree, w: u32, h: u32) -> Option<Vec<u8>> {
     if w == 0 || h == 0 {
         return None;
     }
-    let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
     let size = tree.size();
     let (sw, sh) = (size.width(), size.height());
     if sw <= 0.0 || sh <= 0.0 {
         return None;
     }
+    let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
     let scale = (w as f32 / sw).min(h as f32 / sh);
     let draw_w = sw * scale;
     let draw_h = sh * scale;
@@ -86,6 +86,62 @@ fn render_svg(tree: &resvg::usvg::Tree, w: u32, h: u32) -> Option<Vec<u8>> {
         out.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
     }
     Some(out)
+}
+
+/// Maximum number of cached SVG rasters per thread.
+#[cfg(feature = "svg")]
+const SVG_CACHE_MAX_ENTRIES: usize = 8;
+/// Maximum total bytes of cached SVG rasters per thread.
+#[cfg(feature = "svg")]
+const SVG_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
+
+/// One cached SVG raster: (tree identity, width, height, straight RGBA).
+#[cfg(feature = "svg")]
+type SvgCacheEntry = (std::sync::Weak<resvg::usvg::Tree>, u32, u32, Vec<u8>);
+
+#[cfg(feature = "svg")]
+thread_local! {
+    /// Small cache of recent SVG rasters so unchanged image widgets are not
+    /// re-rasterized on every frame. Holds only weak references to the trees.
+    static SVG_CACHE: std::cell::RefCell<Vec<SvgCacheEntry>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Like [`render_svg`], but reuses a previous raster of the same tree at the
+/// same size when available.
+#[cfg(feature = "svg")]
+fn render_svg_cached(
+    tree: &std::sync::Arc<resvg::usvg::Tree>,
+    w: u32,
+    h: u32,
+) -> Option<Vec<u8>> {
+    let key = std::sync::Arc::as_ptr(tree);
+    let hit = SVG_CACHE.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|e| e.1 == w && e.2 == h && std::sync::Weak::as_ptr(&e.0) == key)
+            .map(|e| e.3.clone())
+    });
+    if hit.is_some() {
+        return hit;
+    }
+    let rgba = render_svg(tree, w, h)?;
+    if rgba.len() <= SVG_CACHE_MAX_BYTES {
+        SVG_CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            // Drop entries whose tree is gone.
+            c.retain(|e| e.0.strong_count() > 0);
+            let mut total: usize = c.iter().map(|e| e.3.len()).sum();
+            while !c.is_empty()
+                && (c.len() >= SVG_CACHE_MAX_ENTRIES || total + rgba.len() > SVG_CACHE_MAX_BYTES)
+            {
+                let old = c.remove(0);
+                total -= old.3.len();
+            }
+            c.push((std::sync::Arc::downgrade(tree), w, h, rgba.clone()));
+        });
+    }
+    Some(rgba)
 }
 
 /// Parses SVG bytes and rasterizes them to fit `w`×`h`, returning straight-alpha
@@ -118,7 +174,8 @@ fn is_integer_upscale(dw: f32, dh: f32, sw: u32, sh: u32) -> bool {
 /// empty list if the widget is degenerate. SVG sources are rasterized at device
 /// resolution (logical size × `scale`) so high-DPI output stays crisp.
 pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<CanvasItemKind> {
-    if w < 1.0 || h < 1.0 {
+    // Also rejects NaN / infinite sizes.
+    if !(w >= 1.0 && h >= 1.0 && w.is_finite() && h.is_finite()) {
         return Vec::new();
     }
     let (nat_w, nat_h) = data.natural_size();
@@ -146,6 +203,14 @@ pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<C
             if *sw == 0 || *sh == 0 {
                 return Vec::new();
             }
+            // A short buffer would make the renderer read out of bounds.
+            let needed = (*sw as usize)
+                .checked_mul(*sh as usize)
+                .and_then(|n| n.checked_mul(4));
+            match needed {
+                Some(n) if rgba.len() >= n => {}
+                _ => return Vec::new(),
+            }
             // Pixel art should stay crisp when enlarged by an integer factor;
             // any other scaling keeps bilinear smoothing.
             let smooth = !is_integer_upscale(dw, dh, *sw, *sh);
@@ -164,7 +229,7 @@ pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<C
         ImageSource::Svg(tree) => {
             let rw = ((dw * scale).round() as u32).max(1);
             let rh = ((dh * scale).round() as u32).max(1);
-            let Some(rgba) = render_svg(tree, rw, rh) else {
+            let Some(rgba) = render_svg_cached(tree, rw, rh) else {
                 return Vec::new();
             };
             vec![CanvasItemKind::Image {

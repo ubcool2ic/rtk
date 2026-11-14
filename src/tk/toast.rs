@@ -162,16 +162,22 @@ impl ToastState {
         if self.list.is_empty() || ms == 0 {
             return false;
         }
+        let mut changed = false;
         for toast in &mut self.list {
+            let before = toast.alpha();
             toast.elapsed_ms = toast.elapsed_ms.saturating_add(ms);
             if let Some(out) = toast.fade_out_ms {
                 toast.fade_out_ms = Some(out.saturating_add(ms));
             } else if toast.duration_ms > 0 && toast.elapsed_ms >= toast.duration_ms {
                 toast.fade_out_ms = Some(toast.elapsed_ms - toast.duration_ms);
             }
+            if toast.alpha() != before {
+                changed = true;
+            }
         }
+        let before_len = self.list.len();
         self.list.retain(|t| !t.is_finished());
-        true
+        changed || self.list.len() != before_len
     }
 
     /// True while any toast still needs animation frames.
@@ -215,8 +221,9 @@ impl Tk {
             fade_out_ms: None,
         });
         let max = self.toasts.max.max(1);
-        while self.toasts.list.len() > max {
-            self.toasts.list.remove(0);
+        let len = self.toasts.list.len();
+        if len > max {
+            self.toasts.list.drain(..len - max);
         }
         self.dirty = true;
         id
@@ -251,16 +258,19 @@ impl Tk {
 
     /// Sets where the toast stack is anchored.
     pub fn toast_set_position(&mut self, position: ToastPosition) {
-        self.toasts.position = position;
-        self.dirty = true;
+        if self.toasts.position != position {
+            self.toasts.position = position;
+            self.dirty = true;
+        }
     }
 
     /// Sets the maximum number of visible toasts (minimum 1); extra oldest are dropped.
     pub fn toast_set_max(&mut self, n: usize) {
         self.toasts.max = n.max(1);
         let max = self.toasts.max;
-        while self.toasts.list.len() > max {
-            self.toasts.list.remove(0);
+        let len = self.toasts.list.len();
+        if len > max {
+            self.toasts.list.drain(..len - max);
         }
         self.dirty = true;
     }
@@ -282,14 +292,16 @@ impl Tk {
         let vh = self.viewport.1 as f32 / self.scale_factor;
         let style = self.resolved_style(self.root()).unwrap_or_default();
         let mut widths = Vec::with_capacity(count);
-        let texts: Vec<String> = self.toasts.list.iter().map(|t| t.text.clone()).collect();
-        for text in &texts {
-            let text_w = self.measure_with(text, &style).width;
+        // Temporarily take the list so texts can be measured without cloning.
+        let list = std::mem::take(&mut self.toasts.list);
+        for toast in &list {
+            let text_w = self.measure_with(&toast.text, &style).width;
             let w = (text_w + TOAST_PAD_X * 2.0 + TOAST_ICON_W + 8.0)
                 .clamp(TOAST_MIN_WIDTH, TOAST_MAX_WIDTH)
                 .min((vw - TOAST_MARGIN * 2.0).max(TOAST_MIN_WIDTH));
             widths.push(w);
         }
+        self.toasts.list = list;
         let position = self.toasts.position;
         let mut rects = Vec::with_capacity(count);
         for (i, w) in widths.into_iter().enumerate() {

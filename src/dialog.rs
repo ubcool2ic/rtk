@@ -45,7 +45,15 @@ pub fn modal_depth(tk: &Tk) -> usize {
 /// Only one level is popped; any outer dialog beneath it becomes active again.
 pub fn close(tk: &mut Tk) {
     if let Some(mut cancel) = tk.modal_cancel.take() {
+        let before = tk.modal;
         cancel(tk);
+        // If the cancel hook did not dismiss the dialog (e.g. its callback was
+        // already consumed), tear it down so it cannot get stuck open.
+        if let Some(modal_id) = before {
+            if tk.modal == Some(modal_id) && tk.modal_cancel.is_none() {
+                finish_modal(tk, modal_id);
+            }
+        }
     } else if let Some(modal_id) = tk.modal {
         finish_modal(tk, modal_id);
     }
@@ -470,15 +478,22 @@ fn read_dir_entries(dir: &Path, filter_exts: &[&str]) -> (Vec<String>, Vec<Strin
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-            if path.is_dir() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // file_type() is usually free (no extra stat); only symlinks need
+            // to be resolved to keep the previous follow-links behaviour.
+            let is_dir = match entry.file_type() {
+                Ok(ft) if ft.is_dir() => true,
+                Ok(ft) if ft.is_symlink() => path.is_dir(),
+                Ok(_) => false,
+                Err(_) => path.is_dir(),
+            };
+            if is_dir {
                 dirs.push(format!("{name}/"));
             } else {
                 let matches_filter = if filter_exts.is_empty() || filter_exts.contains(&"*") {
                     true
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let ext_lower = ext.to_ascii_lowercase();
-                    filter_exts.iter().any(|f| f.eq_ignore_ascii_case(&ext_lower))
+                    filter_exts.iter().any(|f| f.eq_ignore_ascii_case(ext))
                 } else {
                     false
                 };
@@ -612,9 +627,8 @@ pub fn ask_open_filename(
         let owned_filters = owned_filters.clone();
         let cb = cb.clone();
         move |t: &mut Tk| {
-            let sel = t.listbox_curselection(listbox);
+            let Some(idx) = t.listbox_curselection(listbox) else { return };
             let items = t.listbox_get(listbox);
-            let Some(idx) = sel else { return };
             let Some(item) = items.get(idx) else { return };
 
             let filter_idx = filter_var.get(t).unwrap_or(0) as usize;
@@ -701,17 +715,9 @@ pub fn ask_save_filename(
     let refresh_files = {
         let cur_dir = cur_dir.clone();
         move |t: &mut Tk| {
-            let total = t.listbox_get(listbox).len();
-            if total > 0 {
-                t.listbox_delete(listbox, 0, total);
-            }
+            // populate_file_list clears the listbox and inserts ".." itself.
             let dir = cur_dir.borrow().clone();
             populate_file_list(t, listbox, &dir, &[]);
-            let has_parent = dir.parent().is_some();
-            let first_is_up = t.listbox_get(listbox).first().map(|s| s == "..").unwrap_or(false);
-            if has_parent && !first_is_up {
-                t.listbox_insert(listbox, 0, "..");
-            }
         }
     };
     refresh_files(tk);
@@ -950,7 +956,7 @@ pub fn file_listbox(tk: &Tk) -> Option<WidgetId> {
     // Depth-first walk of the modal overlay subtree looking for the Listbox.
     let mut stack = vec![modal];
     while let Some(id) = stack.pop() {
-        let node = tk.node(id)?;
+        let Some(node) = tk.node(id) else { continue };
         if node.kind == crate::widgets::Kind::Listbox {
             return Some(id);
         }

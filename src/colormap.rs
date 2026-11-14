@@ -197,21 +197,26 @@ pub fn heatmap_to_rgba(values: &[f32], min: f32, max: f32, cm: Colormap) -> Vec<
 /// When vertical, colors ramp from bottom (`0.0`) to top (`1.0`).
 pub fn legend_rgba(cm: Colormap, width: u32, height: u32, horizontal: bool) -> Vec<u8> {
     let mut rgba = Vec::with_capacity((width as usize) * (height as usize) * 4);
-    for y in 0..height {
+    if horizontal {
+        // Every row is identical: sample one row and repeat it.
+        let mut row: Vec<u8> = Vec::with_capacity(width as usize * 4);
         for x in 0..width {
-            let t = if horizontal {
-                if width > 1 {
-                    x as f32 / (width - 1) as f32
-                } else {
-                    0.0
-                }
-            } else if height > 1 {
-                1.0 - (y as f32 / (height - 1) as f32)
-            } else {
-                0.0
-            };
+            let t = if width > 1 { x as f32 / (width - 1) as f32 } else { 0.0 };
             let c = sample(cm, t);
-            rgba.extend_from_slice(&[c.r, c.g, c.b, c.a]);
+            row.extend_from_slice(&[c.r, c.g, c.b, c.a]);
+        }
+        for _ in 0..height {
+            rgba.extend_from_slice(&row);
+        }
+    } else {
+        // Every pixel in a row is identical: sample once per row.
+        for y in 0..height {
+            let t = if height > 1 { 1.0 - (y as f32 / (height - 1) as f32) } else { 0.0 };
+            let c = sample(cm, t);
+            let px = [c.r, c.g, c.b, c.a];
+            for _ in 0..width {
+                rgba.extend_from_slice(&px);
+            }
         }
     }
     rgba

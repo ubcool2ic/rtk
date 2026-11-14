@@ -48,8 +48,17 @@ fn clip_mask(pixmap: &Pixmap, clip: Rect) -> Option<Mask> {
     Some(mask)
 }
 
+/// Returns true when `clip` contains `bounds` with a 1px safety margin, so a
+/// clip mask could not exclude any pixel touched by drawing inside `bounds`.
+fn clip_covers(clip: Rect, bounds: Rect) -> bool {
+    bounds.x - 1.0 >= clip.x
+        && bounds.y - 1.0 >= clip.y
+        && bounds.x + bounds.width + 1.0 <= clip.x + clip.width
+        && bounds.y + bounds.height + 1.0 <= clip.y + clip.height
+}
+
 /// Strokes `path` with a round-capped line of `width` px in `color`, limited to `mask`.
-fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Color, mask: &Mask) {
+fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Color, mask: Option<&Mask>) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.r, color.g, color.b, color.a);
     paint.anti_alias = true;
@@ -59,7 +68,7 @@ fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Co
         line_join: tiny_skia::LineJoin::Round,
         ..Stroke::default()
     };
-    pixmap.stroke_path(path, &paint, &stroke, Transform::identity(), Some(mask));
+    pixmap.stroke_path(path, &paint, &stroke, Transform::identity(), mask);
 }
 
 /// Draws a ProgressRing (percent arc or rotating spinner) with optional text.
@@ -95,11 +104,22 @@ pub(super) fn draw_ring(
     if radius <= 0.0 {
         return;
     }
-    let Some(mask) = clip_mask(pixmap, clip) else { return };
+    // The stroked ring lies within the circle of `diameter * scale`; skip the
+    // full-window mask allocation when the clip cannot cut it.
+    let ring_d = diameter * scale;
+    let ring_bounds = Rect::new(cx - ring_d / 2.0, cy - ring_d / 2.0, ring_d, ring_d);
+    let mask: Option<Mask> = if clip_covers(clip, ring_bounds) {
+        None
+    } else {
+        match clip_mask(pixmap, clip) {
+            Some(m) => Some(m),
+            None => return,
+        }
+    };
 
     // Full track circle.
     if let Some(path) = arc_path(cx, cy, radius, 0.0, std::f32::consts::TAU) {
-        stroke_arc(pixmap, &path, stroke_w, track, &mask);
+        stroke_arc(pixmap, &path, stroke_w, track, mask.as_ref());
     }
 
     match mode {
@@ -108,7 +128,7 @@ pub(super) fn draw_ring(
                 // Start at 12 o'clock (-PI/2) and sweep clockwise.
                 let sweep = fraction * std::f32::consts::TAU;
                 if let Some(path) = arc_path(cx, cy, radius, -std::f32::consts::FRAC_PI_2, sweep) {
-                    stroke_arc(pixmap, &path, stroke_w, accent, &mask);
+                    stroke_arc(pixmap, &path, stroke_w, accent, mask.as_ref());
                 }
             }
             if show_text {
@@ -135,7 +155,7 @@ pub(super) fn draw_ring(
             let sweep = std::f32::consts::FRAC_PI_2;
             let start = -std::f32::consts::FRAC_PI_2 + phase * std::f32::consts::TAU;
             if let Some(path) = arc_path(cx, cy, radius, start, sweep) {
-                stroke_arc(pixmap, &path, stroke_w, accent, &mask);
+                stroke_arc(pixmap, &path, stroke_w, accent, mask.as_ref());
             }
         }
     }
@@ -161,13 +181,22 @@ pub(super) fn draw_switch(
     let disabled = node.disabled;
     let text = node.text.clone();
     let palette = tk.style_engine.tokens().palette;
-    let Some(mask) = clip_mask(pixmap, clip) else { return };
 
     let track_w = 36.0;
     let track_h = 20.0;
     let track_x = logical.x + resolved.padding.left;
     let track_y = logical.y + (logical.height - track_h) / 2.0;
     let track_rect = Rect::new(track_x, track_y, track_w, track_h).scaled(scale);
+    // Track and knob both lie inside `track_rect`; skip the full-window mask
+    // allocation when the clip cannot cut them.
+    let mask: Option<Mask> = if clip_covers(clip, track_rect) {
+        None
+    } else {
+        match clip_mask(pixmap, clip) {
+            Some(m) => Some(m),
+            None => return,
+        }
+    };
 
     let track_color = if on { palette.accent } else { palette.border };
     let track_color = if disabled {
@@ -179,7 +208,7 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), Some(&mask));
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), mask.as_ref());
     }
 
     // Knob: 16 px diameter, travels from 2 px to track_w - 18 px.
@@ -198,7 +227,7 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(knob_color.r, knob_color.g, knob_color.b, knob_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), Some(&mask));
+        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), mask.as_ref());
     }
 
     if !text.is_empty() {
@@ -244,6 +273,7 @@ pub(super) fn draw_progress_bar(
 
     // The filled rectangle in logical px, used both for drawing the fill and
     // for clipping the accent-coloured text overlay.
+    let indeterminate = node.progress_indeterminate;
     let fill_color = if node.progress_indeterminate { accent } else { resolved.fg };
     let filled_rect = if node.progress_indeterminate {
         let block_w = (inner.width * 0.3).max(10.0);
@@ -292,6 +322,27 @@ pub(super) fn draw_progress_bar(
             // fixed. Clipped to the unfilled part so it never bleeds over the
             // fill.
             let track_text = readable_on(resolved.bg, palette.fg, palette.bg);
+            // Indeterminate mode: the block moves, so there is also an
+            // unfilled region to its left that must show the text.
+            if indeterminate && filled_rect.width > 0.0 {
+                let left_w = (filled_rect.x - logical.x).max(0.0);
+                let left_clip = clip.intersection(
+                    Rect::new(logical.x, logical.y, left_w, logical.height).scaled(scale),
+                );
+                if left_clip.width > 0.0 && left_clip.height > 0.0 {
+                    tk.text_engine.draw_styled_pub(
+                        pixmap,
+                        &text,
+                        (resolved.font_size * scale, track_text),
+                        resolved.font_family.as_deref(),
+                        400,
+                        false,
+                        origin,
+                        left_clip,
+                        resolved.opacity,
+                    );
+                }
+            }
             if unfilled_clip.width > 0.0 && unfilled_clip.height > 0.0 {
                 tk.text_engine.draw_styled_pub(
                     pixmap,
@@ -410,17 +461,6 @@ pub(super) fn draw_slider(
     // thumb uses the theme surface; otherwise it matches the widget background.
     let thumb_fill = if resolved.bg.a == 0 { palette.surface } else { resolved.bg };
 
-    // Clip mask so the path-based drawing below honours `clip`.
-    let clip_mask = {
-        let mut m = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
-        if let Some(mm) = m.as_mut() {
-            if let Some(r) = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height) {
-                mm.fill_path(&tiny_skia::PathBuilder::from_rect(r), tiny_skia::FillRule::Winding, false, Transform::identity());
-            }
-        }
-        m
-    };
-
     let track_w = 4.0;
     let thumb_d = 16.0;
 
@@ -438,6 +478,30 @@ pub(super) fn draw_slider(
             let track_rect = Rect::new(x - track_w / 2.0, track.y, track_w, track.height);
             let cy = track.y + track.height * (1.0 - fraction);
             (track_rect, (x, cy))
+        }
+    };
+
+    // Clip mask so the path-based drawing below honours `clip`. Skipped (no
+    // full-window allocation) when the clip cannot cut the track or thumb.
+    let clip_mask: Option<Mask> = {
+        let ts = track_rect.scaled(scale);
+        let half = (thumb_d / 2.0 + 2.0) * scale;
+        let tcx = thumb_center.0 * scale;
+        let tcy = thumb_center.1 * scale;
+        let left = ts.x.min(tcx - half);
+        let top = ts.y.min(tcy - half);
+        let right = (ts.x + ts.width).max(tcx + half);
+        let bottom = (ts.y + ts.height).max(tcy + half);
+        if clip_covers(clip, Rect::new(left, top, right - left, bottom - top)) {
+            None
+        } else {
+            let mut m = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
+            if let Some(mm) = m.as_mut() {
+                if let Some(r) = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height) {
+                    mm.fill_path(&tiny_skia::PathBuilder::from_rect(r), tiny_skia::FillRule::Winding, false, Transform::identity());
+                }
+            }
+            m
         }
     };
 

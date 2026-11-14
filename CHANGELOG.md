@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 (2026-11-13)
+
+Reviewed and written with Claude Fable 5.2 via OpenRouter.
+
+### Fixes
 
 - Fix: text never falls back to an unrelated font when a weight or italic face is missing. cosmic-text 0.12 uses the requested family only at an exact weight and style, and otherwise picks the first font anywhere with that weight (on Windows often a symbol font, which drew button labels as icons). rtk now snaps every request to the nearest face the family really has (`fonts::snap_to_family_face`, in the one text path all widgets use), so style sheets (`font-weight: 500`), canvas `text_ex` weights and app-chosen families are safe. v0.8.2 fixed the built-in themes; this closes the remaining paths. Tests: `tests/font_weight_snap.rs`, `fonts::tests::snaps_to_real_faces`.
+- Keyboard (real windows): key presses with Ctrl or Cmd held (Ctrl+C, Ctrl+A, Ctrl+Left, Cmd+C, …) were dropped. Shortcuts and edit chords now reach widgets with their modifiers; only raw text insertion is still suppressed.
+- ScrollArea: the mouse wheel over a Table or TreeView inside a ScrollArea now scrolls the table/tree, as it already did for Listbox and Text. Previously the area always took it.
+- TreeView: `tree_remove` and `tree_clear` now fire `on_select` with `None` when the selected row is removed or cleared, matching Table.
+- Combobox: popup rows that overflow the 240 px cap are clipped to the popup instead of painting over its bottom border.
+- ProgressBar: label/percent text on an indeterminate bar no longer disappears to the left of the moving block.
+- ProgressBar: `progress_set_smooth(id, true)` on an already-smooth bar no longer snaps an in-flight easing animation.
+- Animations: a redraw no longer resets the frame clock, which made animations run slightly slow.
+- Animations: the "animating widget already damaged" test now requires overlap in both axes; before, it could leave a stale frame.
+- Focus: losing window focus hides a visible tooltip and resets the hover timer.
+- Focus: clearing focus when no focusable widget remains now redraws, so no stale focus ring is left.
+- Text: an edit key before the widget is laid out (zero visible rows) no longer scrolls past the caret line.
+- Stylesheets: `linear-gradient(...)` rejects a non-finite angle and treats a non-finite stop position as 0.
+- Image: non-finite or sub-pixel widget sizes, and RGBA buffers shorter than `w * h * 4`, now draw nothing instead of producing NaN geometry or risking a panic.
+- Dialogs: `close` dismisses the dialog even if the cancel hook does not.
+- Dialogs: the file listbox search skips a missing node instead of aborting.
+
+### Performance
+
+- Rendering: text shape and measure caches no longer allocate on a hit.
+- Rendering: full-surface clip masks are skipped when the shape lies inside the clip (circles, rings, switches, sliders, Canvas/Chart/Image blits).
+- Rendering: fewer per-frame clones (paint order, Text and editable Combobox contents), and a faster damage-rect present.
+- Layout: the character-width measure runs only for widgets that use it. Per-node temporary Vecs are gone, and Radiobutton, Menubar and Notebook text is no longer cloned to be measured.
+- Events: `hit_test` does the cheap checks before the modal ancestor walk. Text drag-selection and clicks no longer copy the buffer or build line Vecs. Menubar hover no longer re-opens the open menu or measures twice per move.
+- Redraws: no-op calls no longer mark the UI dirty. This covers chart setters, `set_accent`, `notebook_select`, `toast_set_position`, window `title`/`minsize`/`maxsize`, wheel scrolling at either end, and `set_scroll_pos`.
+- Redraws: a fully faded-in toast no longer forces a redraw every tick, and the animation scan is skipped when a full redraw is already forced.
+- TreeView/Table: the visible list is rebuilt only when an ancestor is opened, using an iterative walk without cloning children. The slot scan in `ensure_visible_robust` runs only when the cache is empty. Sort keys are built only for non-numeric cells, and the selected row is found while walking the visible window.
+- Text/Combobox: typing edits the string in place, `trim_lines` drains in place, and combobox filtering and index lookup no longer clone the values.
+- Styling: `merge_into` reuses allocations, the old-state style is resolved only when a transition starts, `sim_advance_time` is a single pass, and `poll_stylesheet` no longer clones the path.
+- Images/charts: SVG rasters are cached (8 entries / 32 MB, weak references). `legend_rgba` samples once per column or row. Chart point vectors are pre-sized and `chart_set_data` bulk-extends.
+- Dialogs/toasts: directory listing uses `DirEntry::file_type()`, redundant listbox clears and fetches are removed, and toast layout and trimming no longer allocate or run in O(n²).
+
+### Tests
+
+- New `tests/fable52_regressions.rs` (8 tests).
 
 ## 1.0.1 (2026-10-20)
 

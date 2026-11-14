@@ -17,7 +17,7 @@ timers, accessibility and headless testing. Every snippet uses only the public A
 
 ```toml
 [dependencies]
-rtk = { git = "https://github.com/ubcool2ic/rtk", tag = "v1.0.0" }
+rtk = { git = "https://github.com/ubcool2ic/rtk", tag = "v1.0.2" }
 ```
 
 The minimum supported Rust version is **1.85** (edition 2021).

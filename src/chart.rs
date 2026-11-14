@@ -308,7 +308,7 @@ pub(crate) fn build_items(
         };
         for (i, series) in state.series.iter().enumerate() {
             let color = series.color.unwrap_or_else(|| series_color(i));
-            let mut points = Vec::new();
+            let mut points = Vec::with_capacity(series.points.len());
             for &(x, y) in &series.points {
                 if !x.is_finite() || !y.is_finite() {
                     continue;
@@ -388,18 +388,18 @@ pub(crate) fn build_items(
             let slot_w = plot_w / max_len as f32;
             let mut last_right = f32::NEG_INFINITY;
             let first_points = state.series.first().map(|s| &s.points);
+            let time_step = if max_len > 1 {
+                ((xmax - xmin) / (max_len - 1) as f64).abs()
+            } else {
+                1.0
+            };
             for k in 0..max_len {
                 let Some(&(x, _)) = first_points.and_then(|p| p.get(k)) else { continue };
                 if !x.is_finite() {
                     continue;
                 }
                 let label = if state.time_axis {
-                    let step = if max_len > 1 {
-                        ((xmax - xmin) / (max_len - 1) as f64).abs()
-                    } else {
-                        1.0
-                    };
-                    format_time(x, step)
+                    format_time(x, time_step)
                 } else {
                     format_tick(x)
                 };
@@ -451,7 +451,7 @@ pub(crate) fn build_items(
         let color = series.color.unwrap_or_else(|| series_color(i));
         match state.kind {
             ChartKind::Line | ChartKind::Area => {
-                let mut points = Vec::new();
+                let mut points = Vec::with_capacity(series.points.len());
                 for &(x, y) in &series.points {
                     if !x.is_finite() || !y.is_finite() {
                         continue;

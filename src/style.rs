@@ -453,9 +453,9 @@ impl StyleSpec {
         if let Some(v) = self.padding { target.padding = v; }
         if let Some(v) = self.margin { target.margin = v; }
         if let Some(v) = &self.shadow { target.shadow = *v; }
-        if let Some(v) = &self.gradient { target.gradient = v.clone(); }
+        if let Some(v) = &self.gradient { target.gradient.clone_from(v); }
         if let Some(v) = self.opacity { if !v.is_nan() { target.opacity = v.clamp(0.0, 1.0); } }
-        if let Some(v) = &self.font_family { target.font_family = v.clone(); }
+        if let Some(v) = &self.font_family { target.font_family.clone_from(v); }
         if let Some(v) = self.font_size { if v.is_finite() && v > 0.0 { target.font_size = v; } }
         if let Some(v) = self.font_weight { target.font_weight = v.clamp(100, 900); }
         if let Some(v) = self.italic { target.italic = v; }
@@ -591,13 +591,8 @@ impl StyleEngine {
     /// Merges `spec` into the style for `name` in the given interaction `state`.
     pub fn map(&mut self, name: impl Into<String>, state: State, spec: StyleSpec) {
         let name = name.into();
-        let key = (name, state.bits());
-        self.state_maps.entry(key.clone()).or_default();
-        if let Some(existing) = self.state_maps.get_mut(&key) {
-            merge_spec(existing, &spec);
-        } else {
-            self.state_maps.insert(key, spec);
-        }
+        let existing = self.state_maps.entry((name, state.bits())).or_default();
+        merge_spec(existing, &spec);
     }
 
     /// Rebuilds all built-in widget styles from the current tokens.
@@ -1656,6 +1651,9 @@ fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
         return None;
     }
     let (angle_deg, stops_start) = if let Ok(angle) = parts[0].trim_end_matches("deg").trim().parse::<f32>() {
+        if !angle.is_finite() {
+            return None;
+        }
         (angle, 1)
     } else {
         (180.0, 0)
@@ -1670,7 +1668,7 @@ fn parse_linear_gradient(val: &str) -> Option<LinearGradient> {
         let color = parse_color(sub[0])?;
         let pos = if sub.len() >= 2 {
             let raw = sub[1].trim_end_matches('%');
-            raw.parse::<f32>().ok().map(|v| if sub[1].ends_with('%') { v / 100.0 } else { v }).unwrap_or(0.0)
+            raw.parse::<f32>().ok().filter(|v| v.is_finite()).map(|v| if sub[1].ends_with('%') { v / 100.0 } else { v }).unwrap_or(0.0)
         } else if num_stops > 1 {
             i as f32 / (num_stops - 1) as f32
         } else {

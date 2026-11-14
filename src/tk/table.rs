@@ -73,7 +73,11 @@ impl TableState {
             .map(|row| {
                 let cell = row.get(col).map(String::as_str).unwrap_or("");
                 let num = cell.trim().parse::<f64>().ok();
-                (num.unwrap_or(f64::NAN), cell.to_lowercase())
+                // The string key is only compared when both cells are non-numeric.
+                match num {
+                    Some(n) if !n.is_nan() => (n, String::new()),
+                    _ => (f64::NAN, cell.to_lowercase()),
+                }
             })
             .collect();
         let order = &mut self.order;
@@ -416,10 +420,13 @@ impl Tk {
     pub(crate) fn table_scroll(&mut self, id: WidgetId, lines: f32) {
         let Some(state) = self.table_state_mut(id) else { return };
         let delta = lines.round() as i64;
-        let new_top = (state.top as i64).saturating_add(delta).max(0) as usize;
+        let old_top = state.top;
+        let new_top = (old_top as i64).saturating_add(delta).max(0) as usize;
         state.top = new_top;
         self.table_clamp_top(id);
-        self.dirty = true;
+        if self.table_state(id).map(|s| s.top) != Some(old_top) {
+            self.dirty = true;
+        }
     }
 
     /// Handles a key press on a focused table. Returns true if consumed.

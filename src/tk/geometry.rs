@@ -147,7 +147,10 @@ impl Tk {
                     // managed with pack/grid, but still needs bottom-up measurement.
                     pending.extend(self.scrollarea_content(id));
                 } else {
-                    pending.extend(self.managed_children(id));
+                    pending.extend(
+                        node.children.iter().copied()
+                            .filter(|child| self.node(*child).is_some_and(|n| n.manager.is_some())),
+                    );
                 }
             }
         }
@@ -166,8 +169,13 @@ impl Tk {
                 image: node.image,
             };
             let (kind, nested) = (node_snap.kind, node_snap.parent.is_some());
-            let children = self.managed_children(id);
-            let char_width = self.measure_with("0", &resolved).width.max(resolved.font_size * 0.5);
+            // Only shape the reference glyph when a character-based width is actually used.
+            let needs_char_width = node_snap.style.width.is_some() || matches!(kind, Kind::Entry | Kind::Text);
+            let char_width = if needs_char_width {
+                self.measure_with("0", &resolved).width.max(resolved.font_size * 0.5)
+            } else {
+                0.0
+            };
             let specified = node_snap.style.width.map(|chars| chars as f32 * char_width);
 
             let pad_w = resolved.padding.left + resolved.padding.right;
@@ -183,6 +191,7 @@ impl Tk {
 
             let requested = match kind {
                 Kind::Frame => {
+                    let children = self.managed_children(id);
                     let size = if self.uses_pack(&children) {
                         layout::pack_request(&self.pack_items(&children))
                     } else {
@@ -219,8 +228,11 @@ impl Tk {
                     }
                 }
                 Kind::Radiobutton => {
-                    let text = self.node(id).map(|n| n.text.clone()).unwrap_or_default();
+                    let text = self.node_mut(id).map(|n| std::mem::take(&mut n.text)).unwrap_or_default();
                     let measured = self.measure_with(&text, &resolved);
+                    if let Some(n) = self.node_mut(id) {
+                        n.text = text;
+                    }
                     Size::new(specified.unwrap_or(measured.width) + 32.0 + pad_w + image_extra_w, measured.height.max(16.0) + 8.0 + pad_h)
                 }
                 Kind::Canvas | Kind::Chart | Kind::Image => Size::new(node_snap.canvas_size.0 + pad_w, node_snap.canvas_size.1 + pad_h),
@@ -268,10 +280,13 @@ impl Tk {
                     )
                 }
                 Kind::Menubar => {
-                    let titles = self.node(id).map(|n| n.menubar_titles.clone()).unwrap_or_default();
+                    let titles = self.node_mut(id).map(|n| std::mem::take(&mut n.menubar_titles)).unwrap_or_default();
                     let mut w = 0.0_f32;
                     for (title, _) in &titles {
                         w += self.measure_with(title, &resolved).width + 24.0;
+                    }
+                    if let Some(n) = self.node_mut(id) {
+                        n.menubar_titles = titles;
                     }
                     Size::new(w.max(specified.unwrap_or(0.0)) + pad_w, resolved.font_size * 1.8 + 8.0 + pad_h)
                 }
@@ -279,7 +294,7 @@ impl Tk {
                     let mut tab_w_sum = 0.0_f32;
                     let mut max_w = 0.0_f32;
                     let mut max_h = 0.0_f32;
-                    let pages = self.node(id).map(|nb| nb.notebook_pages.clone()).unwrap_or_default();
+                    let pages = self.node_mut(id).map(|nb| std::mem::take(&mut nb.notebook_pages)).unwrap_or_default();
                     {
                         for (pid, title) in &pages {
                             let tm = self.measure_with(title, &resolved);
@@ -289,6 +304,9 @@ impl Tk {
                                 max_h = max_h.max(pn.requested.height);
                             }
                         }
+                    }
+                    if let Some(nb) = self.node_mut(id) {
+                        nb.notebook_pages = pages;
                     }
                     Size::new(tab_w_sum.max(max_w) + pad_w, (32.0 + max_h) + pad_h)
                 }

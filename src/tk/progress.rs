@@ -72,10 +72,15 @@ impl Tk {
     pub fn progress_set_smooth(&mut self, id: WidgetId, smooth: bool) -> bool {
         let current = self.progress_get(id).unwrap_or(0.0) as f32;
         let Some(state) = self.progress_state_mut(id) else { return false };
+        let was_smooth = state.progress_smooth && state.progress_initialised;
         state.progress_smooth = smooth;
         if smooth {
-            state.progress_drawn = current;
-            state.progress_initialised = true;
+            // Only initialise on an actual off->on transition so re-enabling
+            // does not snap an in-flight easing animation.
+            if !was_smooth {
+                state.progress_drawn = current;
+                state.progress_initialised = true;
+            }
         } else {
             state.progress_initialised = false;
         }
@@ -116,15 +121,18 @@ impl Tk {
         if show_text {
             // Measure the widest text the bar can display: the label with a
             // 100% suffix (the longest percent string) and the bare percent.
-            let candidates = [
-                label.as_ref().map(|l| format!("{l} 100%")),
-                label.clone(),
-                show_percent.then(|| "100%".to_string()),
-            ];
             let mut text_w = 0.0_f32;
             let mut text_h = 0.0_f32;
-            for candidate in candidates.into_iter().flatten() {
-                let m = self.measure_with(&candidate, resolved);
+            if let Some(l) = label.as_deref() {
+                let combined = format!("{l} 100%");
+                for candidate in [combined.as_str(), l] {
+                    let m = self.measure_with(candidate, resolved);
+                    text_w = text_w.max(m.width);
+                    text_h = text_h.max(m.height);
+                }
+            }
+            if show_percent {
+                let m = self.measure_with("100%", resolved);
                 text_w = text_w.max(m.width);
                 text_h = text_h.max(m.height);
             }

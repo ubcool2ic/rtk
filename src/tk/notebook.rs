@@ -54,11 +54,11 @@ impl Tk {
             return false;
         }
         let old = nb_node.notebook_selected;
-        if let Some(n) = self.node_mut(nb) {
-            n.notebook_selected = index;
-        }
-        self.dirty = true;
         if old != index {
+            if let Some(n) = self.node_mut(nb) {
+                n.notebook_selected = index;
+            }
+            self.dirty = true;
             self.dispatch_notebook_changed(nb, index);
         }
         true

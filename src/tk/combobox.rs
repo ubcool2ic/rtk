@@ -98,14 +98,14 @@ impl Tk {
         if node.kind != Kind::Combobox || !node.combo_editable { return false; }
         let cleaned = clean_entry(text);
         let var = node.combo_var;
-        let values = node.combo_values.clone();
+        let index = node.combo_values.iter().position(|v| *v == cleaned).map_or(-1, |i| i as i64);
         if let Some(node) = self.node_mut(id) {
             node.text = cleaned.clone();
             node.cursor = cleaned.len();
             node.selection_anchor = None;
             node.combo_highlight = None;
         }
-        let index = values.iter().position(|v| *v == cleaned).map_or(-1, |i| i as i64);
+
         if let Some(var) = var {
             var.set(self, index);
         }
@@ -244,10 +244,10 @@ impl Tk {
     pub(crate) fn combo_recompute_filter(&mut self, id: WidgetId) {
         let Some(node) = self.node(id) else { return };
         if node.kind != Kind::Combobox || !node.combo_editable { return; }
-        let text = node.text.clone();
-        let values = node.combo_values.clone();
-        let show_all = text.is_empty() || values.contains(&text);
-        let needle = text.to_lowercase();
+        let text = &node.text;
+        let values = &node.combo_values;
+        let show_all = text.is_empty() || values.contains(text);
+        let needle = if show_all { String::new() } else { text.to_lowercase() };
         let filtered: Vec<usize> = values
             .iter()
             .enumerate()
@@ -271,7 +271,7 @@ impl Tk {
         let Some(node) = self.node(id) else { return };
         if node.kind != Kind::Combobox || !node.combo_editable { return; }
         let text = node.text.clone();
-        let values = node.combo_values.clone();
+        let index = node.combo_values.iter().position(|v| *v == text).map_or(-1, |i| i as i64);
         let var = node.combo_var;
         self.combo_recompute_filter(id);
         let filtered_len = self.node(id).map(|n| n.combo_filtered.len()).unwrap_or(0);
@@ -288,7 +288,7 @@ impl Tk {
         } else if self.open_combobox == Some(id) {
             self.open_combobox = None;
         }
-        let index = values.iter().position(|v| *v == text).map_or(-1, |i| i as i64);
+
         if let Some(var) = var {
             var.set(self, index);
         }

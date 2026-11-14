@@ -7,10 +7,12 @@ use super::*;
 pub(crate) fn trim_lines(text: &mut String, max: usize) {
     // 0 means "unlimited", matching `text_set_max_lines`.
     if max == 0 { return; }
-    let lines: Vec<&str> = text.split('\n').collect();
-    if lines.len() > max {
-        let drop_count = lines.len() - max;
-        *text = lines[drop_count..].join("\n");
+    let newlines = text.bytes().filter(|&b| b == b'\n').count();
+    if newlines + 1 > max {
+        let drop_count = newlines + 1 - max;
+        if let Some((pos, _)) = text.match_indices('\n').nth(drop_count - 1) {
+            text.drain(..=pos);
+        }
     }
 }
 
@@ -188,7 +190,7 @@ impl Tk {
             node.selection_anchor = None;
             if cur_line < node.text_scroll_row {
                 node.text_scroll_row = cur_line;
-            } else if cur_line >= node.text_scroll_row + vis_rows {
+            } else if vis_rows > 0 && cur_line >= node.text_scroll_row + vis_rows {
                 node.text_scroll_row = cur_line + 1 - vis_rows;
             }
         }

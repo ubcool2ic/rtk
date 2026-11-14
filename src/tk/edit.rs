@@ -232,11 +232,9 @@ impl Tk {
         };
         self.push_undo(id, typing && selection.is_none());
         if let Some(node) = self.node_mut(id) {
-            let mut new_text = String::with_capacity(node.text.len() + value.len());
-            new_text.push_str(node.text.get(..start).unwrap_or_default());
-            new_text.push_str(value);
-            new_text.push_str(node.text.get(end..).unwrap_or_default());
-            node.text = new_text;
+            if node.text.is_char_boundary(start) && node.text.is_char_boundary(end) && start <= end {
+                node.text.replace_range(start..end, value);
+            }
             node.cursor = start + value.len();
             node.selection_anchor = None;
         }
