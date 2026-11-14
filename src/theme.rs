@@ -287,12 +287,8 @@ impl SemanticTokens {
         let is_dark = relative_luminance(background) < 0.2;
         let high_contrast = theme == Theme::HighContrast;
 
-        let text_disabled = Color::rgba(
-            blend(p.fg, p.bg, 0.45).r,
-            blend(p.fg, p.bg, 0.45).g,
-            blend(p.fg, p.bg, 0.45).b,
-            255,
-        );
+        let disabled_mix = blend(p.fg, p.bg, 0.45);
+        let text_disabled = Color::rgba(disabled_mix.r, disabled_mix.g, disabled_mix.b, 255);
 
         let (success, warning, info) = if high_contrast {
             (Color::rgb(0, 255, 0), Color::rgb(255, 255, 0), Color::rgb(0, 255, 255))

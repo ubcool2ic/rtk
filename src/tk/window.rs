@@ -6,7 +6,11 @@ use super::*;
 impl Tk {
     /// Sets the window title (tkinter `root.title`).
     pub fn title(&mut self, title: impl Into<String>) {
-        self.window_title = title.into();
+        let title = title.into();
+        if self.window_title == title {
+            return;
+        }
+        self.window_title = title;
         self.dirty = true;
     }
 
@@ -104,6 +108,9 @@ impl Tk {
 
     /// Sets the minimum window size in logical px (tkinter `minsize`).
     pub fn minsize(&mut self, width: u32, height: u32) {
+        if self.window_minsize == Some((width, height)) {
+            return;
+        }
         self.window_minsize = Some((width, height));
         self.window_props_dirty = true;
         self.dirty = true;
@@ -111,6 +118,9 @@ impl Tk {
 
     /// Clears the minimum window size constraint (tkinter `minsize` reset).
     pub fn clear_minsize(&mut self) {
+        if self.window_minsize.is_none() {
+            return;
+        }
         self.window_minsize = None;
         self.window_props_dirty = true;
         self.dirty = true;
@@ -118,6 +128,9 @@ impl Tk {
 
     /// Sets the maximum window size in logical px (tkinter `maxsize`).
     pub fn maxsize(&mut self, width: u32, height: u32) {
+        if self.window_maxsize == Some((width, height)) {
+            return;
+        }
         self.window_maxsize = Some((width, height));
         self.window_props_dirty = true;
         self.dirty = true;
@@ -125,6 +138,9 @@ impl Tk {
 
     /// Clears the maximum window size constraint (tkinter `maxsize` reset).
     pub fn clear_maxsize(&mut self) {
+        if self.window_maxsize.is_none() {
+            return;
+        }
         self.window_maxsize = None;
         self.window_props_dirty = true;
         self.dirty = true;

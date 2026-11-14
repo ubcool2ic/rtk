@@ -111,16 +111,19 @@ impl Tk {
 
     /// Reloads the watched stylesheet if its mtime advanced. Returns true when reloaded.
     pub fn poll_stylesheet(&mut self) -> bool {
-        let Some((path, last_mtime)) = self.watched_stylesheet.clone() else { return false };
-        if let Ok(meta) = fs::metadata(&path) {
-            if let Ok(mtime) = meta.modified() {
-                if mtime != last_mtime {
-                    self.watched_stylesheet = Some((path.clone(), mtime));
-                    return self.load_stylesheet_file(&path).is_ok();
-                }
+        let (path, mtime) = {
+            let Some((path, last_mtime)) = self.watched_stylesheet.as_ref() else { return false };
+            let Ok(meta) = fs::metadata(path) else { return false };
+            let Ok(mtime) = meta.modified() else { return false };
+            if mtime == *last_mtime {
+                return false;
             }
+            (path.clone(), mtime)
+        };
+        if let Some((_, stored)) = self.watched_stylesheet.as_mut() {
+            *stored = mtime;
         }
-        false
+        self.load_stylesheet_file(&path).is_ok()
     }
 
     /// Loads a PNG, either from a file path (UTF-8 string that names a readable file)
@@ -327,20 +330,32 @@ impl Tk {
             }
         }
 
+        // Single pass: advance transitions/indeterminate bars and collect the
+        // widgets needing invalidation plus the input-widget animations.
         let mut transitioning: Vec<WidgetId> = Vec::new();
-        let mut animating_bars: Vec<WidgetId> = Vec::new();
+        let mut anim_ids: Vec<(WidgetId, Kind)> = Vec::new();
         for (index, slot) in self.nodes.iter_mut().enumerate() {
             if let Some(node) = &mut slot.node {
+                let wid = WidgetId { index: index as u32, gen: slot.gen };
+                let mut invalidate = false;
                 if let Some(trans) = &mut node.transition {
                     let done = trans.advance(ms);
                     if done {
                         node.transition = None;
                     }
-                    transitioning.push(WidgetId { index: index as u32, gen: slot.gen });
+                    invalidate = true;
                 }
                 if node.kind == Kind::ProgressBar && node.progress_indeterminate && node.visible {
                     node.progress_phase = (node.progress_phase + (ms as f32) / 1000.0) % 1.0;
-                    animating_bars.push(WidgetId { index: index as u32, gen: slot.gen });
+                    invalidate = true;
+                }
+                if invalidate {
+                    transitioning.push(wid);
+                }
+                if node.visible
+                    && matches!(node.kind, Kind::ProgressRing | Kind::Switch | Kind::ProgressBar)
+                {
+                    anim_ids.push((wid, node.kind));
                 }
             }
         }
@@ -351,23 +366,12 @@ impl Tk {
         for id in transitioning {
             self.invalidate_widget(id);
         }
-        for id in animating_bars {
-            self.invalidate_widget(id);
-        }
+
 
         // Milestone 0.10 input-widget animations (ring spinner, switch knob,
         // smooth progress easing). Collected first so we can call &mut self
         // helpers without holding a borrow of `self.nodes`.
-        let mut anim_ids: Vec<(WidgetId, Kind)> = Vec::new();
-        for (index, slot) in self.nodes.iter().enumerate() {
-            let Some(node) = &slot.node else { continue };
-            if !node.visible {
-                continue;
-            }
-            if matches!(node.kind, Kind::ProgressRing | Kind::Switch | Kind::ProgressBar) {
-                anim_ids.push((WidgetId { index: index as u32, gen: slot.gen }, node.kind));
-            }
-        }
+
         for (id, kind) in anim_ids {
             match kind {
                 Kind::ProgressRing => { self.ring_advance(id, ms); }
@@ -411,8 +415,9 @@ impl Tk {
             return;
         }
         let Some(resolved) = self.resolved_style_in(id, new_state) else { return };
-        let Some(previous) = self.resolved_style_in(id, old_state) else { return };
         if resolved.transition_ms > 0 {
+            // Only resolve the old state's cascade when a transition actually starts.
+            let Some(previous) = self.resolved_style_in(id, old_state) else { return };
             if let Some(node) = self.node_mut(id) {
                 // Start from what is on screen: an in-flight transition, else the old state's style.
                 let from_bg = node.transition.as_ref().map(|t| t.current_bg()).unwrap_or(previous.bg);
