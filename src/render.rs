@@ -762,7 +762,7 @@ impl Tk {
                     let text_clip = clip.intersection(inner.scaled(scale));
                     if editable {
                         let text: &str = cur_str.as_str();
-                        let cursor = cursor_boundary(&text, node.cursor);
+                        let cursor = cursor_boundary(text, node.cursor);
                         let old_scroll_x = node.scroll_x;
                         let caret = self.measure_with(text.get(..cursor).unwrap_or_default(), &resolved).width;
                         // Text is drawn at `inner.x - scroll + 6.0` and clipped to
@@ -776,7 +776,7 @@ impl Tk {
                         } else if caret > scroll + available {
                             scroll = caret - available;
                         }
-                        let total = self.measure_with(&text, &resolved).width;
+                        let total = self.measure_with(text, &resolved).width;
                         scroll = scroll.min((total - available).max(0.0));
                         if let Some(node) = self.node_mut(id) {
                             node.scroll_x = scroll;
@@ -801,7 +801,7 @@ impl Tk {
                             fill(pixmap, sel_rect.scaled(scale), text_clip, sel_bg);
                         }
                         self.text_engine.draw_styled(
-                            pixmap, &text, (resolved.font_size * scale, draw_fg),
+                            pixmap, text, (resolved.font_size * scale, draw_fg),
                             resolved.font_family.as_deref(), resolved.font_weight, resolved.italic,
                             text_origin, text_clip, resolved.opacity,
                         );

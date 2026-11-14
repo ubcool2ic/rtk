@@ -104,7 +104,7 @@ thread_local! {
     /// Small cache of recent SVG rasters so unchanged image widgets are not
     /// re-rasterized on every frame. Holds only weak references to the trees.
     static SVG_CACHE: std::cell::RefCell<Vec<SvgCacheEntry>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Like [`render_svg`], but reuses a previous raster of the same tree at the
