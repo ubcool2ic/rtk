@@ -175,17 +175,19 @@ impl Tk {
             .frame
             .as_ref()
             .is_some_and(|frame| frame.width() == width && frame.height() == height);
-        let animating_undamaged = self.is_animating()
-            && self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|node| {
-                node.transition.is_some()
-                    && node.visible
-                    && !self.damage.iter().any(|r| r.intersection(node.rect).width > 0.0)
-            });
-        if self.dirty
+        let needs_full = self.dirty
             || !size_matches
             || self.overlays_visible()
-            || animating_undamaged
-        {
+            || (self.is_animating()
+                && self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|node| {
+                    node.transition.is_some()
+                        && node.visible
+                        && !self.damage.iter().any(|r| {
+                            let i = r.intersection(node.rect);
+                            i.width > 0.0 && i.height > 0.0
+                        })
+                }));
+        if needs_full {
             let pixmap = self.render_to_pixmap(width, height)?;
             self.frame = Some(pixmap);
             self.damage.clear();

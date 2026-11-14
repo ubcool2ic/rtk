@@ -394,13 +394,12 @@ impl App {
                     let y1 = (rect.y + rect.height.get()) as usize;
                     for y in y0..y1 {
                         let row = y * stride;
-                        for x in x0..x1 {
-                            let idx = (row + x) * 4;
-                            let Some(rgba) = frame_data.get(idx..idx + 4) else { continue };
-                            let Some(pixel) = buffer.get_mut(row + x) else { continue };
+                        let Some(src) = frame_data.get((row + x0) * 4..(row + x1) * 4) else { continue };
+                        let Some(dst) = buffer.get_mut(row + x0..row + x1) else { continue };
+                        for (pixel, rgba) in dst.iter_mut().zip(src.chunks_exact(4)) {
                             *pixel = pack_pixel(rgba);
-                            damaged_pixels += 1;
                         }
+                        damaged_pixels += x1 - x0;
                     }
                 }
                 buffer.present_with_damage(rects)?;
@@ -628,14 +627,16 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     }
                     _ => None,
                 };
-                if accepts_key_input(
+                if let Some(key) = key {
+                    // Mapped keys (including shortcut chords) are always
+                    // dispatched; only raw text insertion is gated.
+                    self.tk.sim_key_with(key, mods);
+                } else if accepts_key_input(
                     self.modifiers.control_key(),
                     self.modifiers.alt_key(),
                     self.modifiers.super_key(),
                 ) {
-                    if let Some(key) = key {
-                        self.tk.sim_key_with(key, mods);
-                    } else if let Some(text) = event.text {
+                    if let Some(text) = event.text {
                         self.tk.sim_text(&text);
                     }
                 }
@@ -672,7 +673,6 @@ impl ApplicationHandler<RtkUserEvent> for App {
                 self.tk.clear_input();
             }
             WindowEvent::RedrawRequested => {
-                self.last_frame = Instant::now();
                 if let Err(error) = self.draw() {
                     eprintln!("rtk: render/surface error (will retry on the next event): {error}");
                     self.surface = None;

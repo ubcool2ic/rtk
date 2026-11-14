@@ -31,18 +31,17 @@ impl Tk {
 
     /// Returns the frontmost interactive widget at a logical pointer position.
     pub(crate) fn hit_test(&self, x: f32, y: f32) -> Option<WidgetId> {
+        let modal = self.modal;
         self.paint_order.iter().rev().copied().find(|id| {
-            if let Some(modal_id) = self.modal {
-                if !self.is_descendant_of(*id, modal_id) {
-                    return false;
-                }
-            }
-            self.node(*id).is_some_and(|node| {
+            // Cheap geometric test first; the ancestor walk only runs for
+            // widgets actually under the pointer.
+            let hit = self.node(*id).is_some_and(|node| {
                 let interactive = node.kind.focusable()
                     || matches!(node.kind, Kind::Canvas | Kind::Scrollbar | Kind::Notebook | Kind::ScrollArea)
                     || node.tooltip.is_some();
                 node.visible && interactive && node.clip.contains(x, y)
-            })
+            });
+            hit && modal.is_none_or(|modal_id| self.is_descendant_of(*id, modal_id))
         })
     }
 
@@ -158,7 +157,9 @@ impl Tk {
         let rect = node.rect;
         let scroll_x = node.scroll_x;
         let font = self.resolved_style(id).unwrap_or_default();
-        let text = node.text.clone();
+        // Only single-line kinds need an owned copy (measuring borrows `self`);
+        // multi-line Text reads the node's buffer directly.
+        let text = if kind == Kind::Text { String::new() } else { node.text.clone() };
         let cursor = match kind {
             Kind::Entry | Kind::Combobox => {
                 let target = (x - rect.x - 6.0 + scroll_x).max(0.0);
@@ -183,9 +184,9 @@ impl Tk {
             Kind::Text => {
                 let line_h = (font.font_size * 1.3 + 4.0).max(16.0);
                 let row = node.text_scroll_row + ((y - rect.y - 4.0) / line_h).max(0.0) as usize;
-                let lines: Vec<&str> = text.split('\n').collect();
-                let target_line = row.min(lines.len().saturating_sub(1));
-                lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>()
+                let src = node.text.as_str();
+                let target_line = row.min(src.split('\n').count().saturating_sub(1));
+                src.split('\n').take(target_line).map(|l| l.len() + 1).sum::<usize>()
             }
             _ => return,
         };
@@ -443,9 +444,8 @@ impl Tk {
                 Kind::Text => {
                     let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
                     let row = node.text_scroll_row + ((y - node.rect.y - 4.0) / line_h).max(0.0) as usize;
-                    let lines: Vec<&str> = node.text.split('\n').collect();
-                    let target_line = row.min(lines.len().saturating_sub(1));
-                    let byte_offset = lines.iter().take(target_line).map(|l| l.len() + 1).sum::<usize>();
+                    let target_line = row.min(node.text.split('\n').count().saturating_sub(1));
+                    let byte_offset = node.text.split('\n').take(target_line).map(|l| l.len() + 1).sum::<usize>();
                     let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
                         if shift {
@@ -690,7 +690,9 @@ impl Tk {
                 self.is_focusable(*id)
             }).collect();
         if order.is_empty() {
-            self.focused = None;
+            if self.focused.take().is_some() {
+                self.dirty = true;
+            }
             return;
         }
         let current = self.focused.and_then(|id| order.iter().position(|other| *other == id));
@@ -932,6 +934,8 @@ impl Tk {
         self.hovered = None;
         self.drag_active = None;
         self.scrollbar_drag = None;
+        self.tooltip_visible = false;
+        self.hover_timer_ms = 0;
         self.ime_preedit = None;
         if let Some(combo_id) = self.open_combobox.take() {
             if let Some(node) = self.node_mut(combo_id) {

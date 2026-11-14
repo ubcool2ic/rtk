@@ -94,8 +94,14 @@ impl TableSnapshot {
         let rows_len = state.rows.len();
         let end = top.saturating_add(visible).saturating_add(1).min(rows_len);
         let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
+        // Selected display row, resolved only within the visible window
+        // (rows outside it are never drawn, so a full lookup is wasted work).
+        let mut selected_display = None;
         for display in top..end {
             let Some(&model) = state.order.get(display) else { continue };
+            if state.selected == Some(model) {
+                selected_display = Some(display);
+            }
             let Some(row) = state.rows.get(model) else { continue };
             visible_rows.push((display, row.clone()));
         }
@@ -103,7 +109,7 @@ impl TableSnapshot {
             columns: state.columns.clone(),
             widths: state.widths.clone(),
             sort: state.sort,
-            selected: state.selected.and_then(|m| state.display_of(m)),
+            selected: selected_display,
             top,
             rows_len,
             visible_rows,
