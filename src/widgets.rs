@@ -501,8 +501,8 @@ impl Combobox {
             node.combo_values = values;
             node.combo_var = Some(var);
             node.combo_editable = true;
-            node.text = initial.clone();
             node.cursor = initial.len();
+            node.text = initial;
         }
         tk.combo_recompute_filter(id);
         Ok(id)

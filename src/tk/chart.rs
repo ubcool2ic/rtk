@@ -25,8 +25,10 @@ impl Tk {
     /// Sets the visual form of a chart.
     pub fn chart_set_kind(&mut self, id: WidgetId, kind: crate::chart::ChartKind) -> bool {
         let Some(state) = self.chart_state_mut(id) else { return false };
-        state.kind = kind;
-        self.dirty = true;
+        if state.kind != kind {
+            state.kind = kind;
+            self.dirty = true;
+        }
         true
     }
 
@@ -55,9 +57,7 @@ impl Tk {
         let Some(s) = state.series.get_mut(series) else { return false };
         s.points.clear();
         let start = points.len().saturating_sub(max_points);
-        for &p in &points[start..] {
-            s.points.push_back(p);
-        }
+        s.points.extend(points[start..].iter().copied());
         self.dirty = true;
         true
     }
@@ -79,29 +79,38 @@ impl Tk {
     pub fn chart_set_max_points(&mut self, id: WidgetId, n: usize) -> bool {
         let Some(state) = self.chart_state_mut(id) else { return false };
         let n = n.max(1);
+        let mut changed = state.max_points != n;
         state.max_points = n;
         for s in &mut state.series {
-            while s.points.len() > n {
-                s.points.pop_front();
+            let len = s.points.len();
+            if len > n {
+                s.points.drain(..len - n);
+                changed = true;
             }
         }
-        self.dirty = true;
+        if changed {
+            self.dirty = true;
+        }
         true
     }
 
     /// Enables or disables UTC time formatting on the x axis.
     pub fn chart_set_time_axis(&mut self, id: WidgetId, time_axis: bool) -> bool {
         let Some(state) = self.chart_state_mut(id) else { return false };
-        state.time_axis = time_axis;
-        self.dirty = true;
+        if state.time_axis != time_axis {
+            state.time_axis = time_axis;
+            self.dirty = true;
+        }
         true
     }
 
     /// Shows or hides the legend row.
     pub fn chart_set_legend(&mut self, id: WidgetId, legend: bool) -> bool {
         let Some(state) = self.chart_state_mut(id) else { return false };
-        state.legend = legend;
-        self.dirty = true;
+        if state.legend != legend {
+            state.legend = legend;
+            self.dirty = true;
+        }
         true
     }
 
@@ -115,8 +124,10 @@ impl Tk {
             }
         }
         let Some(state) = self.chart_state_mut(id) else { return false };
-        state.y_range = range;
-        self.dirty = true;
+        if state.y_range != range {
+            state.y_range = range;
+            self.dirty = true;
+        }
         true
     }
 
@@ -124,8 +135,10 @@ impl Tk {
     pub fn chart_clear(&mut self, id: WidgetId, series: usize) -> bool {
         let Some(state) = self.chart_state_mut(id) else { return false };
         let Some(s) = state.series.get_mut(series) else { return false };
-        s.points.clear();
-        self.dirty = true;
+        if !s.points.is_empty() {
+            s.points.clear();
+            self.dirty = true;
+        }
         true
     }
 

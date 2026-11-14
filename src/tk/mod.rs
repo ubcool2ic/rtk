@@ -555,6 +555,14 @@ impl Tk {
 
     /// Sets the brand accent color and updates derived tokens and styles.
     pub fn set_accent(&mut self, accent: Color) {
+        let select_bg = Color::rgba(accent.r, accent.g, accent.b, 64);
+        {
+            let current = &self.style_engine.tokens().palette;
+            if current.accent == accent && current.focus == accent && current.select_bg == select_bg {
+                // Nothing would change: avoid a token clone, restyle and full redraw.
+                return;
+            }
+        }
         let mut tokens = self.style_engine.tokens().clone();
         tokens.palette.accent = accent;
         tokens.palette.focus = accent;

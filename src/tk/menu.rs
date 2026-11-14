@@ -403,7 +403,21 @@ impl Tk {
         // Hovering a menubar title switches menus.
         if let Some((bar, index)) = self.menubar_hit(x, y) {
             if self.menus.active_bar == Some(bar) {
-                self.menubar_open(bar, index);
+                // Skip re-opening (and the redraw) when this menu is already
+                // the only open level with nothing highlighted.
+                let target = self
+                    .node(bar)
+                    .and_then(|n| n.menubar_titles.get(index))
+                    .map(|(_, m)| *m);
+                let unchanged = self.menus.open.len() == 1
+                    && self
+                        .menus
+                        .open
+                        .first()
+                        .is_some_and(|o| Some(o.menu) == target && o.highlight.is_none());
+                if !unchanged {
+                    self.menubar_open(bar, index);
+                }
                 return true;
             }
         }
@@ -421,7 +435,8 @@ impl Tk {
         };
         // Close deeper levels than the one hovered, unless the pointer is on the
         // item that owns the currently open deeper submenu.
-        let hover_sub = self.menu_item_at(level, x, y).and_then(|i| {
+        let hovered = self.menu_item_at(level, x, y);
+        let hover_sub = hovered.and_then(|i| {
             let m = self.menus.open[level].menu;
             self.menus.get(m).and_then(|d| match d.items.get(i).filter(|it| it.is_enabled()) {
                 Some(MenuItem::Submenu { menu, .. }) => Some(*menu),
@@ -434,7 +449,7 @@ impl Tk {
             self.menus.open.truncate(level + 1);
             self.dirty = true;
         }
-        let Some(idx) = self.menu_item_at(level, x, y) else {
+        let Some(idx) = hovered else {
             if let Some(open) = self.menus.open.get_mut(level) {
                 if open.highlight.is_some() {
                     open.highlight = None;

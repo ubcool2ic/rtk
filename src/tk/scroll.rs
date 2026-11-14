@@ -32,7 +32,7 @@ impl Tk {
         let Some(node) = self.node(id) else { return };
         // A widget inside a ScrollArea scrolls the nearest area unless it
         // consumes the wheel itself (Listbox, Canvas, Text, Slider, ...).
-        if !matches!(node.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::Slider | Kind::DoubleSpinbox | Kind::Combobox) {
+        if !matches!(node.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::Slider | Kind::DoubleSpinbox | Kind::Combobox | Kind::Table | Kind::TreeView) {
             if let Some(area) = self.nearest_scroll_area(id) {
                 let k = if pixels { 1.0 } else { WHEEL_LINE_PX };
                 self.scrollarea_scroll_by(area, -dx * k, -dy * k);
@@ -139,8 +139,14 @@ impl Tk {
             Kind::Listbox => {
                 if let Some((total, visible, _)) = self.scroll_metrics(id) {
                     let v = pos.round().clamp(0.0, total - visible) as usize;
-                    if let Some(n) = self.node_mut(id) { n.list_scroll = v; }
-                    self.dirty = true;
+                    let changed = self.node_mut(id).is_some_and(|n| {
+                        let c = n.list_scroll != v;
+                        n.list_scroll = v;
+                        c
+                    });
+                    if changed {
+                        self.dirty = true;
+                    }
                 }
             }
             Kind::Canvas => {
@@ -150,8 +156,14 @@ impl Tk {
             Kind::Text => {
                 if let Some((total, visible, _)) = self.scroll_metrics(id) {
                     let v = pos.round().clamp(0.0, total - visible) as usize;
-                    if let Some(n) = self.node_mut(id) { n.text_scroll_row = v; }
-                    self.dirty = true;
+                    let changed = self.node_mut(id).is_some_and(|n| {
+                        let c = n.text_scroll_row != v;
+                        n.text_scroll_row = v;
+                        c
+                    });
+                    if changed {
+                        self.dirty = true;
+                    }
                 }
             }
             Kind::ScrollArea => {

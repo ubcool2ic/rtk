@@ -94,17 +94,11 @@ impl TreeState {
     pub(crate) fn rebuild_visible(&mut self) {
         self.visible.clear();
         // Roots are nodes with no parent, in key order.
-        let roots: Vec<usize> = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(key, slot)| {
-                let node = slot.as_ref()?;
-                node.parent.is_none().then_some(key)
-            })
-            .collect();
-        for root in roots {
-            self.push_visible(root, 0);
+        for key in 0..self.nodes.len() {
+            let is_root = self.nodes[key].as_ref().is_some_and(|n| n.parent.is_none());
+            if is_root {
+                self.push_visible(key, 0);
+            }
         }
         self.dirty = false;
     }
@@ -118,8 +112,10 @@ impl TreeState {
     /// inserted afterwards. Rebuilding whenever the cache is empty but nodes
     /// exist is cheap (it only happens once) and makes rendering robust.
     pub(crate) fn ensure_visible_robust(&mut self) {
-        let has_nodes = self.nodes.iter().any(|slot| slot.is_some());
-        if self.visible.is_empty() && has_nodes {
+        if !self.dirty
+            && self.visible.is_empty()
+            && self.nodes.iter().any(|slot| slot.is_some())
+        {
             self.dirty = true;
         }
         self.ensure_visible();
@@ -127,15 +123,16 @@ impl TreeState {
 
     /// Appends `key` and (if open) its descendants to `visible`.
     fn push_visible(&mut self, key: usize, depth: usize) {
-        let Some(node) = self.get(key) else { return };
-        let open = node.open;
-        let children = node.children.clone();
-        self.visible.push((key, depth));
-        if !open {
-            return;
-        }
-        for child in children {
-            self.push_visible(child, depth + 1);
+        // Iterative pre-order walk; no per-node clone of the children list.
+        let mut stack: Vec<(usize, usize)> = vec![(key, depth)];
+        while let Some((k, d)) = stack.pop() {
+            let Some(node) = self.nodes.get(k).and_then(|slot| slot.as_ref()) else { continue };
+            self.visible.push((k, d));
+            if node.open {
+                for &child in node.children.iter().rev() {
+                    stack.push((child, d + 1));
+                }
+            }
         }
     }
 
@@ -252,11 +249,15 @@ impl Tk {
         for k in subtree {
             state.free_slot(k);
         }
-        if state.selected.is_some_and(|s| state.get(s).is_none()) {
+        let cleared = state.selected.is_some_and(|s| state.get(s).is_none());
+        if cleared {
             state.selected = None;
         }
         state.dirty = true;
         self.dirty = true;
+        if cleared {
+            self.dispatch_tree_select(id, None);
+        }
         true
     }
 
@@ -266,10 +267,13 @@ impl Tk {
         state.nodes.clear();
         state.free.clear();
         state.visible.clear();
-        state.selected = None;
+        let had_selection = state.selected.take().is_some();
         state.top = 0;
         state.dirty = true;
         self.dirty = true;
+        if had_selection {
+            self.dispatch_tree_select(id, None);
+        }
         true
     }
 
@@ -365,15 +369,22 @@ impl Tk {
             }
             // Expand every ancestor so the node becomes visible.
             let mut ancestor = state.get(k).and_then(|n| n.parent);
+            let mut opened = false;
             while let Some(a) = ancestor {
                 if let Some(node) = state.get_mut(a) {
-                    node.open = true;
+                    if !node.open {
+                        node.open = true;
+                        opened = true;
+                    }
                     ancestor = node.parent;
                 } else {
                     break;
                 }
             }
-            state.dirty = true;
+            // Only invalidate the flattened list when the structure shown changed.
+            if opened {
+                state.dirty = true;
+            }
         }
         let old = state.selected;
         state.selected = key;
@@ -494,10 +505,13 @@ impl Tk {
         let Some(state) = self.tree_state_mut(id) else { return };
         state.ensure_visible_robust();
         let delta = lines.round() as i64;
-        let new_top = (state.top as i64).saturating_add(delta).max(0) as usize;
+        let old_top = state.top;
+        let new_top = (old_top as i64).saturating_add(delta).max(0) as usize;
         state.top = new_top;
         self.tree_clamp_top(id);
-        self.dirty = true;
+        if self.tree_state(id).map(|s| s.top) != Some(old_top) {
+            self.dirty = true;
+        }
     }
 
     /// Handles a key press on a focused tree. Returns true if consumed.
