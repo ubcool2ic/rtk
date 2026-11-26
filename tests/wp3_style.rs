@@ -3,7 +3,7 @@
 //! Probe cases for B4 and B5 are ported from
 //! `/workspace/rtk-audit-notes/zz_audit_probe.rs`.
 
-use rtk::{Button, Color, Frame, Label, Opt, State, Switch, Theme, Tk};
+use rtk::{Button, Color, Frame, Label, Opt, PackOpts, State, StyleSpec, Switch, Theme, Tk};
 
 /// B4: a Heading inside a Card/Sidebar must keep the Heading size/weight,
 /// not inherit the frame's 14px/400 after its own named style is applied.
@@ -108,28 +108,58 @@ fn css_rejects_invalid_transition_and_shadow() {
         tk.load_stylesheet("TButton { box-shadow: 0 0 -1px #000; }").is_err(),
         "negative shadow blur should be rejected"
     );
+    assert!(
+        tk.load_stylesheet("TButton { transition: 1e30s; }").is_err(),
+        "out-of-range seconds must be rejected, not saturated"
+    );
+    assert!(
+        tk.load_stylesheet("TButton { transition: 1e30ms; }").is_err(),
+        "out-of-range milliseconds must be rejected, not saturated"
+    );
     assert!(tk.load_stylesheet("TButton { transition: 120ms; }").is_ok());
+    assert!(tk.load_stylesheet("TButton { transition: 0.12s; }").is_ok());
     assert!(tk.load_stylesheet("TButton { box-shadow: 0 1px 2px #000; }").is_ok());
 }
 
-/// L1: unload_image / update_image_rgba must replace or drop a registered image.
+fn pixmap_has_rgb(pixmap: &tiny_skia::Pixmap, r: u8, g: u8, b: u8) -> bool {
+    pixmap.data().chunks_exact(4).any(|p| p[0] == r && p[1] == g && p[2] == b)
+}
+
+/// L1: unload_image / update_image_rgba must replace or drop a registered image,
+/// including the pixels observed when that image is shown on a Button.
 #[test]
 fn image_unload_and_update() {
     let mut tk = Tk::new();
-    let red = [255u8, 0, 0, 255].repeat(2 * 2);
-    let id = tk.register_image_rgba(2, 2, &red).expect("register");
-    let blue = [0u8, 0, 255, 255].repeat(2 * 2);
-    assert!(tk.update_image_rgba(id, 2, 2, &blue));
-    assert!(!tk.update_image_rgba(id, 2, 2, &[0u8; 3]), "wrong length must fail");
+    tk.geometry(120, 60);
+    let red = [255u8, 0, 0, 255].repeat(16 * 16);
+    let id = tk.register_image_rgba(16, 16, &red).expect("register");
+    let root = tk.root();
+    let btn = Button::new(&mut tk, root, "With Img").unwrap();
+    tk.config(btn, Opt::Image(id));
+    tk.pack(btn, PackOpts::default());
+
+    let pixmap = tk.render_to_pixmap(120, 60).unwrap();
+    assert!(pixmap_has_rgb(&pixmap, 255, 0, 0), "registered red image must appear");
+
+    let green = [0u8, 255, 0, 255].repeat(16 * 16);
+    assert!(tk.update_image_rgba(id, 16, 16, &green));
+    let pixmap = tk.render_to_pixmap(120, 60).unwrap();
+    assert!(pixmap_has_rgb(&pixmap, 0, 255, 0), "updated image must show new pixels");
+    assert!(!pixmap_has_rgb(&pixmap, 255, 0, 0), "old red pixels must be gone after update");
+
+    assert!(!tk.update_image_rgba(id, 16, 16, &[0u8; 3]), "wrong length must fail");
     assert!(tk.unload_image(id));
+    let pixmap = tk.render_to_pixmap(120, 60).unwrap();
+    assert!(!pixmap_has_rgb(&pixmap, 0, 255, 0), "unloaded image must not still paint");
+    assert!(!pixmap_has_rgb(&pixmap, 255, 0, 0), "unloaded image must not restore old pixels");
     assert!(!tk.unload_image(id), "second unload must fail");
-    assert!(!tk.update_image_rgba(id, 2, 2, &blue), "update after unload must fail");
+    assert!(!tk.update_image_rgba(id, 16, 16, &green), "update after unload must fail");
 }
 
-/// P2: resolved_style stays correct when asked repeatedly (cache must not
-/// stick after a theme change).
+/// P2: there is no resolved-style cache; resolved_style must still recompute
+/// after a theme change when asked repeatedly.
 #[test]
-fn resolved_style_cache_invalidates_on_theme_change() {
+fn resolved_style_updates_after_theme_change() {
     let mut tk = Tk::new();
     let root = tk.root();
     let b = Button::new(&mut tk, root, "x").unwrap();
@@ -138,4 +168,30 @@ fn resolved_style_cache_invalidates_on_theme_change() {
     tk.set_theme(Theme::Dark);
     let dark = tk.resolved_style(b).unwrap().fg;
     assert_ne!(light, dark);
+}
+
+
+/// User hover/pressed/focus/selected maps on built-in classes must survive
+/// a theme rebuild, not only `:disabled`.
+#[test]
+fn user_hover_map_survives_theme_change() {
+    let mut tk = Tk::new();
+    tk.geometry(200, 200);
+    let root = tk.root();
+    let btn = Button::new(&mut tk, root, "Interactive").unwrap();
+    tk.pack(btn, PackOpts::default());
+    let custom = Color::rgb(11, 22, 33);
+    tk.style_map(
+        "TButton",
+        State::HOVER,
+        StyleSpec {
+            bg: Some(custom),
+            ..Default::default()
+        },
+    );
+    tk.set_theme(Theme::Dark);
+    let rect = tk.widget_rect(btn).unwrap();
+    tk.sim_mouse_move(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+    assert!(tk.widget_state(btn).contains(State::HOVER));
+    assert_eq!(tk.resolved_style(btn).unwrap().bg, custom);
 }

@@ -1187,9 +1187,14 @@ impl StyleEngine {
                 ..Default::default()
             };
             self.put_state(class, bits, builtin);
-            if let Some(user) = self.user_state_maps.get(class).and_then(|m| m.get(&bits)).cloned() {
-                let slot = self.state_maps.entry(class.to_string()).or_default().entry(bits).or_default();
-                merge_spec(slot, &user);
+        }
+        // Re-apply every user/stylesheet state map after builtins were rewritten
+        // (hover/pressed/focus/selected/disabled, not only :disabled).
+        let user_maps = self.user_state_maps.clone();
+        for (name, states) in user_maps {
+            for (bits, spec) in states {
+                let slot = self.state_maps.entry(name.clone()).or_default().entry(bits).or_default();
+                merge_spec(slot, &spec);
             }
         }
     }
@@ -1604,22 +1609,23 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
             spec.italic = Some(val.eq_ignore_ascii_case("italic"));
         }
         "transition" | "transition-duration" => {
-            let to_ms = |raw: f32| -> Result<u32, StyleError> {
+            let to_ms = |raw: f32, scale: f32| -> Result<u32, StyleError> {
                 if !raw.is_finite() || raw < 0.0 {
                     return Err(err("invalid transition"));
                 }
-                Ok(raw as u32)
-            };
-            let ms = if let Some(stripped) = val.strip_suffix("ms") {
-                to_ms(stripped.trim().parse::<f32>().map_err(|_| err("invalid transition"))?)?
-            } else if let Some(stripped) = val.strip_suffix('s') {
-                let s = stripped.trim().parse::<f32>().map_err(|_| err("invalid transition"))?;
-                if !s.is_finite() || s < 0.0 {
+                let ms = raw * scale;
+                if !ms.is_finite() || ms > u32::MAX as f32 {
                     return Err(err("invalid transition"));
                 }
-                (s * 1000.0) as u32
+                Ok(ms as u32)
+            };
+            let parsed = |s: &str| s.trim().parse::<f32>().map_err(|_| err("invalid transition"));
+            let ms = if let Some(stripped) = val.strip_suffix("ms") {
+                to_ms(parsed(stripped)?, 1.0)?
+            } else if let Some(stripped) = val.strip_suffix('s') {
+                to_ms(parsed(stripped)?, 1000.0)?
             } else {
-                to_ms(val.trim().parse::<f32>().map_err(|_| err("invalid transition"))?)?
+                to_ms(parsed(val)?, 1.0)?
             };
             spec.transition_ms = Some(ms);
         }
