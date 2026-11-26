@@ -284,8 +284,22 @@ impl Tk {
     /// the dropdown, updates the bound variable and fires the text callback.
     pub(crate) fn sync_after_edit(&mut self, id: WidgetId) {
         let Some(node) = self.node_mut(id) else { return };
+        if node.kind == Kind::Text {
+            if let Some(max) = node.text_max_lines {
+                super::text::trim_lines(&mut node.text, max);
+            }
+        }
         let len = node.text.len();
         node.cursor = floor_char_boundary(&node.text, node.cursor.min(len));
+        if node.kind == Kind::Text {
+            let vis_rows = node.text_dimensions.1;
+            let cur_line = node.text[..node.cursor].bytes().filter(|&b| b == b'\n').count();
+            if cur_line < node.text_scroll_row {
+                node.text_scroll_row = cur_line;
+            } else if vis_rows > 0 && cur_line >= node.text_scroll_row + vis_rows {
+                node.text_scroll_row = cur_line + 1 - vis_rows;
+            }
+        }
         let editable_combo = node.kind == Kind::Combobox && node.combo_editable;
         if node.kind == Kind::Entry {
             let text = node.text.clone();
