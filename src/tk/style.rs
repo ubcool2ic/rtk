@@ -35,6 +35,23 @@ pub(crate) fn kind_class_name(kind: Kind) -> &'static str {
 }
 
 
+fn pixmap_from_rgba(w: u32, h: u32, rgba: &[u8]) -> Option<Pixmap> {
+    let expected = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(4));
+    if w == 0 || h == 0 || expected != Some(rgba.len()) {
+        return None;
+    }
+    let mut pixmap = Pixmap::new(w, h)?;
+    let data = pixmap.data_mut();
+    for (dst, src) in data.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
+        let a = u32::from(src[3]);
+        dst[0] = ((u32::from(src[0]) * a + 127) / 255) as u8;
+        dst[1] = ((u32::from(src[1]) * a + 127) / 255) as u8;
+        dst[2] = ((u32::from(src[2]) * a + 127) / 255) as u8;
+        dst[3] = src[3];
+    }
+    Some(pixmap)
+}
+
 pub(crate) struct NodeSnapshot {
     pub(crate) scale: Option<crate::Var<i64>>,
     pub(crate) range: (i64, i64),
@@ -147,23 +164,36 @@ impl Tk {
 
     /// Registers a raw RGBA buffer as an image, premultiplying color channels by alpha.
     pub fn register_image_rgba(&mut self, w: u32, h: u32, rgba: &[u8]) -> Option<ImageId> {
-        let expected = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(4));
-        if w == 0 || h == 0 || expected != Some(rgba.len()) {
-            return None;
-        }
-        let mut pixmap = Pixmap::new(w, h)?;
-        let data = pixmap.data_mut();
-        for (dst, src) in data.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
-            let a = u32::from(src[3]);
-            dst[0] = ((u32::from(src[0]) * a + 127) / 255) as u8;
-            dst[1] = ((u32::from(src[1]) * a + 127) / 255) as u8;
-            dst[2] = ((u32::from(src[2]) * a + 127) / 255) as u8;
-            dst[3] = src[3];
-        }
+        let pixmap = pixmap_from_rgba(w, h, rgba)?;
         let id = ImageId(self.next_image_id);
         self.next_image_id = self.next_image_id.saturating_add(1);
         self.images.insert(id, pixmap);
         Some(id)
+    }
+
+    /// Drops a previously loaded or registered image. Returns `true` if `id` was present.
+    pub fn unload_image(&mut self, id: ImageId) -> bool {
+        let removed = self.images.remove(&id).is_some();
+        if removed {
+            self.dirty = true;
+        }
+        removed
+    }
+
+    /// Replaces the RGBA buffer of an existing image, premultiplying color by alpha.
+    ///
+    /// Returns `false` if `id` is unknown or `rgba` is not `w * h * 4` bytes
+    /// (or `w`/`h` is zero). Does not allocate a new [`ImageId`].
+    pub fn update_image_rgba(&mut self, id: ImageId, w: u32, h: u32, rgba: &[u8]) -> bool {
+        if !self.images.contains_key(&id) {
+            return false;
+        }
+        let Some(pixmap) = pixmap_from_rgba(w, h, rgba) else {
+            return false;
+        };
+        self.images.insert(id, pixmap);
+        self.dirty = true;
+        true
     }
 
     /// Current ttk-style state flags (hover/pressed/focused/checked/...) of a widget.
@@ -185,7 +215,7 @@ impl Tk {
         if node.selected {
             s |= State::SELECTED;
         }
-        if node.kind == Kind::Checkbutton {
+        if node.kind == Kind::Checkbutton || node.kind == Kind::Switch {
             if node.check.and_then(|v| v.get(self)).unwrap_or(false) {
                 s |= State::CHECKED;
             }
@@ -210,7 +240,7 @@ impl Tk {
     }
 
     /// Resolves the concrete style for widget `id` by cascading:
-    /// theme default -> "TClass" -> "Named.TClass" -> Frame inheritance -> widget override -> state map -> legacy Opt.
+    /// "TClass" -> Frame inheritance (text props) -> "Named.TClass" -> widget override -> state map -> legacy Opt.
     pub fn resolved_style(&self, id: WidgetId) -> Option<ResolvedStyle> {
         self.resolved_style_in(id, self.widget_state(id))
     }
@@ -227,16 +257,9 @@ impl Tk {
             spec.merge_into(&mut res);
         }
 
-        // 2. Named style if specified on node
-        if let Some(named) = &node.named_style {
-            if named != class_name {
-                if let Some(spec) = self.style_engine.lookup(named) {
-                    spec.merge_into(&mut res);
-                }
-            }
-        }
-
-        // 3. Inherited properties from ancestor Frames (fg, font_family, font_size, font_weight, italic)
+        // 2. Inherited text props from ancestor Frames (after class defaults,
+        // so a plain Label takes the frame's fg/font; before named styles,
+        // so Heading/Accent are not clobbered).
         let mut ancestor = node.parent;
         let mut inherited_fg = None;
         let mut inherited_font_family = None;
@@ -246,6 +269,14 @@ impl Tk {
 
         while let Some(pid) = ancestor {
             if let Some(pnode) = self.node(pid) {
+                // style_override before named_style so a closer override wins.
+                if let Some(ovr) = &pnode.style_override {
+                    if inherited_fg.is_none() { inherited_fg = ovr.fg; }
+                    if inherited_font_family.is_none() { inherited_font_family = ovr.font_family.clone(); }
+                    if inherited_font_size.is_none() { inherited_font_size = ovr.font_size; }
+                    if inherited_font_weight.is_none() { inherited_font_weight = ovr.font_weight; }
+                    if inherited_italic.is_none() { inherited_italic = ovr.italic; }
+                }
                 if let Some(named) = &pnode.named_style {
                     if let Some(spec) = self.style_engine.lookup(named) {
                         if inherited_fg.is_none() { inherited_fg = spec.fg; }
@@ -254,13 +285,6 @@ impl Tk {
                         if inherited_font_weight.is_none() { inherited_font_weight = spec.font_weight; }
                         if inherited_italic.is_none() { inherited_italic = spec.italic; }
                     }
-                }
-                if let Some(ovr) = &pnode.style_override {
-                    if inherited_fg.is_none() { inherited_fg = ovr.fg; }
-                    if inherited_font_family.is_none() { inherited_font_family = ovr.font_family.clone(); }
-                    if inherited_font_size.is_none() { inherited_font_size = ovr.font_size; }
-                    if inherited_font_weight.is_none() { inherited_font_weight = ovr.font_weight; }
-                    if inherited_italic.is_none() { inherited_italic = ovr.italic; }
                 }
                 ancestor = pnode.parent;
             } else {
@@ -272,6 +296,15 @@ impl Tk {
         if let Some(fs) = inherited_font_size { res.font_size = fs; }
         if let Some(fw) = inherited_font_weight { res.font_weight = fw; }
         if let Some(it) = inherited_italic { res.italic = it; }
+
+        // 3. Named style if specified on node
+        if let Some(named) = &node.named_style {
+            if named != class_name {
+                if let Some(spec) = self.style_engine.lookup(named) {
+                    spec.merge_into(&mut res);
+                }
+            }
+        }
 
         // 4. Per-widget override
         if let Some(ovr) = &node.style_override {
