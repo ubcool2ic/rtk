@@ -12,6 +12,18 @@
 #[allow(unused_imports)]
 use super::*;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+/// Cached scrollbar ids for a ScrollArea, keyed by `(tk_id, area)`.
+type BarKey = (u64, WidgetId);
+type LinkedBars = HashMap<BarKey, (Option<WidgetId>, Option<WidgetId>)>;
+
+thread_local! {
+    static LINKED_BARS: RefCell<LinkedBars> = RefCell::new(HashMap::new());
+    static BAR_SCAN_COUNT: RefCell<HashMap<u64, u64>> = RefCell::new(HashMap::new());
+}
+
 /// Constructor namespace for scrollable viewport frames.
 pub struct ScrollArea;
 
@@ -140,6 +152,10 @@ impl Tk {
                 node.scroll_target = Some(area);
             }
         }
+        let tk_id = self.tk_id;
+        LINKED_BARS.with(|map| {
+            map.borrow_mut().insert((tk_id, area), (vbar, hbar));
+        });
         self.dirty = true;
         true
     }
@@ -209,31 +225,83 @@ impl Tk {
     /// to its requested width (and finally to the 16 px default) before the
     /// first layout pass has run.
     pub(crate) fn scrollarea_vbar_width(&self, area: WidgetId) -> f32 {
+        let (vbar, _) = self.scrollarea_linked_bars(area);
+        vbar.map_or(0.0, |id| self.scrollbar_reserved_width(id))
+    }
+
+    /// True when a horizontal scrollbar is attached to `area`.
+    pub(crate) fn scrollarea_has_hbar(&self, area: WidgetId) -> bool {
+        self.scrollarea_linked_bars(area).1.is_some()
+    }
+
+    /// Number of full-arena scrollbar scans performed for this toolkit instance.
+    #[doc(hidden)]
+    pub fn scrollarea_bar_scan_count(&self) -> u64 {
+        BAR_SCAN_COUNT.with(|c| c.borrow().get(&self.tk_id).copied().unwrap_or(0))
+    }
+
+    /// Returns `(vbar, hbar)` for `area`, using the sidecar cache when valid.
+    fn scrollarea_linked_bars(&self, area: WidgetId) -> (Option<WidgetId>, Option<WidgetId>) {
         if !self.node(area).is_some_and(|n| n.kind == Kind::ScrollArea) {
-            return 0.0;
+            return (None, None);
         }
-        let mut width = 0.0_f32;
-        for slot in &self.nodes {
+        let tk_id = self.tk_id;
+        let cached = LINKED_BARS.with(|map| map.borrow().get(&(tk_id, area)).copied());
+        if let Some((vbar, hbar)) = cached {
+            let v = vbar.filter(|&id| self.is_attached_scrollbar(id, area, false));
+            let h = hbar.filter(|&id| self.is_attached_scrollbar(id, area, true));
+            if v == vbar && h == hbar {
+                return (v, h);
+            }
+        }
+        let found = self.scan_scrollbars_for(area);
+        LINKED_BARS.with(|map| {
+            map.borrow_mut().insert((tk_id, area), found);
+        });
+        found
+    }
+
+    fn is_attached_scrollbar(&self, id: WidgetId, area: WidgetId, horizontal: bool) -> bool {
+        self.node(id).is_some_and(|bar| {
+            bar.kind == Kind::Scrollbar
+                && bar.scroll_target == Some(area)
+                && bar.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal) == horizontal
+        })
+    }
+
+    fn scrollbar_reserved_width(&self, id: WidgetId) -> f32 {
+        let Some(bar) = self.node(id) else { return 0.0 };
+        let laid_out = bar.rect.width;
+        let requested = bar.requested.width;
+        if laid_out > 0.0 {
+            laid_out
+        } else if requested > 0.0 {
+            requested
+        } else {
+            16.0
+        }
+    }
+
+    fn scan_scrollbars_for(&self, area: WidgetId) -> (Option<WidgetId>, Option<WidgetId>) {
+        BAR_SCAN_COUNT.with(|c| {
+            *c.borrow_mut().entry(self.tk_id).or_insert(0) += 1;
+        });
+        let mut vbar = None;
+        let mut hbar = None;
+        for (index, slot) in self.nodes.iter().enumerate() {
             let Some(bar) = slot.node.as_ref() else { continue };
             if bar.kind != Kind::Scrollbar || bar.scroll_target != Some(area) {
                 continue;
             }
+            let id = WidgetId { index: index as u32, gen: slot.gen };
             let horizontal = bar.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal);
             if horizontal {
-                continue;
-            }
-            let laid_out = bar.rect.width;
-            let requested = bar.requested.width;
-            let candidate = if laid_out > 0.0 {
-                laid_out
-            } else if requested > 0.0 {
-                requested
+                hbar = Some(id);
             } else {
-                16.0
-            };
-            width = width.max(candidate);
+                vbar = Some(id);
+            }
         }
-        width
+        (vbar, hbar)
     }
 }
 

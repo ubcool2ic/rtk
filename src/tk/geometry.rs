@@ -3,6 +3,94 @@
 #[allow(unused_imports)]
 use super::*;
 
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+struct LayoutCacheEntry {
+    pass_count: u64,
+    signature: u64,
+}
+
+thread_local! {
+    static LAYOUT_CACHE: RefCell<HashMap<u64, LayoutCacheEntry>> =
+        RefCell::new(HashMap::new());
+}
+
+fn hash_f32<H: Hasher>(h: &mut H, value: f32) {
+    value.to_bits().hash(h);
+}
+
+fn hash_style_spec<H: Hasher>(h: &mut H, spec: &StyleSpec) {
+    spec.font_size.map(|v| v.to_bits()).hash(h);
+    spec.font_weight.hash(h);
+    spec.italic.hash(h);
+    match &spec.font_family {
+        Some(Some(name)) => {
+            2u8.hash(h);
+            name.hash(h);
+        }
+        Some(None) => 1u8.hash(h),
+        None => 0u8.hash(h),
+    }
+    if let Some(edges) = spec.margin {
+        1u8.hash(h);
+        hash_f32(h, edges.left);
+        hash_f32(h, edges.top);
+        hash_f32(h, edges.right);
+        hash_f32(h, edges.bottom);
+    } else {
+        0u8.hash(h);
+    }
+    if let Some(edges) = spec.padding {
+        1u8.hash(h);
+        hash_f32(h, edges.left);
+        hash_f32(h, edges.top);
+        hash_f32(h, edges.right);
+        hash_f32(h, edges.bottom);
+    } else {
+        0u8.hash(h);
+    }
+}
+
+fn hash_manager<H: Hasher>(h: &mut H, manager: Option<Manager>) {
+    match manager {
+        None => 0u8.hash(h),
+        Some(Manager::Pack(opts)) => {
+            1u8.hash(h);
+            std::mem::discriminant(&opts.side).hash(h);
+            std::mem::discriminant(&opts.fill).hash(h);
+            opts.expand.hash(h);
+            hash_f32(h, opts.padx);
+            hash_f32(h, opts.pady);
+            std::mem::discriminant(&opts.anchor).hash(h);
+        }
+        Some(Manager::Grid(opts)) => {
+            2u8.hash(h);
+            opts.row.hash(h);
+            opts.column.hash(h);
+            opts.rowspan.hash(h);
+            opts.columnspan.hash(h);
+            format!("{:?}", opts.sticky).hash(h);
+            hash_f32(h, opts.padx);
+            hash_f32(h, opts.pady);
+        }
+        Some(Manager::Place(opts)) => {
+            3u8.hash(h);
+            hash_f32(h, opts.x);
+            hash_f32(h, opts.y);
+            hash_f32(h, opts.relx);
+            hash_f32(h, opts.rely);
+            opts.width.map(|v| v.to_bits()).hash(h);
+            opts.height.map(|v| v.to_bits()).hash(h);
+            opts.relwidth.map(|v| v.to_bits()).hash(h);
+            opts.relheight.map(|v| v.to_bits()).hash(h);
+            std::mem::discriminant(&opts.anchor).hash(h);
+        }
+    }
+}
+
 impl Tk {
     /// Assigns a geometry manager to a widget, rejecting mixes of pack and grid among siblings.
     pub(crate) fn set_manager(&mut self, id: WidgetId, manager: Manager) -> bool {
@@ -356,12 +444,29 @@ impl Tk {
         );
         let mut pending = vec![(self.root(), rect, rect)];
         while let Some((id, rect, parent_clip)) = pending.pop() {
+            let (margin, padding) = self
+                .resolved_style(id)
+                .map(|style| (style.margin, style.padding))
+                .unwrap_or_default();
+            // The allocated `rect` already includes style margin in requested size.
+            let boxed = rect.inset_edges(margin.left, margin.top, margin.right, margin.bottom);
             let Some(node) = self.node_mut(id) else { continue };
-            let clip = rect.within(parent_clip);
-            node.rect = rect;
+            let clip = boxed.within(parent_clip);
+            node.rect = boxed;
             node.clip = clip;
             node.visible = true;
-            let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
+            let kind = node.kind;
+            let nested = node.parent.is_some();
+            // Frame: 2px border on nested frames (see update_requested), then padding.
+            // Other parented widgets keep the historical 2px inset.
+            let content = if kind == Kind::Frame {
+                let after_border = if nested { boxed.inset(2.0, 2.0) } else { boxed };
+                after_border.inset_edges(padding.left, padding.top, padding.right, padding.bottom)
+            } else if nested {
+                boxed.inset(2.0, 2.0)
+            } else {
+                boxed
+            };
             self.paint_order.push(id);
             let Some(node) = self.node(id) else { continue };
 
@@ -386,11 +491,7 @@ impl Tk {
                     // Natural content requests may exceed either minimum.
                     let vbar_w = self.scrollarea_vbar_width(id);
                     let viewport_w = (rect.width - vbar_w).max(0.0);
-                    let has_hbar = self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|bar| {
-                        bar.kind == Kind::Scrollbar
-                            && bar.scroll_target == Some(id)
-                            && bar.inputs.as_ref().is_some_and(|state| state.scrollbar_horizontal)
-                    });
+                    let has_hbar = self.scrollarea_has_hbar(id);
                     let min_width = if has_hbar { rect.width } else { viewport_w };
                     let cw = requested.width.max(min_width);
                     let ch = requested.height.max(rect.height);
@@ -450,13 +551,140 @@ impl Tk {
         if !self.focused.is_some_and(|id| self.is_focusable(id)) {
             self.focused = None;
         }
+        let signature = self.layout_input_signature();
+        LAYOUT_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let entry = cache.entry(self.tk_id).or_insert(LayoutCacheEntry {
+                pass_count: 0,
+                signature: 0,
+            });
+            entry.pass_count = entry.pass_count.saturating_add(1);
+            entry.signature = signature;
+        });
     }
 
-    /// Lays out the widget tree if it has been marked dirty since the last layout.
-    pub(crate) fn ensure_layout(&mut self) {
-        if self.dirty {
-            self.layout();
+    /// Cheap hash of inputs that affect measurement and placement (not layout outputs).
+    /// Hover/press/focus are omitted so a mouse-move repaint does not look like a relayout.
+    fn layout_input_signature(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.viewport.hash(&mut hasher);
+        hash_f32(&mut hasher, self.scale_factor);
+        std::mem::discriminant(&self.theme).hash(&mut hasher);
+        for (index, slot) in self.nodes.iter().enumerate() {
+            let Some(node) = slot.node.as_ref() else { continue };
+            index.hash(&mut hasher);
+            slot.gen.hash(&mut hasher);
+            std::mem::discriminant(&node.kind).hash(&mut hasher);
+            node.parent.hash(&mut hasher);
+            node.children.hash(&mut hasher);
+            node.text.hash(&mut hasher);
+            node.disabled.hash(&mut hasher);
+            node.style.width.hash(&mut hasher);
+            hash_f32(&mut hasher, node.style.font_size);
+            node.named_style.hash(&mut hasher);
+            if let Some(spec) = node.style_override.as_ref() {
+                1u8.hash(&mut hasher);
+                hash_style_spec(&mut hasher, spec);
+            } else {
+                0u8.hash(&mut hasher);
+            }
+            hash_manager(&mut hasher, node.manager);
+            for (&track, &weight) in &node.columns {
+                track.hash(&mut hasher);
+                weight.hash(&mut hasher);
+            }
+            for (&track, &weight) in &node.rows {
+                track.hash(&mut hasher);
+                weight.hash(&mut hasher);
+            }
+            hash_f32(&mut hasher, node.canvas_size.0);
+            hash_f32(&mut hasher, node.canvas_size.1);
+            node.list_height.hash(&mut hasher);
+            node.list_items.hash(&mut hasher);
+            node.image.hash(&mut hasher);
+            node.scroll_target.hash(&mut hasher);
+            node.scroll_area_owner.hash(&mut hasher);
+            node.notebook_selected.hash(&mut hasher);
+            node.notebook_pages.hash(&mut hasher);
+            node.monospace.hash(&mut hasher);
+            std::mem::discriminant(&node.compound).hash(&mut hasher);
+            node.text_dimensions.hash(&mut hasher);
+            hash_f32(&mut hasher, node.progress_length);
+            node.table_height_rows.hash(&mut hasher);
+            node.tree_height_rows.hash(&mut hasher);
+            match node.scrollregion {
+                Some((w, h)) => {
+                    1u8.hash(&mut hasher);
+                    hash_f32(&mut hasher, w);
+                    hash_f32(&mut hasher, h);
+                }
+                None => 0u8.hash(&mut hasher),
+            }
+            node.combo_open.hash(&mut hasher);
+            node.combo_values.hash(&mut hasher);
+            for (title, menu) in &node.menubar_titles {
+                title.hash(&mut hasher);
+                menu.hash(&mut hasher);
+            }
+            if let Some(inputs) = node.inputs.as_ref() {
+                inputs.scroll_area_content.hash(&mut hasher);
+                hash_f32(&mut hasher, inputs.scroll_area_offset.0);
+                hash_f32(&mut hasher, inputs.scroll_area_offset.1);
+                inputs.scrollbar_horizontal.hash(&mut hasher);
+                hash_f32(&mut hasher, inputs.slider_length);
+            }
+            if let Some(resolved) = self.resolved_style_in(
+                WidgetId {
+                    index: index as u32,
+                    gen: slot.gen,
+                },
+                State::empty(),
+            ) {
+                hash_f32(&mut hasher, resolved.margin.left);
+                hash_f32(&mut hasher, resolved.margin.top);
+                hash_f32(&mut hasher, resolved.margin.right);
+                hash_f32(&mut hasher, resolved.margin.bottom);
+                hash_f32(&mut hasher, resolved.padding.left);
+                hash_f32(&mut hasher, resolved.padding.top);
+                hash_f32(&mut hasher, resolved.padding.right);
+                hash_f32(&mut hasher, resolved.padding.bottom);
+                hash_f32(&mut hasher, resolved.font_size);
+                resolved.font_weight.hash(&mut hasher);
+                resolved.italic.hash(&mut hasher);
+                resolved.font_family.hash(&mut hasher);
+            }
         }
+        hasher.finish()
+    }
+
+    /// Lays out the widget tree if it has been marked dirty since the last layout,
+    /// skipping a full pass when layout inputs have not changed.
+    pub(crate) fn ensure_layout(&mut self) {
+        if !self.dirty {
+            return;
+        }
+        let signature = self.layout_input_signature();
+        let skip = LAYOUT_CACHE.with(|cache| {
+            cache
+                .borrow()
+                .get(&self.tk_id)
+                .is_some_and(|entry| entry.signature == signature)
+        });
+        if skip {
+            return;
+        }
+        self.layout();
+    }
+
+    /// Number of times [`Self::layout`] has actually run for this toolkit instance.
+    #[doc(hidden)]
+    pub fn layout_pass_count(&self) -> u64 {
+        LAYOUT_CACHE.with(|cache| {
+            cache
+                .borrow()
+                .get(&self.tk_id)
+                .map_or(0, |entry| entry.pass_count)
+        })
     }
 
     /// Reports focus eligibility, allowing Tab to reveal scrolled-out content.
