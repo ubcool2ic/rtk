@@ -94,16 +94,11 @@ impl Tk {
             self.dirty = true;
             return;
         }
-        let shadow = self
-            .resolved_style(id)
-            .and_then(|style| style.shadow);
+        let shadow = self.resolved_style(id).and_then(|style| style.shadow);
         if let Some(shadow) = shadow {
             // The shadow is drawn unclipped, offset by (dx, dy) and spreading up
             // to `blur` logical px, so damage the widget rect plus that reach.
-            let reach = WIDGET_INFLATE
-                + shadow.blur
-                + shadow.dx.abs().max(shadow.dy.abs())
-                + 1.0;
+            let reach = WIDGET_INFLATE + shadow.blur + shadow.dx.abs().max(shadow.dy.abs()) + 1.0;
             if rect.width <= 0.0 || rect.height <= 0.0 {
                 return;
             }
@@ -179,14 +174,18 @@ impl Tk {
             || !size_matches
             || self.overlays_visible()
             || (self.is_animating()
-                && self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|node| {
-                    node.transition.is_some()
-                        && node.visible
-                        && !self.damage.iter().any(|r| {
-                            let i = r.intersection(node.rect);
-                            i.width > 0.0 && i.height > 0.0
-                        })
-                }));
+                && self
+                    .nodes
+                    .iter()
+                    .filter_map(|slot| slot.node.as_ref())
+                    .any(|node| {
+                        node.transition.is_some()
+                            && node.visible
+                            && !self.damage.iter().any(|r| {
+                                let i = r.intersection(node.rect);
+                                i.width > 0.0 && i.height > 0.0
+                            })
+                    }));
         if needs_full {
             let pixmap = self.render_to_pixmap(width, height)?;
             self.frame = Some(pixmap);
@@ -228,7 +227,16 @@ impl Tk {
             let bottom = (acc.y + acc.height).max(r.y + r.height);
             Rect::new(x, y, right - x, bottom - y)
         });
-        self.paint_scene(&mut scratch, Some(union));
+        // `union` is in device pixels (see damage_device_rects). paint_scene
+        // expects a logical-pixel clip, so convert back by the scale factor.
+        let scale = self.scale_factor.max(1.0e-6);
+        let logical_union = Rect::new(
+            union.x / scale,
+            union.y / scale,
+            union.width / scale,
+            union.height / scale,
+        );
+        self.paint_scene(&mut scratch, Some(logical_union));
         if let Some(frame) = self.frame.as_mut() {
             let stride = width as usize * 4;
             let src = scratch.data();
