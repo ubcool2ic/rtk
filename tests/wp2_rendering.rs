@@ -2,7 +2,7 @@
 //! partial-fill identity (P3), Text visible-line paint (P6),
 //! table/tree redraw (P10), and Spinbox `set_command` wiring.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use rtk::testing::compare_pixmaps;
@@ -610,4 +610,31 @@ fn dropped_tk_must_not_leave_stale_premul() {
         [20, 20, 200, 255],
         "expected blue center after Tk drop, got {p2:?} at ({xb},{yb})"
     );
+}
+
+/// A host that keeps `Tk` in its own `thread_local` must not panic when that
+/// value is dropped during thread teardown after `PREMUL_CACHE` is gone.
+/// `HOST` is initialized first so it is destroyed after the later cache TLS.
+#[test]
+fn drop_tk_from_host_thread_local_during_teardown_does_not_panic() {
+    let handle = std::thread::spawn(|| {
+        thread_local! {
+            static HOST: RefCell<Option<Tk>> = const { RefCell::new(None) };
+        }
+        HOST.with(|h| *h.borrow_mut() = None);
+
+        let mut tk = Tk::new();
+        let root = tk.root();
+        let cv = Canvas::new(&mut tk, root, 64.0, 64.0).unwrap();
+        tk.pack(cv, Default::default());
+        let blue = solid_rgba(32, 32, 20, 20, 200, 255);
+        tk.canvas_create_image_rgba(cv, 0.0, 0.0, 32.0, 32.0, 32, 32, &blue, false)
+            .unwrap();
+        let _ = tk.render_to_pixmap(160, 120).unwrap();
+
+        HOST.with(|h| *h.borrow_mut() = Some(tk));
+    });
+    handle
+        .join()
+        .expect("dropping Tk from a host thread_local at thread teardown must not panic");
 }

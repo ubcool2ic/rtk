@@ -460,3 +460,17 @@ Job cap still $2.50 from this job's own generation ids ($0.465622 already used a
 - Account `total_usage` at first check of this batch (4:17 AM ET): **624.706070236**.
 - Account `total_usage` after (credits check 4:25 AM ET): **624.706070236** (unchanged; no paid call).
 - This job's own generation-id sum for the r3 fix batch: **$0.000000**. Combined with the r1 fix batch ($0.367548) and the r2 fix batch ($0.098074): **$0.465622**. Still under the $2.50 job cap.
+
+### Reviewer1 PR #13 r4 nits (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.465622 already used). Shared account stop line is 620.00. Times are America/Indianapolis (ET).
+
+**No paid model call was made** (account already past the 620.00 backstop). Both r4 nits were hand-written and verified with cargo test / clippy / release. No generation id.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 4:38 AM ET | — | — | WP2 PR#13 r4 nits: purge_premul_tk try_with; tk_id fetch_update+checked_add panic on exhaustion | 0.000000 | measured | no call (past 620.00 backstop; hand-written) |
+| | | | **this r4 nit-batch own total** | **0.000000** | measured | |
+
+- Account stop line 620.00 was already exceeded before this batch; no credits lookup or paid call was made.
+- This job's own generation-id sum is unchanged: **$0.465622** (r1 $0.367548 + r2 $0.098074 + r3 $0 + r4 $0). Still under the $2.50 job cap.

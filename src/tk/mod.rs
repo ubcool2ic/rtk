@@ -28,8 +28,18 @@ use crate::{Opt, RtkError, WidgetId};
 
 static NEXT_TK_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Allocates a unique `tk_id` for a new [`Tk`].
+///
+/// Panics if the process has already issued `u64::MAX` ids; a wrapping
+/// counter could otherwise alias Slot keys with a still-living earlier `Tk`.
 fn alloc_tk_id() -> u64 {
-    NEXT_TK_ID.fetch_add(1, Ordering::Relaxed)
+    // `fetch_update` was renamed to `try_update` on newer rustc; MSRV is 1.85.
+    #[allow(deprecated)]
+    {
+        NEXT_TK_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("tk_id space exhausted")
+    }
 }
 
 /// Active IME composition: target widget, preedit text and byte cursor range.

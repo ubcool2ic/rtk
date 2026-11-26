@@ -224,8 +224,12 @@ pub(crate) fn purge_premul_cache(tk: u64, index: u32, gen: u32) {
 }
 
 /// Drops every Slot entry belonging to a `Tk` instance (used from `Drop`).
+///
+/// Uses `try_with` and ignores `AccessError` so a host that stores `Tk` in
+/// its own `thread_local` does not panic if this runs during thread teardown
+/// after `PREMUL_CACHE` has already been destroyed.
 pub(crate) fn purge_premul_tk(tk: u64) {
-    PREMUL_CACHE.with(|cache| {
+    let _ = PREMUL_CACHE.try_with(|cache| {
         cache
             .borrow_mut()
             .entries
