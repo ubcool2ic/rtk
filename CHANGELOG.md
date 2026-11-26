@@ -1,5 +1,83 @@
 # Changelog
 
+## 1.1.0 (2026-11-26)
+
+Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk/pull/12)–[#16](https://github.com/ubcool2ic/rtk/pull/16)), merged into main as `8ce3a5b4`. This is a minor release: new public APIs were added and no existing public items were removed or renamed.
+
+### Added
+
+- `Tk::unload_image` and `Tk::update_image_rgba` (replace pixels in place, no new id) ([#14](https://github.com/ubcool2ic/rtk/pull/14), WP3).
+- `Tk::menu_destroy` and `Tk::unbind_context_menu` ([#16](https://github.com/ubcool2ic/rtk/pull/16), WP5). Destroying a middle open submenu also closes its children; unknown menu ids are ignored.
+- `Tk::spinbox_on_change` and `Tk::set_command` support for `Spinbox` ([#12](https://github.com/ubcool2ic/rtk/pull/12), [#13](https://github.com/ubcool2ic/rtk/pull/13)).
+- `dialog::file_filter_combobox` ([#16](https://github.com/ubcool2ic/rtk/pull/16), WP5).
+- `Rect::inset_edges` ([#15](https://github.com/ubcool2ic/rtk/pull/15), WP4).
+- Headless `Tk::sim_modifiers` so Shift state follows `ModifiersChanged` and focus loss ([#12](https://github.com/ubcool2ic/rtk/pull/12)).
+
+### Fixed
+
+**WP1 — Input and keyboard ([#12](https://github.com/ubcool2ic/rtk/pull/12))**
+
+- AltGr/Option text is inserted instead of dropped.
+- Shift is no longer sticky after Shift+Arrow; Shift+click extend works after `ModifiersChanged`.
+- Text clicks place the caret by x-position on the target line, not always at column 0.
+- `bind_shortcut("Shift+Tab")` parses and fires.
+- `text_max_lines` is enforced on type, paste, and undo.
+- Combobox Up/Down and Spinbox keys/arrows run their commands when the value changes.
+- Tab traversal and `clear_input` run focus transitions.
+
+**WP2 — Render and damage ([#13](https://github.com/ubcool2ic/rtk/pull/13))**
+
+- HiDPI partial redraws convert the damage union to logical px before paint.
+- Partial redraws fill only the padded damage union, not the full buffer.
+- Canvas image items no longer copy the full buffer every frame; clip masks are reused; `Text`, Table, and Tree paint only the visible line or row window.
+- An indeterminate ProgressBar no longer shows a target percent or `"0%"`.
+
+**WP3 — Style and theme ([#14](https://github.com/ubcool2ic/rtk/pull/14))**
+
+- Heading-in-Card and Accent.TButton keep their named-style font and color; a plain Label still inherits ancestor fg/font.
+- `lookup_state` no longer allocates a `String` per lookup (P2).
+- Disabled text follows the Dark and HighContrast palettes. User state maps (hover, pressed, focus, selected, disabled) survive a theme change.
+- `Switch` sets `State::CHECKED` from its bound var so `TSwitch:checked` rules apply.
+- CSS `transition` / `transition-duration` must be finite, ≥ 0, and at most `u32::MAX` milliseconds; negative shadow blur is rejected.
+
+**WP4 — Layout ([#15](https://github.com/ubcool2ic/rtk/pull/15))**
+
+- Style margin sits outside `widget_rect` instead of stretching the widget box.
+- Frame padding is applied after the 2 px nested-frame border (the root has no border inset). `place` children use the border-inset rect, so Frame padding does not shrink a modal scrim.
+- ScrollArea bar lookups use a stored id, refreshed when a `scrollbar_link` arrives or a cached bar goes stale; `LINKED_BARS` is purged on `Tk` drop and widget destroy.
+
+**WP5 — Dialogs and data widgets ([#16](https://github.com/ubcool2ic/rtk/pull/16))**
+
+- In-app Open dialog: changing the filter combobox refreshes the list; double-click activates the same path as Open/Enter; `tar.gz` filters match the filename suffix; the dialog's filter var is destroyed on dismiss.
+- Tree views clamp after remove/collapse/expand so a scrolled view does not go blank. Listbox delete fires the select callback when the selection changes.
+- File-drop/hover callbacks and context-menu bindings are pruned in `Tk::destroy`.
+- Menu panels are measured once when opened and re-measured if an item is added while the menu is open, so the new row stays inside the border and is clickable.
+- Table inserts no longer re-sort and relayout on every row. Unsorted appends are amortized O(1) (the order-shift loop is skipped); mid-table and sorted inserts stay incremental.
+- DoubleSpinbox typing is bounded without truncating a long formatted seed (for example `1e80`).
+- Inverted Slider wheel uses the same signed step as the keyboard (increase moves toward `to`). Combobox and Spinbox wheels fire their callbacks; disabled widgets ignore the wheel.
+
+### Changed
+
+- **B20:** `assert_golden` now fails if the golden file is missing, unless `RTK_BLESS=1`. This reverses 1.0.2's documented behaviour: at v1.0.2, a missing golden was written on first run (`src/testing.rs` rustdoc said that if `RTK_BLESS=1` is set, or the golden file does not exist, the rendered image "is written"). Downstream tests that relied on first-run creation will now panic; run once with `RTK_BLESS=1` to create new goldens. The `docs/GUIDE.md` example is marked `no_run` so that rule does not fail the doctest.
+
+### Goldens
+
+These were re-blessed in WP3 and WP4 with Tyler's approval. This 1.1.0 PR does not add or re-bless any goldens.
+
+- `tristate_dark_{1,2}x` and `tristate_highcontrast_{1,2}x` were updated so disabled text follows the Dark and HighContrast palettes. Light tristate goldens are unchanged.
+- All six `m011_modal_*` goldens were updated in two steps: the dialog title is Subheading (16 px / 700) rather than Heading (22 px / 700), the accent Yes button is white/bold and wider, and the No button shifts (WP3 inheritance); then the Card content moved down 16 logical px (32 device px at 2×) once Frame padding was actually applied (WP4).
+
+### Tests
+
+New integration tests in `tests/wp1_input.rs`, `tests/wp2_rendering.rs`, `tests/wp3_style.rs`, `tests/wp4_layout.rs`, and `tests/wp5_dialogs.rs`.
+
+### Not included / deferred
+
+- **P5:** `dirty` means both "relayout" and "repaint" and is only cleared after a render, so every event between frames (mouse moves at up to 1 kHz) that calls `ensure_layout` re-runs full layout. The suggested `layout_dirty` / `dirty` split was dropped per Tyler's call ("do the P5 speed-up later"; commit `4da9c3d`).
+- **P13:** Any visible overlay (open menu/combobox, tooltip, toast) forces a full repaint on every redraw (for example, each caret blink). A "nothing pending" early-return was reverted in 1.0.2 for hover correctness; giving overlays their own damage rects was left for a later pass (commit `c8eea2c`).
+- **L2 Var free list:** the Open dialog's `filter_var` is now destroyed on dismiss, but Var slots are still never reused (~48 B per created Var). A generational free list in `var.rs` is deferred.
+- **P7:** softbuffer partial present is used only when `buffer.age()==1`; on double-buffered backends (age 2) every frame copies and packs the full window. Tracking the previous frame's damage and presenting the union for age 2 was not in any work package.
+
 ## 1.0.2 (2026-11-13)
 
 Reviewed and written with Claude Fable 5.2 via OpenRouter.

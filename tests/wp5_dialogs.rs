@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
 use rtk::testing::{assert_golden, GoldenOpts};
 use rtk::{
     dialog, Button, Combobox, DoubleSpinbox, Frame, Key, Listbox, MenuItem, Menubar, Opt, PackOpts,
