@@ -198,8 +198,33 @@ impl Tk {
         let Some(data) = self.menus.get_mut(menu) else { return usize::MAX };
         data.items.push(item);
         let idx = data.items.len() - 1;
+        self.refresh_open_panels(menu);
         self.dirty = true;
         idx
+    }
+
+    /// Re-measures the panel of every open level showing `menu`, keeping the
+    /// existing top-left (so an item added while the menu is open stays clickable).
+    fn refresh_open_panels(&mut self, menu: MenuId) {
+        let levels: Vec<usize> = self
+            .menus
+            .open
+            .iter()
+            .enumerate()
+            .filter(|(_, open)| open.menu == menu)
+            .map(|(i, _)| i)
+            .collect();
+        for level in levels {
+            let (ax, ay) = {
+                let open = &self.menus.open[level];
+                (open.panel.x, open.panel.y)
+            };
+            let w = panel_width(self, menu);
+            let h = panel_height(self, menu);
+            if let Some(open) = self.menus.open.get_mut(level) {
+                open.panel = Rect::new(ax, ay, w, h);
+            }
+        }
     }
 
     /// Installs the callback run when the command item at `index` is activated.
@@ -232,6 +257,9 @@ impl Tk {
 
     /// Pushes an open menu level, measuring the panel once.
     fn push_open_menu(&mut self, menu: MenuId, ax: f32, ay: f32) {
+        if self.menus.get(menu).is_none() {
+            return;
+        }
         let w = panel_width(self, menu);
         let h = panel_height(self, menu);
         self.menus.open.push(OpenMenu {
@@ -303,7 +331,13 @@ impl Tk {
         if self.menus.menus.remove(&menu.0).is_none() {
             return false;
         }
-        self.menus.open.retain(|open| open.menu != menu);
+        // Closing a middle level must also close its children.
+        if let Some(idx) = self.menus.open.iter().position(|open| open.menu == menu) {
+            self.menus.open.truncate(idx);
+        }
+        if self.menus.open.is_empty() {
+            self.menus.active_bar = None;
+        }
         self.menus.context.retain(|_, bound| *bound != menu);
         self.dirty = true;
         true
@@ -324,6 +358,9 @@ impl Tk {
     pub(crate) fn menubar_open(&mut self, bar: WidgetId, index: usize) {
         let Some(node) = self.node(bar) else { return };
         let Some(&(_, menu)) = node.menubar_titles.get(index) else { return };
+        if self.menus.get(menu).is_none() {
+            return;
+        }
         let rect = node.rect;
         let titles: Vec<String> = node.menubar_titles.iter().map(|(t, _)| t.clone()).collect();
         let style = self.resolved_style(bar).unwrap_or_default();

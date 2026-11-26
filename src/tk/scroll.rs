@@ -71,7 +71,7 @@ impl Tk {
                 let direction = if dy > 0.0 { 1.0 } else { -1.0 };
                 self.slider_user_set(id, current + direction * unit);
             }
-            Kind::Spinbox if dy != 0.0 => {
+            Kind::Spinbox if dy != 0.0 && !node.disabled => {
                 let (from, to) = node.range;
                 let step = if to >= from { 1 } else { -1 };
                 let old = node.scale.and_then(|v| v.get(self)).unwrap_or(from);
@@ -101,7 +101,7 @@ impl Tk {
                 let lines = if pixels { dy / 20.0 } else { dy };
                 self.tree_scroll(id, -lines * 3.0);
             }
-            Kind::Combobox if !node.combo_open && dy != 0.0 => {
+            Kind::Combobox if !node.combo_open && dy != 0.0 && !node.disabled => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;
                 let step = if dy > 0.0 { -1 } else { 1 };

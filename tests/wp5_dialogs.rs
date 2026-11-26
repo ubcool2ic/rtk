@@ -6,11 +6,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use rtk::testing::{assert_golden, GoldenOpts};
 use rtk::{
-    dialog, Button, Combobox, DoubleSpinbox, Frame, Key, Listbox, MenuItem, PackOpts, Slider,
-    Spinbox, Table, Tk, TreeView,
+    dialog, Button, Combobox, DoubleSpinbox, Frame, Key, Listbox, MenuItem, Menubar, Opt, PackOpts,
+    Slider, Spinbox, Table, Tk, TreeView,
 };
 
 fn unique_tmp(name: &str) -> PathBuf {
@@ -206,7 +207,7 @@ fn menu_destroy_and_unbind_context() {
     assert!(tk.bind_context_menu(host3, menu2));
 }
 
-/// P9: bulk table_insert_row keeps model order without quadratic layout/sort on each row.
+/// P9: bulk table_insert_row keeps model order; appends must not be O(n²).
 #[test]
 fn table_bulk_insert_keeps_order() {
     let mut tk = Tk::new();
@@ -221,6 +222,43 @@ fn table_bulk_insert_keeps_order() {
     assert_eq!(tk.table_display_to_model(table, 0), Some(0));
     assert_eq!(tk.table_display_to_model(table, 199), Some(199));
     assert_eq!(tk.table_cell(table, 50, 0).as_deref(), Some("50"));
+
+    // Mid-table insert shifts later model indices and lands at the given index.
+    assert!(tk.table_insert_row(table, 1, vec!["x".into()]));
+    assert_eq!(tk.table_cell(table, 1, 0).as_deref(), Some("x"));
+    assert_eq!(tk.table_display_to_model(table, 0), Some(0));
+    assert_eq!(tk.table_display_to_model(table, 1), Some(1));
+    assert_eq!(tk.table_cell(table, 2, 0).as_deref(), Some("1"));
+
+    // Sorted insert keeps a stable sorted display.
+    let sorted = Table::new(&mut tk, root, &["N"], 5).unwrap();
+    tk.pack(sorted, PackOpts::default());
+    tk.table_set_rows(sorted, vec![vec!["5".into()], vec!["1".into()], vec!["9".into()]]);
+    tk.table_sort_by(sorted, 0, true);
+    assert!(tk.table_insert_row(sorted, 1, vec!["3".into()]));
+    let vals: Vec<String> = (0..4)
+        .map(|d| {
+            let m = tk.table_display_to_model(sorted, d).unwrap();
+            tk.table_cell(sorted, m, 0).unwrap()
+        })
+        .collect();
+    assert_eq!(vals, vec!["1", "3", "5", "9"]);
+
+    // Unsorted append of 20k rows must finish quickly (O(1) per append, not O(n)).
+    let bulk = Table::new(&mut tk, root, &["A"], 5).unwrap();
+    tk.pack(bulk, PackOpts::default());
+    let start = Instant::now();
+    for i in 0..20_000 {
+        assert!(tk.table_insert_row(bulk, usize::MAX, vec![format!("{i}")]));
+    }
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "20k unsorted appends took {elapsed:?}; shift loop is still O(n) per insert"
+    );
+    assert_eq!(tk.table_row_count(bulk), 20_000);
+    assert_eq!(tk.table_display_to_model(bulk, 0), Some(0));
+    assert_eq!(tk.table_display_to_model(bulk, 19_999), Some(19_999));
 }
 
 /// L5: dspin edit buffer is capped at 64 bytes (widget stays usable after a long type-in).
@@ -238,6 +276,21 @@ fn dspin_buffer_is_capped() {
     tk.sim_key(Key::Enter);
     let value = var.get(&tk).unwrap();
     assert!(value.is_finite(), "capped buffer must still parse, got {value}");
+
+    // A long formatted seed must not be truncated (1e80 + type "5" is ~1e81, not 1e63).
+    let long = tk.f64_var(1e80);
+    let spin2 = DoubleSpinbox::new(&mut tk, root, 0.0, 1e100, long).unwrap();
+    tk.pack(spin2, PackOpts::default());
+    tk.sim_resize(240, 160);
+    let rect = tk.widget_rect(spin2).unwrap();
+    tk.sim_click(rect.x + 8.0, rect.y + rect.height / 2.0);
+    tk.sim_text("5");
+    tk.sim_key(Key::Enter);
+    let after = long.get(&tk).unwrap();
+    assert!(
+        after > 1e79 && after < 1e82,
+        "long seed + typed digit must stay around 1e81, got {after:e}"
+    );
 }
 
 /// B16: wheel on an inverted slider moves toward `to`.
@@ -299,6 +352,20 @@ fn spinbox_and_combobox_wheel_fire_callbacks() {
     tk.sim_wheel(-1.0);
     assert_eq!(&*combo_log.borrow(), &[1], "combobox wheel must fire on_select, got {:?}", combo_log.borrow());
     assert_eq!(combo_var.get(&tk), Some(1));
+
+    tk.config(spin, Opt::Disabled(true));
+    tk.sim_mouse_move(srect.x + 8.0, srect.y + srect.height / 2.0);
+    tk.sim_wheel(1.0);
+    tk.sim_wheel(-1.0);
+    tk.sim_wheel(-1.0);
+    assert_eq!(spin_var.get(&tk), Some(6), "disabled spinbox wheel must not change the value");
+    assert_eq!(*spin_cmds.borrow(), 1, "disabled spinbox wheel must not run_command");
+
+    tk.config(combo, Opt::Disabled(true));
+    tk.sim_mouse_move(crect.x + crect.width / 2.0, crect.y + crect.height / 2.0);
+    tk.sim_wheel(-1.0);
+    assert_eq!(combo_var.get(&tk), Some(1), "disabled combobox wheel must not change the value");
+    assert_eq!(&*combo_log.borrow(), &[1], "disabled combobox wheel must not fire on_select");
 }
 
 /// B20: a missing golden must fail unless RTK_BLESS=1, and must not write the image.
@@ -308,8 +375,10 @@ fn missing_golden_fails_without_bless() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let mut tk = Tk::new();
-    // Ensure we are not blessing in this process.
-    std::env::remove_var("RTK_BLESS");
+    if std::env::var("RTK_BLESS").map(|v| v == "1").unwrap_or(false) {
+        // Leave the process env alone; this test is only meaningful without blessing.
+        return;
+    }
     let result = catch_unwind(AssertUnwindSafe(|| {
         assert_golden(&mut tk, &dir, "does_not_exist_wp5", 32, 24, GoldenOpts::default());
     }));
@@ -319,4 +388,82 @@ fn missing_golden_fails_without_bless() {
         "missing golden must not be created silently"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// P8: adding an item while a menu is open must grow the panel and make it clickable.
+#[test]
+fn menu_add_while_open_updates_panel_and_is_clickable() {
+    let mut tk = Tk::new();
+    tk.sim_resize(400, 300);
+    let menu = tk.menu_create();
+    tk.menu_add(menu, MenuItem::command("One"));
+    tk.menu_add(menu, MenuItem::command("Two"));
+    tk.menu_popup(menu, 20.0, 20.0);
+    let before = tk.menu_panel_rect(0).unwrap();
+    let item_h = (before.height - 8.0) / 2.0;
+    let idx = tk.menu_add(menu, MenuItem::command("Three"));
+    let hit = Rc::new(RefCell::new(false));
+    let sink = hit.clone();
+    tk.menu_set_command(menu, idx, move |_| {
+        *sink.borrow_mut() = true;
+    });
+    let after = tk.menu_panel_rect(0).unwrap();
+    assert!(
+        after.height > before.height,
+        "panel must grow after menu_add while open: {} -> {}",
+        before.height,
+        after.height
+    );
+    let _ = tk.render_to_pixmap(400, 300);
+    tk.sim_click(before.x + 20.0, before.y + 4.0 + item_h * 2.5);
+    assert!(*hit.borrow(), "item added while the menu is open must be clickable");
+}
+
+/// L4/S4: destroying a middle open menu also closes its children; dangling ids stay inert.
+#[test]
+fn menu_destroy_closes_child_levels_and_skips_unknown_ids() {
+    let mut tk = Tk::new();
+    tk.sim_resize(600, 400);
+    let leaf = tk.menu_create();
+    tk.menu_add(leaf, MenuItem::command("leaf"));
+    let mid = tk.menu_create();
+    tk.menu_add(mid, MenuItem::submenu("C", leaf));
+    let root_menu = tk.menu_create();
+    tk.menu_add(root_menu, MenuItem::submenu("B", mid));
+    tk.menu_popup(root_menu, 10.0, 10.0);
+    let ra = tk.menu_panel_rect(0).unwrap();
+    tk.sim_mouse_move(ra.x + 10.0, ra.y + 12.0);
+    assert_eq!(tk.menu_open_path(), vec![root_menu, mid]);
+    if let Some(rb) = tk.menu_panel_rect(1) {
+        tk.sim_mouse_move(rb.x + 10.0, rb.y + 12.0);
+    }
+    assert_eq!(tk.menu_open_path(), vec![root_menu, mid, leaf]);
+    assert!(tk.menu_destroy(mid));
+    assert_eq!(tk.menu_open_path(), vec![root_menu], "destroying B must also close C");
+
+    // Hovering the dangling "B" item must not reopen the destroyed menu.
+    tk.sim_mouse_move(ra.x + 10.0, ra.y + 12.0);
+    tk.sim_click(ra.x + 10.0, ra.y + 12.0);
+    tk.sim_key(Key::Right);
+    assert!(!tk.menu_open_path().contains(&mid));
+    assert!(!tk.menu_open_path().contains(&leaf));
+
+    tk.menu_close_all();
+    assert!(tk.menu_open_path().is_empty());
+
+    let root = tk.root();
+    let bar = Menubar::new(&mut tk, root).unwrap();
+    tk.pack(bar, PackOpts::default());
+    let file = tk.menu_create();
+    tk.menu_add(file, MenuItem::command("x"));
+    tk.menubar_add(bar, "File", file);
+    tk.sim_resize(400, 300);
+    assert!(tk.menu_destroy(file));
+    let r = tk.widget_rect(bar).unwrap();
+    tk.sim_click(r.x + 12.0, r.y + r.height / 2.0);
+    assert!(
+        tk.menu_open_path().is_empty(),
+        "menubar click on a destroyed menu must not open a panel, got {:?}",
+        tk.menu_open_path()
+    );
 }

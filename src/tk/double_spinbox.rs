@@ -207,21 +207,19 @@ impl Tk {
         if node.kind != Kind::DoubleSpinbox || node.disabled {
             return;
         }
-        let mut buffer = node
-            .inputs
-            .as_ref()
-            .and_then(|s| s.dspin_buffer.clone())
-            .unwrap_or_else(|| self.dspin_edit_seed(id));
+        let existing = node.inputs.as_ref().and_then(|s| s.dspin_buffer.clone());
+        // Don't truncate a long formatted seed (e.g. 1e80). Cap typed growth:
+        // 64 bytes when the seed is short, seed+64 when it is already long.
+        let seed = self.dspin_edit_seed(id);
+        let cap = if seed.len() >= 64 { seed.len().saturating_add(64) } else { 64 };
+        let mut buffer = existing.unwrap_or(seed);
         for ch in text.chars() {
-            if buffer.len() >= 64 {
+            if buffer.len() >= cap {
                 break;
             }
             if ch.is_ascii_digit() || ch == '.' || ch == ',' || ch == '-' {
                 buffer.push(ch);
             }
-        }
-        if buffer.len() > 64 {
-            buffer.truncate(64);
         }
         if let Some(state) = self.dspin_state_mut(id) {
             state.dspin_buffer = Some(buffer);

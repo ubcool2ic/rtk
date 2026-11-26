@@ -562,3 +562,15 @@ Account `total_usage` at first job check: **631.875889859** (2:50:19 PM ET). Imm
 | | | **own measured total** | | | **0.019272** | | | |
 
 - Account `total_usage` at end (3:04:46 PM ET): **631.895161859**. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$8.10** (credits 640 − usage).
+
+### WP5 Reviewer1 #16 leftovers (2026-11-26)
+
+**No paid model call was made for this leftovers batch.** Carbon's earlier WP5 call (`gen-1795722856-TxSoAZbUfiAQFA0byp46`, $0.019272) had returned no diffs, so MUST/SHOULD/NIT fixes were hand-written at $0. Own generation-id sum for the WP5 job is unchanged: **$0.019272**. Under the $2.50 job cap. Account stop line 637.00 was not reached.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 5:35 PM ET | — | WP5 r1 leftovers (hand-written) | — | — | 0.000000 | measured | — | no call: M1 re-measure open panels in menu_add; M2/S1 disabled wheel guards for Spinbox and Combobox; S2 skip order shift on append; S3 remove dead order_dirty/ensure_order; S4 truncate child menus on destroy and skip unknown ids; N1–N4 |
+| | | **this leftovers-batch own total** | | | **0.000000** | measured | | |
+| | | **WP5 job own measured total** | | | **0.019272** | | | |
+
+- Account `total_usage` after this leftovers batch (5:35 PM ET): **632.030955859**. Delta since the first WP5 Carbon call (631.895161859) is other account spend, not this job. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$7.97** (credits 640 − usage).

@@ -34,8 +34,6 @@ pub(crate) struct TableState {
     pub(crate) on_select: Option<TableSelectCallback>,
     /// Re-entrancy guard for the selection callback.
     pub(crate) on_select_running: bool,
-    /// When true, `order` must be rebuilt before it is read.
-    pub(crate) order_dirty: bool,
 }
 
 impl TableState {
@@ -52,7 +50,6 @@ impl TableState {
             resize_drag: None,
             on_select: None,
             on_select_running: false,
-            order_dirty: false,
         }
     }
 
@@ -61,14 +58,6 @@ impl TableState {
         self.order = (0..self.rows.len()).collect();
         if let Some((col, asc)) = self.sort {
             self.apply_sort(col, asc);
-        }
-        self.order_dirty = false;
-    }
-
-    /// Rebuilds `order` if a prior bulk insert left it stale.
-    pub(crate) fn ensure_order(&mut self) {
-        if self.order_dirty {
-            self.rebuild_order();
         }
     }
 
@@ -180,9 +169,6 @@ impl Tk {
 
     /// Clamps `top` so the view stays within the row count.
     pub(crate) fn table_clamp_top(&mut self, id: WidgetId) {
-        if let Some(state) = self.table_state_mut(id) {
-            state.ensure_order();
-        }
         self.ensure_layout();
         let visible = self.table_visible_rows(id);
         let total = self.table_state(id).map(|s| s.order.len()).unwrap_or(0);
@@ -223,20 +209,22 @@ impl Tk {
                 state.selected = Some(sel + 1);
             }
         }
-        if !state.order_dirty {
+        // Appends cannot bump any existing index (new model id is max), so
+        // skip the O(n) shift and just push when unsorted.
+        if at < state.rows.len() - 1 {
             for idx in state.order.iter_mut() {
                 if *idx >= at {
                     *idx += 1;
                 }
             }
-            if let Some((col, asc)) = state.sort {
-                let pos = state.sorted_insert_pos(at, col, asc);
-                state.order.insert(pos, at);
-            } else {
-                state.order.insert(at.min(state.order.len()), at);
-            }
+        }
+        if let Some((col, asc)) = state.sort {
+            let pos = state.sorted_insert_pos(at, col, asc);
+            state.order.insert(pos, at);
+        } else if at < state.rows.len() - 1 {
+            state.order.insert(at.min(state.order.len()), at);
         } else {
-            state.order_dirty = true;
+            state.order.push(at);
         }
         self.dirty = true;
         true
@@ -247,7 +235,6 @@ impl Tk {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows.clear();
         state.order.clear();
-        state.order_dirty = false;
         let had_selection = state.selected.take().is_some();
         state.top = 0;
         self.dirty = true;
@@ -362,9 +349,6 @@ impl Tk {
 
     /// Scrolls so model row `row` is visible.
     pub fn table_see(&mut self, id: WidgetId, row: usize) -> bool {
-        if let Some(state) = self.table_state_mut(id) {
-            state.ensure_order();
-        }
         self.ensure_layout();
         let Some(state) = self.table_state(id) else { return false };
         let Some(display) = state.display_of(row) else { return false };
@@ -477,9 +461,6 @@ impl Tk {
 
     /// Scrolls the table by `lines` rows (positive scrolls down).
     pub(crate) fn table_scroll(&mut self, id: WidgetId, lines: f32) {
-        if let Some(state) = self.table_state_mut(id) {
-            state.ensure_order();
-        }
         let Some(state) = self.table_state_mut(id) else { return };
         let delta = lines.round() as i64;
         let old_top = state.top;

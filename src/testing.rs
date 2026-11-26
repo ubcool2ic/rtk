@@ -133,7 +133,8 @@ pub fn assert_golden(
     }
     if !golden_path.exists() {
         panic!(
-            "missing golden for '{name}': {} does not exist.              Re-run with RTK_BLESS=1 to create it.",
+            "missing golden for '{name}': {} does not exist. \
+             Re-run with RTK_BLESS=1 to create it.",
             golden_path.display()
         );
     }
