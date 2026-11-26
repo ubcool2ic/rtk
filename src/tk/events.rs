@@ -37,14 +37,16 @@ impl Tk {
             // widgets actually under the pointer.
             let hit = self.node(*id).is_some_and(|node| {
                 let interactive = node.kind.focusable()
-                    || matches!(node.kind, Kind::Canvas | Kind::Scrollbar | Kind::Notebook | Kind::ScrollArea)
+                    || matches!(
+                        node.kind,
+                        Kind::Canvas | Kind::Scrollbar | Kind::Notebook | Kind::ScrollArea
+                    )
                     || node.tooltip.is_some();
                 node.visible && interactive && node.clip.contains(x, y)
             });
             hit && modal.is_none_or(|modal_id| self.is_descendant_of(*id, modal_id))
         })
     }
-
 
     /// Headless harness: moves the pointer to logical `(x, y)`, updating hover,
     /// drags and tooltips.
@@ -57,7 +59,11 @@ impl Tk {
             return;
         }
         if let Some(pid) = self.pressed {
-            if let Some(rx) = self.node(pid).filter(|n| n.kind == Kind::Table).map(|n| n.rect.x) {
+            if let Some(rx) = self
+                .node(pid)
+                .filter(|n| n.kind == Kind::Table)
+                .map(|n| n.rect.x)
+            {
                 self.table_mouse_move(pid, x - rx);
             }
         }
@@ -73,7 +79,10 @@ impl Tk {
                 self.invalidate_widget(prev_id);
             }
             if let Some(new_id) = hovered {
-                self.check_state_transition(new_id, self.widget_state(new_id).without(State::HOVER));
+                self.check_state_transition(
+                    new_id,
+                    self.widget_state(new_id).without(State::HOVER),
+                );
                 self.invalidate_widget(new_id);
             }
             // Hover changes only repaint the affected widgets; a full redraw is
@@ -109,7 +118,10 @@ impl Tk {
                     }
                 }
             } else {
-                let bar_h = self.node(scrollbar_id).map(|n| n.rect.height).unwrap_or(0.0);
+                let bar_h = self
+                    .node(scrollbar_id)
+                    .map(|n| n.rect.height)
+                    .unwrap_or(0.0);
                 if let Some(target_id) = self.node(scrollbar_id).and_then(|n| n.scroll_target) {
                     if let Some((total, visible, _)) = self.scroll_metrics(target_id) {
                         let thumb_h = (bar_h * (visible / total)).max(16.0).min(bar_h);
@@ -125,9 +137,15 @@ impl Tk {
         }
 
         if let Some(id) = self.pressed {
-            if self.node(id).is_some_and(|node| node.kind == Kind::Scale && !node.disabled) {
+            if self
+                .node(id)
+                .is_some_and(|node| node.kind == Kind::Scale && !node.disabled)
+            {
                 self.drag_scale(id, x);
-            } else if self.node(id).is_some_and(|node| node.kind == Kind::Slider && !node.disabled) {
+            } else if self
+                .node(id)
+                .is_some_and(|node| node.kind == Kind::Slider && !node.disabled)
+            {
                 if let Some(value) = self.slider_value_at(id, x, y) {
                     self.slider_user_set(id, value);
                 }
@@ -150,6 +168,70 @@ impl Tk {
         }
     }
 
+    fn cluster_offset_for_x(&mut self, line: &str, target: f32, font: &ResolvedStyle) -> usize {
+        let boundaries = clusters(line);
+        let (mut low, mut high) = (0, boundaries.len());
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let end = boundaries.get(mid).copied().unwrap_or(line.len());
+            let width = self
+                .measure_with(line.get(..end).unwrap_or_default(), font)
+                .width;
+            if width < target {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        let right = boundaries.get(low).copied().unwrap_or(line.len());
+        let left = low
+            .checked_sub(1)
+            .and_then(|i| boundaries.get(i))
+            .copied()
+            .unwrap_or(0);
+        let rw = self
+            .measure_with(line.get(..right).unwrap_or_default(), font)
+            .width;
+        let lw = self
+            .measure_with(line.get(..left).unwrap_or_default(), font)
+            .width;
+        if (rw - target).abs() < (lw - target).abs() {
+            right
+        } else {
+            left
+        }
+    }
+
+    fn text_line_span(src: &str, row: usize) -> (usize, usize) {
+        let mut start = 0usize;
+        let mut cur_row = 0usize;
+        for (idx, b) in src.bytes().enumerate() {
+            if b == b'\n' {
+                if cur_row == row {
+                    return (start, idx);
+                }
+                cur_row += 1;
+                start = idx + 1;
+            }
+        }
+        (start, src.len())
+    }
+
+    fn set_focused(&mut self, next: Option<WidgetId>) {
+        let prev = self.focused;
+        self.focused = next;
+        if prev != next {
+            if let Some(pf) = prev {
+                self.check_state_transition(pf, self.widget_state(pf) | State::FOCUSED);
+                self.invalidate_widget(pf);
+            }
+            if let Some(nf) = next {
+                self.check_state_transition(nf, self.widget_state(nf).without(State::FOCUSED));
+                self.invalidate_widget(nf);
+            }
+        }
+    }
+
     /// Extends the selection of an Entry/Text while the pointer is dragged.
     fn drag_text_selection(&mut self, id: WidgetId, x: f32, y: f32) {
         let Some(node) = self.node(id) else { return };
@@ -157,36 +239,21 @@ impl Tk {
         let rect = node.rect;
         let scroll_x = node.scroll_x;
         let font = self.resolved_style(id).unwrap_or_default();
-        // Only single-line kinds need an owned copy (measuring borrows `self`);
-        // multi-line Text reads the node's buffer directly.
-        let text = if kind == Kind::Text { String::new() } else { node.text.clone() };
         let cursor = match kind {
             Kind::Entry | Kind::Combobox => {
                 let target = (x - rect.x - 6.0 + scroll_x).max(0.0);
-                let boundaries = clusters(&text);
-                let (mut low, mut high) = (0, boundaries.len());
-                while low < high {
-                    let mid = low + (high - low) / 2;
-                    let end = boundaries.get(mid).copied().unwrap_or(text.len());
-                    let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
-                    if width < target {
-                        low = mid + 1;
-                    } else {
-                        high = mid;
-                    }
-                }
-                let right = boundaries.get(low).copied().unwrap_or(text.len());
-                let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
-                let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
-                let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
-                if (rw - target).abs() < (lw - target).abs() { right } else { left }
+                let Some(node) = self.node(id) else { return };
+                let text = node.text.clone();
+                self.cluster_offset_for_x(&text, target, &font)
             }
             Kind::Text => {
                 let line_h = (font.font_size * 1.3 + 4.0).max(16.0);
+                let Some(node) = self.node(id) else { return };
                 let row = node.text_scroll_row + ((y - rect.y - 4.0) / line_h).max(0.0) as usize;
-                let src = node.text.as_str();
-                let target_line = row.min(src.split('\n').count().saturating_sub(1));
-                src.split('\n').take(target_line).map(|l| l.len() + 1).sum::<usize>()
+                let (line_start, line_end) = Self::text_line_span(&node.text, row);
+                let line = node.text[line_start..line_end].to_owned();
+                let target = (x - rect.x - 4.0).max(0.0);
+                line_start + self.cluster_offset_for_x(&line, target, &font)
             }
             _ => return,
         };
@@ -224,8 +291,15 @@ impl Tk {
             let rows = self.combo_rows(combo_id);
             if let Some(cnode) = self.node(combo_id) {
                 let item_h = (cnode.style.font_size * 1.3 + 8.0).max(20.0);
-                let drop_h = (rows.len() as f32 * item_h).max(item_h).min(crate::render::COMBO_POPUP_MAX_H);
-                let drop_rect = Rect::new(cnode.rect.x, cnode.rect.y + cnode.rect.height, cnode.rect.width, drop_h);
+                let drop_h = (rows.len() as f32 * item_h)
+                    .max(item_h)
+                    .min(crate::render::COMBO_POPUP_MAX_H);
+                let drop_rect = Rect::new(
+                    cnode.rect.x,
+                    cnode.rect.y + cnode.rect.height,
+                    cnode.rect.width,
+                    drop_h,
+                );
                 if drop_rect.contains(x, y) {
                     // Apply the same scroll offset as the drawing code so a
                     // click selects the row that is actually drawn.
@@ -257,7 +331,10 @@ impl Tk {
         }
 
         let hit = self.hit_test(x, y);
-        let is_disabled = hit.and_then(|id| self.node(id)).map(|n| n.disabled).unwrap_or(false);
+        let is_disabled = hit
+            .and_then(|id| self.node(id))
+            .map(|n| n.disabled)
+            .unwrap_or(false);
 
         if is_disabled {
             self.hovered = hit;
@@ -279,18 +356,7 @@ impl Tk {
         // above; the full redraw below is still needed for focus/overlay state.
 
         if hit.is_some_and(|id| self.is_focusable(id)) {
-            let prev_focus = self.focused;
-            self.focused = hit;
-            if prev_focus != hit {
-                if let Some(pf) = prev_focus {
-                    self.check_state_transition(pf, self.widget_state(pf) | State::FOCUSED);
-                    self.invalidate_widget(pf);
-                }
-                if let Some(nf) = hit {
-                    self.check_state_transition(nf, self.widget_state(nf).without(State::FOCUSED));
-                    self.invalidate_widget(nf);
-                }
-            }
+            self.set_focused(hit);
         }
         if let Some(id) = hit {
             let Some(node) = self.node(id) else { return };
@@ -299,23 +365,7 @@ impl Tk {
                     let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
                     let text = self.widget_text(id).unwrap_or_default();
                     let font = self.resolved_style(id).unwrap_or_default();
-                    let boundaries = clusters(&text);
-                    let (mut low, mut high) = (0, boundaries.len());
-                    while low < high {
-                        let mid = low + (high - low) / 2;
-                        let end = boundaries.get(mid).copied().unwrap_or(text.len());
-                        let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
-                        if width < target {
-                            low = mid + 1;
-                        } else {
-                            high = mid;
-                        }
-                    }
-                    let right = boundaries.get(low).copied().unwrap_or(text.len());
-                    let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
-                    let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
-                    let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
-                    let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                    let cursor = self.cluster_offset_for_x(&text, target, &font);
                     let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
                         if shift {
@@ -356,7 +406,8 @@ impl Tk {
                             .node(id)
                             .map(|n| (n.list_last_click_ms, n.list_last_click_row))
                             .unwrap_or((0, None));
-                        let is_double = prev.1 == Some(row_idx) && now.saturating_sub(prev.0) <= 400;
+                        let is_double =
+                            prev.1 == Some(row_idx) && now.saturating_sub(prev.0) <= 400;
                         if let Some(n) = self.node_mut(id) {
                             n.list_last_click_ms = now;
                             n.list_last_click_row = Some(row_idx);
@@ -382,16 +433,17 @@ impl Tk {
                             old.saturating_sub(step)
                         };
                         let val = val.clamp(from.min(to), from.max(to));
-                        if let Some(var) = node.scale {
+                        let var = node.scale;
+                        if let Some(var) = var {
                             var.set(self, val);
+                        }
+                        if val != old {
+                            self.run_command(id);
                         }
                     }
                 }
                 Kind::Scrollbar => {
-                    let horizontal = node
-                        .inputs
-                        .as_ref()
-                        .is_some_and(|s| s.scrollbar_horizontal);
+                    let horizontal = node.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal);
                     if horizontal {
                         let rx = x - node.rect.x;
                         let bar_w = node.rect.width;
@@ -433,7 +485,8 @@ impl Tk {
                     }
                 }
                 Kind::Canvas => {
-                    let (local_x, local_y) = (x - node.rect.x + node.view.0, y - node.rect.y + node.view.1);
+                    let (local_x, local_y) =
+                        (x - node.rect.x + node.view.0, y - node.rect.y + node.view.1);
                     if node.scrollregion.is_some() {
                         self.focused = Some(id);
                     }
@@ -442,10 +495,16 @@ impl Tk {
                     self.dispatch_canvas_drag(id, local_x, local_y, DragPhase::Press);
                 }
                 Kind::Text => {
-                    let line_h = (node.style.font_size * 1.3 + 4.0).max(16.0);
-                    let row = node.text_scroll_row + ((y - node.rect.y - 4.0) / line_h).max(0.0) as usize;
-                    let target_line = row.min(node.text.split('\n').count().saturating_sub(1));
-                    let byte_offset = node.text.split('\n').take(target_line).map(|l| l.len() + 1).sum::<usize>();
+                    let rect = node.rect;
+                    let scroll_row = node.text_scroll_row;
+                    let font = self.resolved_style(id).unwrap_or_default();
+                    let line_h = (font.font_size * 1.3 + 4.0).max(16.0);
+                    let row = scroll_row + ((y - rect.y - 4.0) / line_h).max(0.0) as usize;
+                    let Some(node) = self.node(id) else { return };
+                    let (line_start, line_end) = Self::text_line_span(&node.text, row);
+                    let line = node.text[line_start..line_end].to_owned();
+                    let target = (x - rect.x - 4.0).max(0.0);
+                    let byte_offset = line_start + self.cluster_offset_for_x(&line, target, &font);
                     let shift = self.mods.shift;
                     if let Some(node) = self.node_mut(id) {
                         if shift {
@@ -474,23 +533,7 @@ impl Tk {
                         let target = (x - node.rect.x - 6.0 + node.scroll_x).max(0.0);
                         let text = node.text.clone();
                         let font = self.resolved_style(id).unwrap_or_default();
-                        let boundaries = clusters(&text);
-                        let (mut low, mut high) = (0, boundaries.len());
-                        while low < high {
-                            let mid = low + (high - low) / 2;
-                            let end = boundaries.get(mid).copied().unwrap_or(text.len());
-                            let width = self.measure_with(text.get(..end).unwrap_or_default(), &font).width;
-                            if width < target {
-                                low = mid + 1;
-                            } else {
-                                high = mid;
-                            }
-                        }
-                        let right = boundaries.get(low).copied().unwrap_or(text.len());
-                        let left = low.checked_sub(1).and_then(|i| boundaries.get(i)).copied().unwrap_or(0);
-                        let rw = self.measure_with(text.get(..right).unwrap_or_default(), &font).width;
-                        let lw = self.measure_with(text.get(..left).unwrap_or_default(), &font).width;
-                        let cursor = if (rw - target).abs() < (lw - target).abs() { right } else { left };
+                        let cursor = self.cluster_offset_for_x(&text, target, &font);
                         let shift = self.mods.shift;
                         if let Some(node) = self.node_mut(id) {
                             if shift {
@@ -584,14 +627,17 @@ impl Tk {
         self.sim_mouse_up();
     }
 
-
     /// Runs the widget's command callback unless it is disabled or already executing, restoring the command afterward.
     pub(crate) fn run_command(&mut self, id: WidgetId) {
-        let Some(node) = self.node_mut(id) else { return };
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
         if node.disabled || node.command_running {
             return;
         }
-        let Some(mut command) = node.command.take() else { return };
+        let Some(mut command) = node.command.take() else {
+            return;
+        };
         node.command_running = true;
         command(self);
         if let Some(node) = self.node_mut(id) {
@@ -626,14 +672,19 @@ impl Tk {
                 var.set(self, radio_value);
             }
         }
-        if matches!(kind, Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch) {
+        if matches!(
+            kind,
+            Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch
+        ) {
             self.run_command(id);
         }
     }
 
     /// Returns the scale widget's current value as a clamped fraction between 0.0 and 1.0 of its range.
     pub(crate) fn scale_fraction(&self, id: WidgetId) -> f32 {
-        let Some(node) = self.node(id) else { return 0.0 };
+        let Some(node) = self.node(id) else {
+            return 0.0;
+        };
         let (from, to) = node.range;
         let value = node.scale.and_then(|var| var.get(self)).unwrap_or(from);
         if from == to {
@@ -680,7 +731,10 @@ impl Tk {
 
     /// Moves keyboard focus to the next or previous focusable widget in paint order, honoring modal scope.
     pub(crate) fn traverse_focus(&mut self, backwards: bool) {
-        let order: Vec<_> = self.paint_order.iter().copied()
+        let order: Vec<_> = self
+            .paint_order
+            .iter()
+            .copied()
             .filter(|id| {
                 if let Some(modal_id) = self.modal {
                     if !self.is_descendant_of(*id, modal_id) {
@@ -688,21 +742,25 @@ impl Tk {
                     }
                 }
                 self.is_focusable(*id)
-            }).collect();
+            })
+            .collect();
         if order.is_empty() {
-            if self.focused.take().is_some() {
+            if self.focused.is_some() {
+                self.set_focused(None);
                 self.dirty = true;
             }
             return;
         }
-        let current = self.focused.and_then(|id| order.iter().position(|other| *other == id));
+        let current = self
+            .focused
+            .and_then(|id| order.iter().position(|other| *other == id));
         let next = match (current, backwards) {
             (Some(0), true) | (None, true) => order.len() - 1,
             (Some(index), true) => index - 1,
             (Some(index), false) => (index + 1) % order.len(),
             (None, false) => 0,
         };
-        self.focused = order.get(next).copied();
+        self.set_focused(order.get(next).copied());
         self.dirty = true;
     }
 
@@ -744,9 +802,9 @@ impl Tk {
             }
         }
         if key == Key::Enter && self.modal.is_some() {
-            let on_button = self.focused.is_some_and(|f| {
-                self.node(f).is_some_and(|n| n.kind == Kind::Button)
-            });
+            let on_button = self
+                .focused
+                .is_some_and(|f| self.node(f).is_some_and(|n| n.kind == Kind::Button));
             // A focused Listbox with a selection and an activate binding takes
             // precedence over the modal accept handler (e.g. directory chooser
             // navigation into a sub-directory).
@@ -832,21 +890,34 @@ impl Tk {
                 if matches!(key, Key::Up | Key::Down) && !node.combo_values.is_empty() {
                     let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                     let max_idx = node.combo_values.len().saturating_sub(1) as i64;
-                    let new_val = if key == Key::Up { old.saturating_sub(1) } else { old.saturating_add(1) }.clamp(0, max_idx);
-                    if let Some(var) = node.combo_var {
-                        var.set(self, new_val);
+                    let new_val = if key == Key::Up {
+                        old.saturating_sub(1)
+                    } else {
+                        old.saturating_add(1)
                     }
-                    self.dirty = true;
+                    .clamp(0, max_idx);
+                    if new_val != old {
+                        self.combo_select_value(id, new_val as usize);
+                    }
                 }
             }
-            Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch if matches!(key, Key::Enter | Key::Space) => {
+            Kind::Button | Kind::Checkbutton | Kind::Radiobutton | Kind::Switch
+                if matches!(key, Key::Enter | Key::Space) =>
+            {
                 self.activate(id);
             }
             Kind::Scale if matches!(key, Key::Left | Key::Right) => {
                 let (from, to) = node.range;
                 let old = node.scale.and_then(|var| var.get(self)).unwrap_or(from);
                 let increasing = (key == Key::Right) == (to >= from);
-                self.set_scale(id, if increasing { old.saturating_add(1) } else { old.saturating_sub(1) });
+                self.set_scale(
+                    id,
+                    if increasing {
+                        old.saturating_add(1)
+                    } else {
+                        old.saturating_sub(1)
+                    },
+                );
             }
             Kind::Listbox => {
                 let total = node.list_items.len();
@@ -893,8 +964,12 @@ impl Tk {
                     old.saturating_sub(step)
                 };
                 let val = val.clamp(from.min(to), from.max(to));
-                if let Some(var) = node.scale {
+                let var = node.scale;
+                if let Some(var) = var {
                     var.set(self, val);
+                }
+                if val != old {
+                    self.run_command(id);
                 }
             }
             _ => {}
@@ -906,18 +981,47 @@ impl Tk {
     pub fn sim_text(&mut self, text: &str) {
         self.ensure_layout();
         if let Some(id) = self.focused {
-            if self.node(id).is_some_and(|node| node.kind == Kind::Entry && !node.disabled) {
+            if self
+                .node(id)
+                .is_some_and(|node| node.kind == Kind::Entry && !node.disabled)
+            {
                 self.edit_entry(id, None, text);
-            } else if self.node(id).is_some_and(|node| node.kind == Kind::Text && !node.disabled && !node.text_read_only) {
+            } else if self.node(id).is_some_and(|node| {
+                node.kind == Kind::Text && !node.disabled && !node.text_read_only
+            }) {
                 self.edit_text(id, None, text);
-            } else if self.node(id).is_some_and(|node| node.kind == Kind::Combobox && node.combo_editable && !node.disabled) {
+            } else if self.node(id).is_some_and(|node| {
+                node.kind == Kind::Combobox && node.combo_editable && !node.disabled
+            }) {
                 self.edit_entry(id, None, text);
-            } else if self.node(id).is_some_and(|node| node.kind == Kind::DoubleSpinbox && !node.disabled) {
+            } else if self
+                .node(id)
+                .is_some_and(|node| node.kind == Kind::DoubleSpinbox && !node.disabled)
+            {
                 self.dspin_type(id, text);
             }
         }
     }
 
+    /// Registers a callback fired when the user changes a Spinbox value with
+    /// the arrow keys or the on-widget arrows.
+    ///
+    /// `Tk::set_command` does not accept Spinbox today (`Kind::has_command` in
+    /// `widgets.rs`, outside this work package). This method writes `command`
+    /// directly so the events.rs `run_command` path is usable.
+    pub fn spinbox_on_change(
+        &mut self,
+        id: WidgetId,
+        command: impl FnMut(&mut Tk) + 'static,
+    ) -> bool {
+        match self.node_mut(id) {
+            Some(node) if node.kind == Kind::Spinbox => {
+                node.command = Some(Box::new(command));
+                true
+            }
+            _ => false,
+        }
+    }
 
     /// Headless test helper: simulates the window losing OS focus, which clears
     /// focus, press, hover and drag state and closes any open combobox dropdown.
@@ -929,9 +1033,24 @@ impl Tk {
     ///
     /// Also closes any open combobox dropdown (clearing its highlight).
     pub(crate) fn clear_input(&mut self) {
-        self.focused = None;
-        self.pressed = None;
-        self.hovered = None;
+        self.set_focused(None);
+        let prev_pressed = self.pressed.take();
+        let prev_hovered = self.hovered.take();
+        if let Some(pp) = prev_pressed {
+            let mut prev_state = self.widget_state(pp) | State::PRESSED;
+            if prev_hovered == Some(pp) {
+                prev_state |= State::HOVER;
+            }
+            self.check_state_transition(pp, prev_state);
+            self.invalidate_widget(pp);
+        }
+        if let Some(ph) = prev_hovered {
+            if prev_pressed != Some(ph) {
+                self.check_state_transition(ph, self.widget_state(ph) | State::HOVER);
+                self.invalidate_widget(ph);
+            }
+        }
+        self.mods = crate::shortcut::Modifiers::NONE;
         self.drag_active = None;
         self.scrollbar_drag = None;
         self.tooltip_visible = false;
@@ -945,5 +1064,4 @@ impl Tk {
         }
         self.dirty = true;
     }
-
 }
