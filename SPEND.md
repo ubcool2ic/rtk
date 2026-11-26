@@ -367,3 +367,37 @@ Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were nee
 | 2026-11-13 | anthropic/claude-fable-5.2 | c15-tests | 46220 (0 cached) | 5581 (1892 reasoning) | 0.5930 | 7.6466 |
 | 2026-11-13 | anthropic/claude-fable-5.2 | c16-docs | 8959 (0 cached) | 5233 (2321 reasoning) | 0.2810 | 7.9276 |
 | 2026-11-13 | note | hand glue (1.0.2) | Reverted two Fable edits: always-rebuilt `:disabled` state map in style.rs (changed the blessed dark tristate golden: disabled text got lighter) and a render_frame "nothing pending" early return in damage.rs (combobox popup/menu hover is drawn from the pointer without setting `dirty`, so it could leave stale hover). `cargo clippy --fix` (3 needless borrows). Added `sim_resize` to one Fable test. README line rewrap. `.gitignore` for the GUIDE doctest outputs `out.png` / `my_widget_light_1x.png/`. Version bump in Cargo.toml + Cargo.lock | | | |
+
+## WP2 Rendering (2026-11-26) + copied audit rows
+
+This job's cap is $2.50 from its own generation ids, and a shared account stop line of 586.29 (baseline 581.2885 at 1:25 AM ET, shared with WP1). Costs below are measured from `GET /api/v1/generation` or `get-credits` unless marked estimated. All times are America/Indianapolis (ET).
+
+### Audit rows copied from `/workspace/rtk-audit-notes/SPEND.md` (not this job's spend)
+
+These were the 2026-11-26 rtk audit's own generations (google/gemini-4-carbon). Audit job own total: **$1.567970**.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:03 AM ET | google/gemini-4-carbon | gen-1795672950-oryC0FQu79iHinbqcFRP | audit c1-render | 0.121232 | measured | ok |
+| 2026-11-26 1:05 AM ET | google/gemini-4-carbon | gen-1795673046-VP0ptTuQ6zR5H4IhGSKL | audit c3-app | 0.140534 | measured | ok |
+| 2026-11-26 1:05 AM ET | google/gemini-4-carbon | gen-1795673049-3y5U8hxLMdv4lvdKwxSO | audit c4-layout | 0.145352 | measured | ok |
+| 2026-11-26 1:09 AM ET | google/gemini-4-carbon | gen-1795673044-V4GCl3CnT6rROCgFAUFU | audit c2-style | 0.291328 | measured | ok (finish=length, 2.7 KB partial in the audit write-up) |
+| 2026-11-26 1:10 AM ET | google/gemini-4-carbon | gen-1795673357-eftmIm3cAu46bWSrTbLC | audit c6-dialogs | 0.129140 | measured | ok |
+| 2026-11-26 1:10 AM ET | google/gemini-4-carbon | gen-1795673355-xzHs5lGKxmUooURSiRll | audit c5-data | 0.134276 | measured | ok |
+| 2026-11-26 1:13 AM ET | google/gemini-4-carbon | gen-1795673359-tlabOagRW2NZbY3KBSJH | audit c7-assets | 0.306934 | measured | empty (all reasoning, finish=length) |
+| 2026-11-26 1:15 AM ET | google/gemini-4-carbon | gen-1795673629-ZYSILtWqPaZPOhDKRMAC | audit c8-inputs | 0.167016 | measured | ok |
+| 2026-11-26 1:17 AM ET | google/gemini-4-carbon | gen-1795673753-0EKTPtMnbKbCBdcwMCaO | audit c2-style retry (prev length/empty) | 0.132158 | measured | ok |
+| | | | **audit own total** | **1.567970** | measured | |
+
+### This job (fix/wp2-rendering)
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| — | — | — | no paid model calls; fixes written and verified directly | 0.000000 | measured | n/a |
+
+- Account `total_usage` at first check (1:29 AM ET): **581.918694236** (after the job's 1:25 AM ET baseline of 581.2885; other bots had already spent ~$0.63).
+- Account `total_usage` at end (1:50 AM ET): **587.635012236**. Delta $5.716318, all from other bots on the shared account. This job's own generation-id sum is **$0.000000**.
+- The shared stop line 586.29 was already exceeded by other work before the final credits check. This job made no paid calls at any point, so it did not contribute to crossing the line.
+- Code was written directly because `CanvasItemKind::Image` is also constructed in `src/image.rs` / `src/chart.rs` (outside this package's file list); changing the variant fields would not compile without touching those files.
+
+**This job own generation-id sum: $0.000000 (measured). Appended audit rows: $1.567970.**
