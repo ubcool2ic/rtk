@@ -574,3 +574,13 @@ Account `total_usage` at first job check: **631.875889859** (2:50:19 PM ET). Imm
 | | | **WP5 job own measured total** | | | **0.019272** | | | |
 
 - Account `total_usage` after this leftovers batch (5:35 PM ET): **632.030955859**. Delta since the first WP5 Carbon call (631.895161859) is other account spend, not this job. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$7.97** (credits 640 − usage).
+
+### WP5 Reviewer1 #16 r2 leftover (2026-11-26)
+
+**No paid model call was made.** The flaky 20k-append wall-clock assert was replaced by a deterministic `table_order_shift_visits` probe, by hand at $0. Own generation-id sum for the WP5 job is unchanged: **$0.019272**. Under the $2.50 job cap. Account stop line 637.00 was not reached.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 5:52 PM ET | — | WP5 r2 leftover (hand-written) | — | — | 0.000000 | measured | — | no call: drop 2s timing assert; keep 20k order/count checks; add doc(hidden) order-shift visit probe |
+| | | **this r2 leftover-batch own total** | | | **0.000000** | measured | | |
+| | | **WP5 job own measured total** | | | **0.019272** | | | |

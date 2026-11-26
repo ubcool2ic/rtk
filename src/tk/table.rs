@@ -34,6 +34,8 @@ pub(crate) struct TableState {
     pub(crate) on_select: Option<TableSelectCallback>,
     /// Re-entrancy guard for the selection callback.
     pub(crate) on_select_running: bool,
+    /// Test probe: number of existing `order` entries the shift loop has visited.
+    pub(crate) order_shift_visits: usize,
 }
 
 impl TableState {
@@ -50,6 +52,7 @@ impl TableState {
             resize_drag: None,
             on_select: None,
             on_select_running: false,
+            order_shift_visits: 0,
         }
     }
 
@@ -212,6 +215,7 @@ impl Tk {
         // Appends cannot bump any existing index (new model id is max), so
         // skip the O(n) shift and just push when unsorted.
         if at < state.rows.len() - 1 {
+            state.order_shift_visits = state.order_shift_visits.saturating_add(state.order.len());
             for idx in state.order.iter_mut() {
                 if *idx >= at {
                     *idx += 1;
@@ -235,6 +239,7 @@ impl Tk {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows.clear();
         state.order.clear();
+        state.order_shift_visits = 0;
         let had_selection = state.selected.take().is_some();
         state.top = 0;
         self.dirty = true;
@@ -247,6 +252,14 @@ impl Tk {
     /// Number of model rows.
     pub fn table_row_count(&self, id: WidgetId) -> usize {
         self.table_state(id).map(|s| s.rows.len()).unwrap_or(0)
+    }
+
+    /// Test probe: how many existing `order` entries the shift loop has visited
+    /// on this table. Appends must leave this at zero; mid-table inserts add
+    /// `order.len()` as of just after `rows.insert`.
+    #[doc(hidden)]
+    pub fn table_order_shift_visits(&self, id: WidgetId) -> usize {
+        self.table_state(id).map(|s| s.order_shift_visits).unwrap_or(0)
     }
 
     /// Cell text at model `(row, col)`, if present.

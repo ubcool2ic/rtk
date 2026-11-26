@@ -6,8 +6,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-
 use rtk::testing::{assert_golden, GoldenOpts};
 use rtk::{
     dialog, Button, Combobox, DoubleSpinbox, Frame, Key, Listbox, MenuItem, Menubar, Opt, PackOpts,
@@ -229,6 +227,8 @@ fn table_bulk_insert_keeps_order() {
     assert_eq!(tk.table_display_to_model(table, 0), Some(0));
     assert_eq!(tk.table_display_to_model(table, 1), Some(1));
     assert_eq!(tk.table_cell(table, 2, 0).as_deref(), Some("1"));
+    // 200 existing order entries were walked; the 200 appends above skipped the loop.
+    assert_eq!(tk.table_order_shift_visits(table), 200);
 
     // Sorted insert keeps a stable sorted display.
     let sorted = Table::new(&mut tk, root, &["N"], 5).unwrap();
@@ -244,21 +244,20 @@ fn table_bulk_insert_keeps_order() {
         .collect();
     assert_eq!(vals, vec!["1", "3", "5", "9"]);
 
-    // Unsorted append of 20k rows must finish quickly (O(1) per append, not O(n)).
+    // Unsorted appends must skip the O(n) shift loop (probe stays at 0).
     let bulk = Table::new(&mut tk, root, &["A"], 5).unwrap();
     tk.pack(bulk, PackOpts::default());
-    let start = Instant::now();
     for i in 0..20_000 {
         assert!(tk.table_insert_row(bulk, usize::MAX, vec![format!("{i}")]));
     }
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "20k unsorted appends took {elapsed:?}; shift loop is still O(n) per insert"
-    );
     assert_eq!(tk.table_row_count(bulk), 20_000);
     assert_eq!(tk.table_display_to_model(bulk, 0), Some(0));
     assert_eq!(tk.table_display_to_model(bulk, 19_999), Some(19_999));
+    assert_eq!(
+        tk.table_order_shift_visits(bulk),
+        0,
+        "unsorted appends must skip the order shift loop"
+    );
 }
 
 /// L5: dspin edit buffer is capped at 64 bytes (widget stays usable after a long type-in).
