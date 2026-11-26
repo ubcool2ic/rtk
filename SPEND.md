@@ -401,3 +401,21 @@ These were the 2026-11-26 rtk audit's own generations (google/gemini-4-carbon). 
 - Code was written directly because `CanvasItemKind::Image` is also constructed in `src/image.rs` / `src/chart.rs` (outside this package's file list); changing the variant fields would not compile without touching those files.
 
 **This job own generation-id sum: $0.000000 (measured). Appended audit rows: $1.567970.**
+
+### Reviewer1 PR #13 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids. Shared account stop line raised to 595.00. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement).
+
+MCP `send-message` to `google/gemini-4-carbon` timed out with no generation id and no bill (account `total_usage` unchanged after the timeout). The write was retried over direct HTTP (`/workspace/bin/openrouter-call`, same model).
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 2:31 AM ET | google/gemini-4-carbon | gen-1795677946-pXwGD9TYuxPxGjDJkK07 | WP2 PR#13 Reviewer1 one-batch fix (M1 cache gen, P6 no text clone, Image/Chart hash cache, nits) | 0.205690 | measured | empty (finish=length; 19997 reasoning tokens, 0 content) |
+| 2026-11-26 2:33 AM ET | google/gemini-4-carbon | gen-1795678294-tcbMUUcoWSVWbX7IeM4L | WP2 PR#13 fix retry (prev call empty/MAX_TOKENS on reasoning) | 0.016520 | measured | settled-stale (HTTP 499; interrupted mid-stream; no content) |
+| 2026-11-26 2:39 AM ET | google/gemini-4-carbon | gen-1795678579-80QhjcErkt5DVaROQYGN | WP2 PR#13 Carbon write retry2 (low reasoning; emit code) | 0.145338 | measured | ok |
+| | | | **this fix-batch own total** | **0.367548** | measured | |
+
+- Account `total_usage` at first check of this fix batch (~2:18 AM ET): **588.573482236**.
+- Account `total_usage` after the successful Carbon write (credits check 2:39–2:48 AM ET window ended at): **595.377314236** at 2:48 AM ET. The $0.367548 own spend plus other bots on the shared account crossed the 595.00 stop line after our last paid call; no further paid calls were made once that reading was seen.
+- This job's own generation-id sum for the Reviewer1 fix batch: **$0.367548**. Combined with the earlier WP2 implementation round ($0.000000): **$0.367548**. Still under the $2.50 job cap.
+

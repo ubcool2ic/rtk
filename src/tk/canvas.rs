@@ -76,13 +76,14 @@ impl Tk {
             let slot = items.get_mut(index)?;
             slot.item = Some(kind);
             slot.seq = seq;
+            slot.content_rev = slot.content_rev.saturating_add(1);
             CanvasItem { index: u32::try_from(index).ok()?, gen: slot.gen }
         } else {
             if items.len() >= MAX_CANVAS_ITEMS {
                 return None;
             }
             let index = u32::try_from(items.len()).ok()?;
-            items.push(CanvasItemSlot { gen: 0, seq, item: Some(kind) });
+            items.push(CanvasItemSlot { gen: 0, seq, item: Some(kind), content_rev: 1 });
             CanvasItem { index, gen: 0 }
         };
         self.dirty = true;
@@ -242,16 +243,17 @@ impl Tk {
         if node.kind != Kind::Canvas { return false; }
         let Some(slot) = node.canvas_items.get_mut(item.index as usize) else { return false };
         if slot.gen != item.gen { return false; }
-        let Some(kind) = slot.item.as_mut() else { return false };
-        if let CanvasItemKind::Image { src_w: sw, src_h: sh, rgba: buf, .. } = kind {
-            *sw = src_w;
-            *sh = src_h;
-            *buf = rgba.to_vec();
-            self.dirty = true;
-            true
-        } else {
-            false
+        match slot.item.as_mut() {
+            Some(CanvasItemKind::Image { src_w: sw, src_h: sh, rgba: buf, .. }) => {
+                *sw = src_w;
+                *sh = src_h;
+                *buf = rgba.to_vec();
+            }
+            _ => return false,
         }
+        slot.content_rev = slot.content_rev.saturating_add(1);
+        self.dirty = true;
+        true
     }
 
 }

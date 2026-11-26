@@ -42,7 +42,7 @@ pub(super) struct ClipMaskScratch {
 }
 
 impl ClipMaskScratch {
-    pub(super) fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             mask: None,
             width: 0,
@@ -81,39 +81,40 @@ pub(super) struct InputPaint<'a> {
 }
 
 /// Identity of a source RGBA buffer used to look up a premultiplied copy.
+///
+/// `Slot` is for canvas image items (invalidated by `content_rev`).
+/// `Hash` is for Image/Chart paths whose source `Vec` is cloned each frame.
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct PremulKey {
-    ptr: usize,
-    len: usize,
-    w: u32,
-    h: u32,
-    head: u64,
-    tail: u64,
+enum PremulKey {
+    Slot {
+        widget: u32,
+        index: u32,
+        rev: u64,
+        w: u32,
+        h: u32,
+    },
+    Hash {
+        hash: u64,
+        len: usize,
+        w: u32,
+        h: u32,
+    },
 }
 
-fn pack_head_tail(bytes: &[u8]) -> (u64, u64) {
-    let mut head = [0u8; 8];
-    let mut tail = [0u8; 8];
-    let n = bytes.len().min(8);
-    head[..n].copy_from_slice(&bytes[..n]);
-    if bytes.len() > 8 {
-        tail[..n].copy_from_slice(&bytes[bytes.len() - n..]);
-    } else {
-        tail = head;
+fn hash_rgba(src: &[u8]) -> u64 {
+    const OFFSET: u64 = 0xcbf29ce484222325;
+    const PRIME: u64 = 0x100000001b3;
+    let mut h = OFFSET;
+    let mut chunks = src.chunks_exact(8);
+    for chunk in &mut chunks {
+        h ^= u64::from_le_bytes(chunk.try_into().unwrap());
+        h = h.wrapping_mul(PRIME);
     }
-    (u64::from_le_bytes(head), u64::from_le_bytes(tail))
-}
-
-fn premul_key(src: &[u8], w: u32, h: u32) -> PremulKey {
-    let (head, tail) = pack_head_tail(src);
-    PremulKey {
-        ptr: src.as_ptr() as usize,
-        len: src.len(),
-        w,
-        h,
-        head,
-        tail,
+    for &b in chunks.remainder() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(PRIME);
     }
+    h
 }
 
 fn premultiply_rgba(src: &[u8]) -> Arc<[u8]> {
@@ -137,10 +138,10 @@ struct PremulCache {
 thread_local! {
     static PREMUL_CACHE: RefCell<PremulCache> = const { RefCell::new(PremulCache { entries: Vec::new() }) };
     static SUB_PIXMAP: RefCell<Option<Pixmap>> = const { RefCell::new(None) };
+    static CLIP_MASKS: RefCell<ClipMaskScratch> = const { RefCell::new(ClipMaskScratch::new()) };
 }
 
-fn cached_premul(src: &[u8], w: u32, h: u32) -> Arc<[u8]> {
-    let key = premul_key(src, w, h);
+fn cached_premul(src: &[u8], key: PremulKey) -> Arc<[u8]> {
     PREMUL_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some((_, data)) = cache.entries.iter().rev().find(|(k, _)| *k == key) {
@@ -153,6 +154,18 @@ fn cached_premul(src: &[u8], w: u32, h: u32) -> Arc<[u8]> {
         cache.entries.push((key, Arc::clone(&data)));
         data
     })
+}
+
+fn cached_premul_hashed(src: &[u8], w: u32, h: u32) -> Arc<[u8]> {
+    cached_premul(
+        src,
+        PremulKey::Hash {
+            hash: hash_rgba(src),
+            len: src.len(),
+            w,
+            h,
+        },
+    )
 }
 
 /// Runs `f` with a reusable widget-sized scratch pixmap of exactly `w`×`h`.
@@ -229,7 +242,7 @@ fn paint_cmd_from_kind(item: CanvasItemKind) -> PaintCmd {
             ih: h,
             src_w,
             src_h,
-            premul: cached_premul(&rgba, src_w, src_h),
+            premul: cached_premul_hashed(&rgba, src_w, src_h),
             smooth,
         },
         other => PaintCmd::Other(other),
@@ -878,6 +891,17 @@ impl Tk {
     /// intersect `r` are skipped and only that region is cleared; overlays
     /// (combobox dropdown, tooltip) are only drawn in full mode.
     pub(crate) fn paint_scene(&mut self, pixmap: &mut Pixmap, only: Option<Rect>) {
+        CLIP_MASKS.with(|slot| {
+            self.paint_scene_inner(pixmap, only, &mut slot.borrow_mut());
+        });
+    }
+
+    fn paint_scene_inner(
+        &mut self,
+        pixmap: &mut Pixmap,
+        only: Option<Rect>,
+        masks: &mut ClipMaskScratch,
+    ) {
         let pixmap: &mut Pixmap = pixmap;
         let width = pixmap.width();
         let height = pixmap.height();
@@ -892,7 +916,6 @@ impl Tk {
             });
         let scale = self.scale_factor;
         fill_background(pixmap, only, scale, default_bg);
-        let mut masks = ClipMaskScratch::new();
 
         let high_contrast = self.theme == Theme::HighContrast;
         let dark_mode = self.theme == Theme::Dark;
@@ -1016,7 +1039,7 @@ impl Tk {
                             clip,
                             scale,
                             resolved: &resolved,
-                            masks: &mut masks,
+                            masks,
                         },
                     );
                 }
@@ -1030,7 +1053,7 @@ impl Tk {
                             clip,
                             scale,
                             resolved: &resolved,
-                            masks: &mut masks,
+                            masks,
                         },
                     );
                 }
@@ -1044,7 +1067,7 @@ impl Tk {
                             clip,
                             scale,
                             resolved: &resolved,
-                            masks: &mut masks,
+                            masks,
                         },
                     );
                 }
@@ -1056,8 +1079,6 @@ impl Tk {
                     let line_h = (resolved.font_size * 1.3 + 4.0).max(16.0);
                     let start_row = node.text_scroll_row;
                     let vis_rows = node.text_dimensions.1;
-                    // Own the text so `node`'s borrow ends before drawing (text_engine needs &mut self).
-                    let full_text = node.text.clone();
                     let text_cursor = node.cursor;
                     let preedit = self.ime_preedit().and_then(|(pid, s, _)| {
                         if pid == id {
@@ -1066,19 +1087,6 @@ impl Tk {
                             None
                         }
                     });
-                    let caret = floor_char_boundary(&full_text, text_cursor);
-                    let display: std::borrow::Cow<'_, str> = if let Some(p) = &preedit {
-                        let mut s = String::with_capacity(full_text.len() + p.len());
-                        s.push_str(full_text.get(..caret).unwrap_or_default());
-                        s.push_str(p);
-                        s.push_str(full_text.get(caret..).unwrap_or_default());
-                        std::borrow::Cow::Owned(s)
-                    } else {
-                        std::borrow::Cow::Borrowed(full_text.as_str())
-                    };
-                    let visible_lines = visible_text_lines(display.as_ref(), start_row, vis_rows);
-                    let text_clip = clip.intersection(inner.scaled(scale));
-                    // Selection offsets are in `full_text` coordinates; ignore while a preedit shifts the layout.
                     let selection = if preedit.is_some() {
                         None
                     } else {
@@ -1087,6 +1095,42 @@ impl Tk {
                     let focused = self.focused == Some(id);
                     let (sel_bg, sel_fg) =
                         selection_colors(&self.style_engine.tokens().palette, focused);
+
+                    // Own only the visible window and the caret-line prefix so the
+                    // full document is not cloned on every paint.
+                    let caret = floor_char_boundary(&node.text, text_cursor);
+                    let before = node.text.get(..caret).unwrap_or_default();
+                    let cur_line = before.matches('\n').count();
+                    let caret_line_start = before.rfind('\n').map_or(0, |i| i + 1);
+                    let col_str = before
+                        .get(caret_line_start..)
+                        .unwrap_or_default()
+                        .to_owned();
+                    let mut visible_lines: Vec<(usize, String)> =
+                        visible_text_lines(&node.text, start_row, vis_rows)
+                            .into_iter()
+                            .map(|(off, line)| (off, line.to_owned()))
+                            .collect();
+                    if let Some(p) = preedit.as_ref() {
+                        if cur_line >= start_row {
+                            let vis_idx = cur_line - start_row;
+                            if vis_idx < visible_lines.len() {
+                                let start = visible_lines[vis_idx].0;
+                                let col = floor_char_boundary(
+                                    &visible_lines[vis_idx].1,
+                                    caret.saturating_sub(start),
+                                );
+                                let line = &visible_lines[vis_idx].1;
+                                let mut spliced = String::with_capacity(line.len() + p.len());
+                                spliced.push_str(&line[..col]);
+                                spliced.push_str(p);
+                                spliced.push_str(&line[col..]);
+                                visible_lines[vis_idx].1 = spliced;
+                            }
+                        }
+                    }
+
+                    let text_clip = clip.intersection(inner.scaled(scale));
 
                     // Selection highlight per visible line.
                     if let Some((sel_start, sel_end)) = selection {
@@ -1130,14 +1174,10 @@ impl Tk {
                         );
                     }
                     if let Some(p) = &preedit {
-                        let before = full_text.get(..caret).unwrap_or_default();
-                        let line_index = before.matches('\n').count();
-                        if line_index >= start_row && line_index < start_row + vis_rows {
-                            let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-                            let col = before.get(line_start..).unwrap_or_default();
-                            let col_w = self.measure_with(col, &resolved).width;
+                        if cur_line >= start_row && cur_line < start_row + vis_rows {
+                            let col_w = self.measure_with(&col_str, &resolved).width;
                             let preedit_w = self.measure_with(p, &resolved).width;
-                            let row_y = inner.y + (line_index - start_row) as f32 * line_h;
+                            let row_y = inner.y + (cur_line - start_row) as f32 * line_h;
                             fill(
                                 pixmap,
                                 Rect::new(
@@ -1181,22 +1221,20 @@ impl Tk {
                         }
                     }
 
-                    if self.focused == Some(id) && !disabled {
-                        let cur = caret;
-                        let cur_line = full_text[..cur].matches('\n').count();
-                        if cur_line >= start_row && cur_line < start_row + vis_rows {
-                            let line_start = full_text[..cur].rfind('\n').map_or(0, |p| p + 1);
-                            let col_str = &full_text[line_start..cur];
-                            let caret_x = self.measure_with(col_str, &resolved).width;
-                            let row_y = inner.y + (cur_line - start_row) as f32 * line_h;
-                            fill(
-                                pixmap,
-                                Rect::new(inner.x + caret_x, row_y + 2.0, 1.5, line_h - 2.0)
-                                    .scaled(scale),
-                                text_clip,
-                                draw_fg,
-                            );
-                        }
+                    if self.focused == Some(id)
+                        && !disabled
+                        && cur_line >= start_row
+                        && cur_line < start_row + vis_rows
+                    {
+                        let caret_x = self.measure_with(&col_str, &resolved).width;
+                        let row_y = inner.y + (cur_line - start_row) as f32 * line_h;
+                        fill(
+                            pixmap,
+                            Rect::new(inner.x + caret_x, row_y + 2.0, 1.5, line_h - 2.0)
+                                .scaled(scale),
+                            text_clip,
+                            draw_fg,
+                        );
                     }
                 }
                 Kind::Combobox => {
@@ -1790,7 +1828,7 @@ impl Tk {
                     let dim = if disabled { DISABLED_ALPHA } else { 1.0 };
                     let inner_bg = with_alpha(palette.field_bg, dim);
                     fill_circle(
-                        pixmap, circle_cx, circle_cy, circle_r, clip, inner_bg, &mut masks,
+                        pixmap, circle_cx, circle_cy, circle_r, clip, inner_bg, masks,
                     );
                     let mut pb = PathBuilder::new();
                     let d = circle_r * 0.552_284_8;
@@ -1856,7 +1894,7 @@ impl Tk {
                             3.5 * scale,
                             clip,
                             dot_color,
-                            &mut masks,
+                            masks,
                         );
                     }
                     let text = node.text.clone();
@@ -1939,7 +1977,16 @@ impl Tk {
                                             ih: *ih,
                                             src_w: *src_w,
                                             src_h: *src_h,
-                                            premul: cached_premul(rgba, *src_w, *src_h),
+                                            premul: cached_premul(
+                                                rgba,
+                                                PremulKey::Slot {
+                                                    widget: id.index,
+                                                    index: i as u32,
+                                                    rev: node.canvas_items[i].content_rev,
+                                                    w: *src_w,
+                                                    h: *src_h,
+                                                },
+                                            ),
                                             smooth: *smooth,
                                         });
                                     }
@@ -2279,6 +2326,8 @@ impl Tk {
                                                 resolved.opacity,
                                             );
                                         }
+                                        // Images are turned into PaintCmd::Image before this
+                                        // match; the arm exists only for exhaustiveness.
                                         CanvasItemKind::Image { .. } => {}
                                     },
                                 }
@@ -2705,5 +2754,119 @@ impl Tk {
     ) -> Result<(), Box<dyn Error>> {
         self.render_to_pixmap(width, height)?.save_png(path)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod premul_and_mask_tests {
+    use super::*;
+
+    fn mask_buf(
+        scratch: &mut ClipMaskScratch,
+        w: u32,
+        h: u32,
+        clip: Rect,
+    ) -> (*const u8, usize, u32, u32) {
+        let m = scratch.clip(w, h, clip).expect("clip mask");
+        (m.data().as_ptr(), m.data().len(), m.width(), m.height())
+    }
+
+    #[test]
+    fn clip_mask_reuses_allocation() {
+        let mut scratch = ClipMaskScratch::new();
+        let (ptr1, len1, w1, h1) = mask_buf(&mut scratch, 64, 64, Rect::new(2.0, 2.0, 20.0, 20.0));
+        let (ptr2, len2, w2, h2) = mask_buf(&mut scratch, 64, 64, Rect::new(4.0, 4.0, 10.0, 10.0));
+        assert_eq!(ptr1, ptr2, "same w×h must reuse the clip-mask data buffer");
+        assert_eq!((len1, w1, h1), (len2, w2, h2));
+        assert_eq!((w1, h1, len1), (64, 64, 64 * 64));
+
+        let (ptr3, len3, w3, h3) = mask_buf(&mut scratch, 128, 96, Rect::new(4.0, 4.0, 10.0, 10.0));
+        assert_eq!((w3, h3, len3), (128, 96, 128 * 96));
+        assert_ne!(
+            len3, len1,
+            "a different mask size must allocate a differently sized buffer"
+        );
+        let (ptr4, len4, w4, h4) = mask_buf(&mut scratch, 128, 96, Rect::new(2.0, 2.0, 20.0, 20.0));
+        assert_eq!(ptr3, ptr4, "the resized mask buffer must be reused");
+        assert_eq!((len3, w3, h3), (len4, w4, h4));
+    }
+
+    #[test]
+    fn hashed_premul_cache_hits_for_distinct_vecs_with_identical_bytes() {
+        let mut v1 = vec![0u8; 4 * 8 * 8];
+        for (i, b) in v1.iter_mut().enumerate() {
+            *b = ((i * 37 + 13) & 0xff) as u8;
+        }
+        let v2 = v1.clone();
+        assert_ne!(v1.as_ptr(), v2.as_ptr());
+
+        let arc1 = cached_premul_hashed(&v1, 8, 8);
+        let arc2 = cached_premul_hashed(&v2, 8, 8);
+        assert!(
+            Arc::ptr_eq(&arc1, &arc2),
+            "identical pixel bytes in distinct Vecs must hit the hashed premul cache"
+        );
+    }
+
+    #[test]
+    fn hashed_premul_cache_misses_when_only_interior_byte_changes() {
+        let mut green_center = vec![0u8; 16 * 16 * 4];
+        for px in green_center.chunks_exact_mut(4) {
+            px.copy_from_slice(&[200, 20, 20, 255]);
+        }
+        let mid = (8 * 16 + 8) * 4;
+        green_center[mid..mid + 4].copy_from_slice(&[20, 200, 20, 255]);
+
+        let mut blue_center = green_center.clone();
+        blue_center[mid..mid + 4].copy_from_slice(&[20, 20, 200, 255]);
+
+        assert_eq!(&green_center[..8], &blue_center[..8]);
+        assert_eq!(
+            &green_center[green_center.len() - 8..],
+            &blue_center[blue_center.len() - 8..]
+        );
+
+        let arc_green = cached_premul_hashed(&green_center, 16, 16);
+        let arc_blue = cached_premul_hashed(&blue_center, 16, 16);
+
+        assert!(
+            !Arc::ptr_eq(&arc_green, &arc_blue),
+            "an interior-only change must miss the hashed premul cache"
+        );
+        assert_eq!(&arc_green[mid..mid + 4], &[20, 200, 20, 255]);
+        assert_eq!(&arc_blue[mid..mid + 4], &[20, 20, 200, 255]);
+    }
+
+    #[test]
+    fn slot_premul_cache_misses_on_rev_bump_and_returns_updated_pixels() {
+        let mut buf = vec![0u8; 4 * 4 * 4];
+        for px in buf.chunks_exact_mut(4) {
+            px.copy_from_slice(&[10, 220, 10, 255]);
+        }
+        let key_r1 = PremulKey::Slot {
+            widget: 42,
+            index: 0,
+            rev: 1,
+            w: 4,
+            h: 4,
+        };
+        let arc1 = cached_premul(&buf, key_r1);
+        let arc1_hit = cached_premul(&buf, key_r1);
+        assert!(Arc::ptr_eq(&arc1, &arc1_hit));
+        assert_eq!(&arc1[0..4], &[10, 220, 10, 255]);
+
+        for px in buf.chunks_exact_mut(4) {
+            px.copy_from_slice(&[10, 10, 230, 255]);
+        }
+        let key_r2 = PremulKey::Slot {
+            widget: 42,
+            index: 0,
+            rev: 2,
+            w: 4,
+            h: 4,
+        };
+        let arc2 = cached_premul(&buf, key_r2);
+        assert!(!Arc::ptr_eq(&arc1, &arc2));
+        assert_eq!(&arc2[0..4], &[10, 10, 230, 255]);
     }
 }

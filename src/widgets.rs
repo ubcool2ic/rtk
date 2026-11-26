@@ -216,6 +216,9 @@ pub(crate) struct CanvasItemSlot {
     pub gen: u32,
     pub seq: u64,
     pub item: Option<CanvasItemKind>,
+    /// Bumped when the slot is filled or the image pixels are replaced.
+    /// Not `gen` (bumping `gen` would invalidate CanvasItem handles).
+    pub content_rev: u64,
 }
 
 /// Boxed widget callback (tkinter `command`). Receives the toolkit so it can mutate the UI.

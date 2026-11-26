@@ -7,8 +7,10 @@ use std::rc::Rc;
 
 use rtk::testing::compare_pixmaps;
 use rtk::{
-    Button, Canvas, Entry, Frame, FrameDamage, Label, Spinbox, Table, Text, Tk, TreeView, WidgetId,
+    Button, Canvas, Entry, Frame, FrameDamage, Label, Rect, Spinbox, Table, Text, Tk, TreeView,
+    WidgetId,
 };
+use tiny_skia::Pixmap;
 
 fn scene() -> (Tk, WidgetId, WidgetId) {
     let mut tk = Tk::new();
@@ -24,6 +26,96 @@ fn scene() -> (Tk, WidgetId, WidgetId) {
     (tk, b1, entry)
 }
 
+fn pixel(pm: &Pixmap, x: u32, y: u32) -> [u8; 4] {
+    let i = ((y * pm.width() + x) * 4) as usize;
+    let d = pm.data();
+    [d[i], d[i + 1], d[i + 2], d[i + 3]]
+}
+
+/// True when every device pixel *outside* `exclude_logical` inflated by
+/// `inflate` logical px matches within `tol`.
+fn region_unchanged(
+    a: &Pixmap,
+    b: &Pixmap,
+    exclude_logical: Rect,
+    scale: f32,
+    inflate: f32,
+    tol: u8,
+) -> bool {
+    if a.width() != b.width() || a.height() != b.height() {
+        return false;
+    }
+    let ex_x0 = ((exclude_logical.x - inflate) * scale).floor();
+    let ex_y0 = ((exclude_logical.y - inflate) * scale).floor();
+    let ex_x1 = ((exclude_logical.x + exclude_logical.width + inflate) * scale).ceil();
+    let ex_y1 = ((exclude_logical.y + exclude_logical.height + inflate) * scale).ceil();
+    for y in 0..a.height() {
+        let yf = y as f32;
+        let in_y = yf >= ex_y0 && yf < ex_y1;
+        for x in 0..a.width() {
+            if in_y {
+                let xf = x as f32;
+                if xf >= ex_x0 && xf < ex_x1 {
+                    continue;
+                }
+            }
+            let pa = pixel(a, x, y);
+            let pb = pixel(b, x, y);
+            if (0..4).any(|c| pa[c].abs_diff(pb[c]) > tol) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn first_diff_in_rect(
+    a: &Pixmap,
+    b: &Pixmap,
+    logical: Rect,
+    scale: f32,
+    tol: u8,
+) -> Option<(u32, u32)> {
+    let x0 = ((logical.x * scale).floor().max(0.0) as u32).min(a.width());
+    let y0 = ((logical.y * scale).floor().max(0.0) as u32).min(a.height());
+    let x1 = (((logical.x + logical.width) * scale).ceil().max(0.0) as u32).min(a.width());
+    let y1 = (((logical.y + logical.height) * scale).ceil().max(0.0) as u32).min(a.height());
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let pa = pixel(a, x, y);
+            let pb = pixel(b, x, y);
+            if (0..4).any(|c| pa[c].abs_diff(pb[c]) > tol) {
+                return Some((x, y));
+            }
+        }
+    }
+    None
+}
+
+fn type_into_entry_and_check(tk: &mut Tk, entry: WidgetId, w: u32, h: u32, scale: f32, typ: &str) {
+    let r = tk.widget_rect(entry).unwrap();
+    tk.sim_click(r.x + r.width / 2.0, r.y + r.height / 2.0);
+    tk.render_frame(w, h).unwrap();
+    let before = tk.frame().unwrap().clone();
+    tk.sim_text(typ);
+    let d = tk.render_frame(w, h).unwrap();
+    assert!(
+        matches!(d, FrameDamage::Partial(_)),
+        "expected a partial redraw after typing at scale {scale}, got {d:?}"
+    );
+    let cached = tk.frame().unwrap().clone();
+    assert!(
+        region_unchanged(&before, &cached, r, scale, 8.0, 2),
+        "scale {scale}: pixels outside the inflated Entry rect changed during a partial repaint"
+    );
+    let fresh = tk.render_to_pixmap(w, h).unwrap();
+    let (diff, _) = compare_pixmaps(&cached, &fresh, 8);
+    assert_eq!(
+        diff, 0,
+        "scale {scale}: HiDPI/partial frame differs from a full render by {diff} px"
+    );
+}
+
 /// Audit probe: at scale 2, a partial Entry redraw must match a full render.
 #[test]
 fn hidpi_partial_matches_full() {
@@ -31,22 +123,7 @@ fn hidpi_partial_matches_full() {
     assert!(tk.sim_scale_factor(2.0));
     let (w, h) = (640, 400);
     assert_eq!(tk.render_frame(w, h).unwrap(), FrameDamage::Full);
-    let r = tk.widget_rect(entry).unwrap();
-    tk.sim_click(r.x + r.width / 2.0, r.y + r.height / 2.0);
-    tk.render_frame(w, h).unwrap();
-    tk.sim_text("abc");
-    let d = tk.render_frame(w, h).unwrap();
-    assert!(
-        matches!(d, FrameDamage::Partial(_)),
-        "expected a partial redraw after typing, got {d:?}"
-    );
-    let cached = tk.frame().unwrap().clone();
-    let fresh = tk.render_to_pixmap(w, h).unwrap();
-    let (diff, _) = compare_pixmaps(&cached, &fresh, 8);
-    assert_eq!(
-        diff, 0,
-        "HiDPI partial frame differs from full render by {diff} px"
-    );
+    type_into_entry_and_check(&mut tk, entry, w, h, 2.0, "abc");
 }
 
 /// Scale 1 still matches, so the logical conversion is a no-op at 1×.
@@ -55,24 +132,49 @@ fn partial_matches_full_at_1x() {
     let (mut tk, _b1, entry) = scene();
     let (w, h) = (320, 200);
     assert_eq!(tk.render_frame(w, h).unwrap(), FrameDamage::Full);
-    let r = tk.widget_rect(entry).unwrap();
-    tk.sim_click(r.x + r.width / 2.0, r.y + r.height / 2.0);
-    tk.render_frame(w, h).unwrap();
-    tk.sim_text("xyz");
-    tk.render_frame(w, h).unwrap();
-    let cached = tk.frame().unwrap().clone();
-    let fresh = tk.render_to_pixmap(w, h).unwrap();
-    let (diff, _) = compare_pixmaps(&cached, &fresh, 8);
-    assert_eq!(
-        diff, 0,
-        "1× partial frame differs from full render by {diff} px"
-    );
+    type_into_entry_and_check(&mut tk, entry, w, h, 1.0, "xyz");
+}
+
+/// Fractional and high HiDPI scales: partial vs full identity, and pixels
+/// outside the Entry stay untouched.
+#[test]
+fn hidpi_partial_matches_full_at_fractional_scales() {
+    for &scale in &[1.25_f64, 1.5, 1.75, 3.0] {
+        let (mut tk, _b1, entry) = scene();
+        assert!(
+            tk.sim_scale_factor(scale),
+            "sim_scale_factor({scale}) failed"
+        );
+        let (w, h) = (640, 400);
+        assert_eq!(
+            tk.render_frame(w, h).unwrap(),
+            FrameDamage::Full,
+            "scale {scale}: initial frame must be Full"
+        );
+        type_into_entry_and_check(&mut tk, entry, w, h, scale as f32, "Frac");
+    }
 }
 
 fn solid_rgba(w: u32, h: u32, r: u8, g: u8, b: u8, a: u8) -> Vec<u8> {
     let mut px = Vec::with_capacity((w * h * 4) as usize);
     for _ in 0..w * h {
         px.extend_from_slice(&[r, g, b, a]);
+    }
+    px
+}
+
+fn bordered_rgba(w: u32, h: u32, center: [u8; 4], border: [u8; 4]) -> Vec<u8> {
+    let mut px = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let c = if x == 0 || y == 0 || x == w - 1 || y == h - 1 {
+                border
+            } else {
+                center
+            };
+            let i = ((y * w + x) * 4) as usize;
+            px[i..i + 4].copy_from_slice(&c);
+        }
     }
     px
 }
@@ -111,25 +213,87 @@ fn canvas_image_paints_and_updates() {
     assert_eq!(diff, 0, "frame after image update is not stable");
 }
 
+/// Reviewer1 repro: same-size update that keeps the border (first/last 8 bytes)
+/// must still paint the new center (not a stale premultiplied cache entry).
+#[test]
+fn canvas_update_image_same_border_paints_new_center() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let cv = Canvas::new(&mut tk, root, 64.0, 64.0).unwrap();
+    tk.pack(cv, Default::default());
+    let border = [200u8, 20, 20, 255];
+    let green = bordered_rgba(32, 32, [20, 200, 20, 255], border);
+    let item = tk
+        .canvas_create_image_rgba(cv, 0.0, 0.0, 32.0, 32.0, 32, 32, &green, false)
+        .unwrap();
+
+    let a = tk.render_to_pixmap(160, 120).unwrap();
+    let cr = tk.widget_rect(cv).unwrap();
+    let cx = ((cr.x + 16.0).floor() as i32).clamp(0, a.width() as i32 - 1) as u32;
+    let cy = ((cr.y + 16.0).floor() as i32).clamp(0, a.height() as i32 - 1) as u32;
+    let p1 = pixel(&a, cx, cy);
+    assert!(
+        p1[1] > p1[0] && p1[1] > p1[2],
+        "expected green-dominant center before update, got {p1:?} at ({cx},{cy})"
+    );
+
+    let blue = bordered_rgba(32, 32, [20, 20, 200, 255], border);
+    assert!(tk.canvas_update_image(cv, item, 32, 32, &blue));
+    let b = tk.render_to_pixmap(160, 120).unwrap();
+    let p2 = pixel(&b, cx, cy);
+    assert!(
+        p2[2] > p2[0] && p2[2] > p2[1],
+        "expected blue-dominant center after same-border update, got {p2:?} (stale green would be {p1:?})"
+    );
+
+    let c = tk.render_to_pixmap(160, 120).unwrap();
+    let p3 = pixel(&c, cx, cy);
+    assert!(
+        p3[2] > p3[0] && p3[2] > p3[1],
+        "center must stay blue on the cached frame after the update, got {p3:?}"
+    );
+    let (diff, _) = compare_pixmaps(&b, &c, 0);
+    assert_eq!(
+        diff, 0,
+        "frame after same-border image update is not stable"
+    );
+}
+
+fn text_body(first: &str) -> String {
+    let mut body = String::new();
+    body.push_str(first);
+    body.push('\n');
+    for i in 1..80 {
+        body.push_str(&format!("line {i:02} abcdef\n"));
+    }
+    body
+}
+
 /// A long Text document still paints the visible window and matches a second render.
+/// Visible line 0 is also asserted by swapping a distinctive first line.
 #[test]
 fn text_visible_lines_render_stably() {
     let mut tk = Tk::new();
     let root = tk.root();
     let t = Text::new(&mut tk, root, 30, 4).unwrap();
     tk.pack(t, Default::default());
-    let mut body = String::new();
-    for i in 0..80 {
-        body.push_str(&format!("line {i:02} abcdef\n"));
-    }
-    tk.text_set(t, &body);
+    tk.text_set(t, text_body("AAAA_UNIQUE"));
     let a = tk.render_to_pixmap(400, 200).unwrap();
     let b = tk.render_to_pixmap(400, 200).unwrap();
     let (diff, _) = compare_pixmaps(&a, &b, 0);
     assert_eq!(diff, 0, "Text render of a long document is not stable");
+
+    tk.text_set(t, text_body("BBBB_UNIQUE"));
+    let c = tk.render_to_pixmap(400, 200).unwrap();
+    let tr = tk.widget_rect(t).unwrap();
+    assert!(
+        first_diff_in_rect(&a, &c, tr, 1.0, 0).is_some(),
+        "changing the visible first line of a Text widget must change pixels in its rect"
+    );
 }
 
 /// Table and TreeView visible windows still render and stay stable.
+/// Off-screen table edits must not change pixels; visible row/label edits must.
 #[test]
 fn table_and_tree_visible_rows_render() {
     let mut tk = Tk::new();
@@ -144,15 +308,52 @@ fn table_and_tree_visible_rows_render() {
     let tree = TreeView::new(&mut tk, root, 8).unwrap();
     tk.pack(tree, Default::default());
     let parent = tk.tree_insert(tree, None, "root").unwrap();
+    assert!(tk.tree_set_open(tree, parent, true));
+    let mut child_keys = Vec::new();
     for i in 0..12 {
-        tk.tree_insert(tree, Some(parent), &format!("c{i}"))
-            .unwrap();
+        child_keys.push(
+            tk.tree_insert(tree, Some(parent), &format!("c{i}"))
+                .unwrap(),
+        );
     }
 
     let a = tk.render_to_pixmap(400, 360).unwrap();
     let b = tk.render_to_pixmap(400, 360).unwrap();
     let (diff, _) = compare_pixmaps(&a, &b, 0);
     assert_eq!(diff, 0, "table/tree render is not stable");
+
+    // Off-screen table row: 40 rows, 6 visible — row 39 must not appear.
+    let mut rows_off: Vec<Vec<String>> = (0..40)
+        .map(|i| vec![format!("n{i}"), format!("{i}")])
+        .collect();
+    rows_off[39][0] = "n39X".into();
+    assert!(tk.table_set_rows(table, rows_off));
+    let c = tk.render_to_pixmap(400, 360).unwrap();
+    let (diff, _) = compare_pixmaps(&a, &c, 0);
+    assert_eq!(
+        diff, 0,
+        "changing an off-screen table row must not change visible pixels"
+    );
+
+    let mut rows_vis: Vec<Vec<String>> = (0..40)
+        .map(|i| vec![format!("n{i}"), format!("{i}")])
+        .collect();
+    rows_vis[0][0] = "VISIBLE_ROW0".into();
+    assert!(tk.table_set_rows(table, rows_vis));
+    let d = tk.render_to_pixmap(400, 360).unwrap();
+    let table_rect = tk.widget_rect(table).unwrap();
+    assert!(
+        first_diff_in_rect(&a, &d, table_rect, 1.0, 0).is_some(),
+        "changing a visible table row must change pixels inside the table rect"
+    );
+
+    assert!(tk.tree_set_text(tree, child_keys[0], "VISIBLE_C0"));
+    let e = tk.render_to_pixmap(400, 360).unwrap();
+    let tree_rect = tk.widget_rect(tree).unwrap();
+    assert!(
+        first_diff_in_rect(&d, &e, tree_rect, 1.0, 0).is_some(),
+        "changing a visible tree child label must change pixels inside the tree rect"
+    );
 }
 
 /// `Kind::has_command` used to omit Spinbox, so `set_command` returned false
@@ -161,6 +362,7 @@ fn table_and_tree_visible_rows_render() {
 /// `spinbox_on_change` as a workaround that writes `node.command` directly).
 /// This test checks the widgets.rs side only and does not click the widget,
 /// because this branch does not include the events.rs `run_command` calls.
+/// (Extended after merging origin/main, which has those event hooks.)
 #[test]
 fn spinbox_set_command_wires() {
     let mut tk = Tk::new();
