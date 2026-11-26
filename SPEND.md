@@ -537,3 +537,12 @@ Two paid Kimi calls were made. The first returned empty content (`finish=length`
 |---|---|---|---|---:|---|---|
 | 2026-11-26 1:16 PM ET | — | — | WP4 r2 leftovers: S1 style reuse, S2 one bar lookup, S3 prune on insert, N1/N2 | 0.000000 | measured | no call (hand-written) |
 | | | | **this r2 leftovers-batch own total** | **0.000000** | measured | |
+
+### WP4 Tyler-approved goldens and LINKED_BARS purge (2026-11-26)
+
+**No paid model call was made.** Tyler approved re-blessing the six `m011_modal` goldens and adding a LINKED_BARS purge on Tk Drop / widget destroy. Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:32 PM ET | — | — | Re-bless six m011_modal goldens; LINKED_BARS purge on Drop/destroy (try_with) | 0.000000 | measured | no call (hand-written) |
+| | | | **this bless+purge-batch own total** | **0.000000** | measured | |

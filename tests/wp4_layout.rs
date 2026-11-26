@@ -419,3 +419,102 @@ fn scroll_area_attach_reserves_vbar() {
         "attached hbar should keep content at least area-wide: area={ra:?} vbar={rv:?} content={rc:?}"
     );
 }
+
+/// Dropping a Tk must purge its LINKED_BARS entries so a later toolkit cannot
+/// see them (and so the sidecar does not grow without bound).
+#[test]
+fn dropped_tk_purges_linked_bars_cache() {
+    let (tk_id, area) = {
+        let mut tk = Tk::new();
+        let root = tk.root();
+        let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+        let vbar = Scrollbar::new(&mut tk, root).unwrap();
+        let hbar = Scrollbar::horizontal(&mut tk, root).unwrap();
+        tk.pack(area, PackOpts::default());
+        tk.pack(vbar, PackOpts::default());
+        tk.pack(hbar, PackOpts::default());
+        assert!(tk.scrollarea_attach_scrollbars(area, Some(vbar), Some(hbar)));
+        tk.sim_resize(240, 140);
+        let _ = tk.widget_rect(area);
+        assert!(
+            tk.scrollarea_bars_cache_contains(area),
+            "attach should store bar ids in the sidecar"
+        );
+        assert!(tk.scrollarea_bars_cache_len() > 0);
+        (tk.toolkit_id(), area)
+    };
+    assert_eq!(
+        Tk::scrollarea_bars_cache_len_for(tk_id),
+        0,
+        "Drop must purge LINKED_BARS for tk {tk_id}"
+    );
+
+    // A new toolkit may reuse the same widget indices; it must not see the
+    // dropped toolkit's cached bars (tk_id is unique, and the old entries are gone).
+    let mut tk2 = Tk::new();
+    let root2 = tk2.root();
+    let area2 = ScrollArea::new(&mut tk2, root2, 160.0, 100.0).unwrap();
+    assert_eq!(area2.index, area.index);
+    assert!(!tk2.scrollarea_bars_cache_contains(area2));
+    assert_eq!(tk2.scrollarea_bars_cache_len(), 0);
+    let content = tk2.scrollarea_content(area2).unwrap();
+    tk2.pack(
+        area2,
+        PackOpts {
+            fill: Fill::Both,
+            expand: true,
+            ..PackOpts::default()
+        },
+    );
+    tk2.sim_resize(240, 140);
+    let ra = tk2.widget_rect(area2).unwrap();
+    let rc = tk2.widget_rect(content).unwrap();
+    assert!(
+        (rc.width - ra.width).abs() < 0.6,
+        "new Tk must not reserve a stale vbar: area={ra:?} content={rc:?}"
+    );
+}
+
+/// Destroying a ScrollArea must drop its LINKED_BARS entry. A replacement
+/// area that reuses the slot index must not inherit the old bars.
+#[test]
+fn destroyed_area_purges_linked_bars_cache() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+    let vbar = Scrollbar::new(&mut tk, root).unwrap();
+    let hbar = Scrollbar::horizontal(&mut tk, root).unwrap();
+    tk.pack(area, PackOpts::default());
+    tk.pack(vbar, PackOpts::default());
+    tk.pack(hbar, PackOpts::default());
+    assert!(tk.scrollarea_attach_scrollbars(area, Some(vbar), Some(hbar)));
+    tk.sim_resize(240, 140);
+    let _ = tk.widget_rect(area);
+    assert!(tk.scrollarea_bars_cache_contains(area));
+
+    assert!(tk.destroy(area));
+    assert!(
+        !tk.scrollarea_bars_cache_contains(area),
+        "destroy must remove the area's LINKED_BARS entry"
+    );
+
+    let area2 = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+    assert!(!tk.scrollarea_bars_cache_contains(area));
+    assert!(!tk.scrollarea_bars_cache_contains(area2));
+    let content = tk.scrollarea_content(area2).unwrap();
+    tk.pack(
+        area2,
+        PackOpts {
+            fill: Fill::Both,
+            expand: true,
+            ..PackOpts::default()
+        },
+    );
+    tk.sim_resize(240, 140);
+    let ra = tk.widget_rect(area2).unwrap();
+    let rc = tk.widget_rect(content).unwrap();
+    assert!(
+        (rc.width - ra.width).abs() < 0.6,
+        "reused slot must not reserve a stale vbar: area={ra:?} content={rc:?}"
+    );
+}

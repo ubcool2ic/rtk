@@ -82,6 +82,7 @@ impl Tk {
             // before the arena index is recycled. Destroy's gen/free
             // logic is otherwise unchanged.
             crate::render::purge_premul_cache(tk_id, current.index, current.gen);
+            super::scroll_area::purge_scrollarea_bars_widget(tk_id, current.index, current.gen);
             let Some(node) = slot.node.take() else { continue };
             pending.extend(node.children);
             if let Some(next) = slot.gen.checked_add(1) {

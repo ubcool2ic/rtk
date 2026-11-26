@@ -23,6 +23,34 @@ thread_local! {
     static LINKED_BARS: RefCell<LinkedBars> = RefCell::new(HashMap::new());
 }
 
+/// Drops every `LINKED_BARS` entry belonging to a `Tk` instance (used from `Drop`).
+///
+/// Uses `try_with` and ignores `AccessError` so a host that stores `Tk` in
+/// its own `thread_local` does not panic if this runs during thread teardown
+/// after `LINKED_BARS` has already been destroyed.
+pub(crate) fn purge_scrollarea_bars_tk(tk: u64) {
+    let _ = LINKED_BARS.try_with(|map| {
+        map.borrow_mut().retain(|&(id, _), _| id != tk);
+    });
+}
+
+/// Drops `LINKED_BARS` entries for a destroyed widget `(tk, index, gen)`.
+///
+/// Removes a cache entry keyed by that widget as a ScrollArea, and any
+/// entry that cached it as a linked scrollbar.
+fn bars_cache_len_for(tk: u64) -> usize {
+    LINKED_BARS.with(|map| map.borrow().keys().filter(|(id, _)| *id == tk).count())
+}
+
+pub(crate) fn purge_scrollarea_bars_widget(tk: u64, index: u32, gen: u32) {
+    let _ = LINKED_BARS.try_with(|map| {
+        let gone = WidgetId { index, gen };
+        map.borrow_mut().retain(|&(id, area), bars| {
+            id != tk || (area != gone && bars.0 != Some(gone) && bars.1 != Some(gone))
+        });
+    });
+}
+
 /// Constructor namespace for scrollable viewport frames.
 pub struct ScrollArea;
 
@@ -273,6 +301,30 @@ impl Tk {
             });
             map.insert((tk_id, area), bars);
         });
+    }
+
+    /// Toolkit identity used to key sidecar caches. Test hook.
+    #[doc(hidden)]
+    pub fn toolkit_id(&self) -> u64 {
+        self.tk_id
+    }
+
+    /// Number of `LINKED_BARS` entries for this toolkit. Test hook.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_len(&self) -> usize {
+        bars_cache_len_for(self.tk_id)
+    }
+
+    /// Number of `LINKED_BARS` entries for `tk_id`. Test hook for use after `Drop`.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_len_for(tk_id: u64) -> usize {
+        bars_cache_len_for(tk_id)
+    }
+
+    /// Whether `area` has a `LINKED_BARS` entry for this toolkit. Test hook.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_contains(&self, area: WidgetId) -> bool {
+        LINKED_BARS.with(|map| map.borrow().contains_key(&(self.tk_id, area)))
     }
 
     fn is_attached_scrollbar(&self, id: WidgetId, area: WidgetId, horizontal: bool) -> bool {
