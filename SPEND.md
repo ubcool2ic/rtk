@@ -368,6 +368,57 @@ Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were nee
 | 2026-11-13 | anthropic/claude-fable-5.2 | c16-docs | 8959 (0 cached) | 5233 (2321 reasoning) | 0.2810 | 7.9276 |
 | 2026-11-13 | note | hand glue (1.0.2) | Reverted two Fable edits: always-rebuilt `:disabled` state map in style.rs (changed the blessed dark tristate golden: disabled text got lighter) and a render_frame "nothing pending" early return in damage.rs (combobox popup/menu hover is drawn from the pointer without setting `dirty`, so it could leave stale hover). `cargo clippy --fix` (3 needless borrows). Added `sim_resize` to one Fable test. README line rewrap. `.gitignore` for the GUIDE doctest outputs `out.png` / `my_widget_light_1x.png/`. Version bump in Cargo.toml + Cargo.lock | | | |
 
+## WP2 Rendering (2026-11-26) + copied audit rows
+
+This job's cap is $2.50 from its own generation ids, and a shared account stop line of 586.29 (baseline 581.2885 at 1:25 AM ET, shared with WP1). Costs below are measured from `GET /api/v1/generation` or `get-credits` unless marked estimated. All times are America/Indianapolis (ET).
+
+### Audit rows copied from `/workspace/rtk-audit-notes/SPEND.md` (not this job's spend)
+
+These were the 2026-11-26 rtk audit's own generations (google/gemini-4-carbon). Audit job own total: **$1.567970**.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:03 AM ET | google/gemini-4-carbon | gen-1795672950-oryC0FQu79iHinbqcFRP | audit c1-render | 0.121232 | measured | ok |
+| 2026-11-26 1:05 AM ET | google/gemini-4-carbon | gen-1795673046-VP0ptTuQ6zR5H4IhGSKL | audit c3-app | 0.140534 | measured | ok |
+| 2026-11-26 1:05 AM ET | google/gemini-4-carbon | gen-1795673049-3y5U8hxLMdv4lvdKwxSO | audit c4-layout | 0.145352 | measured | ok |
+| 2026-11-26 1:09 AM ET | google/gemini-4-carbon | gen-1795673044-V4GCl3CnT6rROCgFAUFU | audit c2-style | 0.291328 | measured | ok (finish=length, 2.7 KB partial in the audit write-up) |
+| 2026-11-26 1:10 AM ET | google/gemini-4-carbon | gen-1795673357-eftmIm3cAu46bWSrTbLC | audit c6-dialogs | 0.129140 | measured | ok |
+| 2026-11-26 1:10 AM ET | google/gemini-4-carbon | gen-1795673355-xzHs5lGKxmUooURSiRll | audit c5-data | 0.134276 | measured | ok |
+| 2026-11-26 1:13 AM ET | google/gemini-4-carbon | gen-1795673359-tlabOagRW2NZbY3KBSJH | audit c7-assets | 0.306934 | measured | empty (all reasoning, finish=length) |
+| 2026-11-26 1:15 AM ET | google/gemini-4-carbon | gen-1795673629-ZYSILtWqPaZPOhDKRMAC | audit c8-inputs | 0.167016 | measured | ok |
+| 2026-11-26 1:17 AM ET | google/gemini-4-carbon | gen-1795673753-0EKTPtMnbKbCBdcwMCaO | audit c2-style retry (prev length/empty) | 0.132158 | measured | ok |
+| | | | **audit own total** | **1.567970** | measured | |
+
+### This job (fix/wp2-rendering)
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| — | — | — | no paid model calls; fixes written and verified directly | 0.000000 | measured | n/a |
+
+- Account `total_usage` at first check (1:29 AM ET): **581.918694236** (after the job's 1:25 AM ET baseline of 581.2885; other bots had already spent ~$0.63).
+- Account `total_usage` at end (1:50 AM ET): **587.635012236**. Delta $5.716318, all from other bots on the shared account. This job's own generation-id sum is **$0.000000**.
+- The shared stop line 586.29 was already exceeded by other work before the final credits check. This job made no paid calls at any point, so it did not contribute to crossing the line.
+- Code was written directly because `CanvasItemKind::Image` is also constructed in `src/image.rs` / `src/chart.rs` (outside this package's file list); changing the variant fields would not compile without touching those files.
+
+**This job own generation-id sum: $0.000000 (measured). Appended audit rows: $1.567970.**
+
+### Reviewer1 PR #13 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids. Shared account stop line raised to 595.00. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement).
+
+MCP `send-message` to `google/gemini-4-carbon` timed out with no generation id and no bill (account `total_usage` unchanged after the timeout). The write was retried over direct HTTP (`/workspace/bin/openrouter-call`, same model).
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 2:31 AM ET | google/gemini-4-carbon | gen-1795677946-pXwGD9TYuxPxGjDJkK07 | WP2 PR#13 Reviewer1 one-batch fix (M1 cache gen, P6 no text clone, Image/Chart hash cache, nits) | 0.205690 | measured | empty (finish=length; 19997 reasoning tokens, 0 content) |
+| 2026-11-26 2:33 AM ET | google/gemini-4-carbon | gen-1795678294-tcbMUUcoWSVWbX7IeM4L | WP2 PR#13 fix retry (prev call empty/MAX_TOKENS on reasoning) | 0.016520 | measured | settled-stale (HTTP 499; interrupted mid-stream; no content) |
+| 2026-11-26 2:39 AM ET | google/gemini-4-carbon | gen-1795678579-80QhjcErkt5DVaROQYGN | WP2 PR#13 Carbon write retry2 (low reasoning; emit code) | 0.145338 | measured | ok |
+| | | | **this fix-batch own total** | **0.367548** | measured | |
+
+- Account `total_usage` at first check of this fix batch (~2:18 AM ET): **588.573482236**.
+- Account `total_usage` after the successful Carbon write (credits check 2:39–2:48 AM ET window ended at): **595.377314236** at 2:48 AM ET. The $0.367548 own spend plus other bots on the shared account crossed the 595.00 stop line after our last paid call; no further paid calls were made once that reading was seen.
+- This job's own generation-id sum for the Reviewer1 fix batch: **$0.367548**. Combined with the earlier WP2 implementation round ($0.000000): **$0.367548**. Still under the $2.50 job cap.
+
 ### WP1 Input/keyboard (branch fix/wp1-input, Reviewer2)
 
 Account `total_usage` before the job's first paid call: **582.958074236** (1:34 AM ET). Job cap $2.50; account stop line for later follow-ups is 595.00 (the first call used 586.29). After the first call: **584.975028236** (1:36 AM ET). Own generation-id sum: **$0.184686**. The remaining account delta was other bots on the shared account.
@@ -381,3 +432,45 @@ Account `total_usage` before the job's first paid call: **582.958074236** (1:34 
 | 2026-11-26 2:17 AM ET | google/gemini-4-carbon | wp1-r1-should-fix | 974 (native 1135; 0 cached) | 49 (native 65; 0 reasoning) | 0.00292 | measured | gen-1795677424-UiXwAM02PU7bp6Fq9Qku | ok; asked for file contents, no diff; fixes and tests finished by hand |
 | 2026-11-26 | note | hand glue (WP1 r1 should-fix) | Carbon produced no patch. `trim_lines` now returns drained bytes; `sync_after_edit` shifts cursor and a drained-prefix anchor; Canvas press uses `set_focused`; paste/undo test asserts undo and redo; mid-buffer trim tests added. | | 0.00000 | | | |
 | | | **own total** | | | **0.184686** | | | |
+
+### Reviewer1 PR #13 r2 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.367548 already used in the r1 fix batch, $2.13 left at the start of this batch). Shared account stop line raised to 605.00. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement). Carbon's patches invented APIs (ImageSource variants, a destroy rewrite, cache cap 64, argument-order swap); the design was applied to the real Tk/Canvas/Image APIs and verified.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 3:16 AM ET | google/gemini-4-carbon | gen-1795680867-9YNfKezm9hpt14zkG969 | WP2 PR#13 r2 must-fix: Slot key gen + purge, hash memcmp, Image paint_spec/rev, nits+repro test | 0.098074 | measured | ok (finish=stop; 1617 prompt / 9484 completion tokens, 0 reasoning) |
+| | | | **this r2 fix-batch own total** | **0.098074** | measured | |
+
+- Account `total_usage` immediately before this batch's paid call (~3:14 AM ET): **604.252412236**.
+- Account `total_usage` after (credits check 3:27 AM ET): **613.104866236**. Own spend this batch is $0.098074; the rest of the account delta is other bots on the shared account. The 605.00 stop line was already exceeded by the time of the post-call check; no further paid calls were made after that reading.
+- This job's own generation-id sum for the r2 fix batch: **$0.098074**. Combined with the Reviewer1 r1 fix batch ($0.367548) and the earlier WP2 implementation round ($0.000000): **$0.465622**. Still under the $2.50 job cap.
+
+### Reviewer1 PR #13 r3 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.465622 already used after the r1+r2 fix batches). Shared account stop line raised to 620.00. Times are America/Indianapolis (ET).
+
+**No paid model call was made.** Account `total_usage` was already **624.706070236** at the first credits check (4:17 AM ET), which is above the 620.00 stop line, so Carbon (`google/gemini-4-carbon`) was not invoked. The r3 must-fix and both nits were applied to the real Tk/Canvas/Image APIs from Reviewer1's report and verified with cargo test / clippy / release. No generation id.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 4:17 AM ET | — | — | WP2 PR#13 r3 must-fix (Tk id in Slot + Drop purge, wrap purge, leftover Image path); skipped paid Carbon because account stop line already exceeded | 0.000000 | measured | no call (total_usage 624.706070236 > 620.00) |
+| | | | **this r3 fix-batch own total** | **0.000000** | measured | |
+
+- Account `total_usage` at first check of this batch (4:17 AM ET): **624.706070236**.
+- Account `total_usage` after (credits check 4:25 AM ET): **624.706070236** (unchanged; no paid call).
+- This job's own generation-id sum for the r3 fix batch: **$0.000000**. Combined with the r1 fix batch ($0.367548) and the r2 fix batch ($0.098074): **$0.465622**. Still under the $2.50 job cap.
+
+### Reviewer1 PR #13 r4 nits (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.465622 already used). Shared account stop line is 620.00. Times are America/Indianapolis (ET).
+
+**No paid model call was made** (account already past the 620.00 backstop). Both r4 nits were hand-written and verified with cargo test / clippy / release. No generation id.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 4:38 AM ET | — | — | WP2 PR#13 r4 nits: purge_premul_tk try_with; tk_id fetch_update+checked_add panic on exhaustion | 0.000000 | measured | no call (past 620.00 backstop; hand-written) |
+| | | | **this r4 nit-batch own total** | **0.000000** | measured | |
+
+- Account stop line 620.00 was already exceeded before this batch; no credits lookup or paid call was made.
+- This job's own generation-id sum is unchanged: **$0.465622** (r1 $0.367548 + r2 $0.098074 + r3 $0 + r4 $0). Still under the $2.50 job cap.

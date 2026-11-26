@@ -1,8 +1,8 @@
-//! Image widget data model: RGBA and SVG sources, fit modes, and draw-item
+//! Image widget data model: RGBA and SVG sources, fit modes, and paint-spec
 //! generation. The rendering itself happens in `render.rs`; this module only
-//! turns the image state into positioned canvas image items.
+//! turns the image state into a positioned, borrowed pixel buffer.
 
-use crate::widgets::CanvasItemKind;
+use std::sync::Arc;
 
 /// How an image is placed inside its widget rectangle.
 #[non_exhaustive]
@@ -40,6 +40,9 @@ pub(crate) struct ImageData {
     pub source: ImageSource,
     /// Placement mode inside the widget rectangle.
     pub fit: ImageFit,
+    /// Bumped when the pixel source is replaced. Used to key the premul cache
+    /// without hashing or cloning the buffer on a quiet paint.
+    pub content_rev: u64,
 }
 
 impl ImageData {
@@ -97,7 +100,7 @@ const SVG_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
 
 /// One cached SVG raster: (tree identity, width, height, straight RGBA).
 #[cfg(feature = "svg")]
-type SvgCacheEntry = (std::sync::Weak<resvg::usvg::Tree>, u32, u32, Vec<u8>);
+type SvgCacheEntry = (std::sync::Weak<resvg::usvg::Tree>, u32, u32, Arc<[u8]>);
 
 #[cfg(feature = "svg")]
 thread_local! {
@@ -114,18 +117,19 @@ fn render_svg_cached(
     tree: &std::sync::Arc<resvg::usvg::Tree>,
     w: u32,
     h: u32,
-) -> Option<Vec<u8>> {
+) -> Option<Arc<[u8]>> {
     let key = std::sync::Arc::as_ptr(tree);
     let hit = SVG_CACHE.with(|c| {
         c.borrow()
             .iter()
             .find(|e| e.1 == w && e.2 == h && std::sync::Weak::as_ptr(&e.0) == key)
-            .map(|e| e.3.clone())
+            .map(|e| Arc::clone(&e.3))
     });
     if hit.is_some() {
         return hit;
     }
     let rgba = render_svg(tree, w, h)?;
+    let rgba: Arc<[u8]> = Arc::from(rgba);
     if rgba.len() <= SVG_CACHE_MAX_BYTES {
         SVG_CACHE.with(|c| {
             let mut c = c.borrow_mut();
@@ -138,7 +142,7 @@ fn render_svg_cached(
                 let old = c.remove(0);
                 total -= old.3.len();
             }
-            c.push((std::sync::Arc::downgrade(tree), w, h, rgba.clone()));
+            c.push((std::sync::Arc::downgrade(tree), w, h, Arc::clone(&rgba)));
         });
     }
     Some(rgba)
@@ -168,15 +172,40 @@ fn is_integer_upscale(dw: f32, dh: f32, sw: u32, sh: u32) -> bool {
     integer(factor_x) && integer(factor_y)
 }
 
-/// Builds the draw items for an image widget of logical size `w`×`h` at `scale`.
-///
-/// Returns a single [`CanvasItemKind::Image`] positioned per the fit mode, or an
-/// empty list if the widget is degenerate. SVG sources are rasterized at device
-/// resolution (logical size × `scale`) so high-DPI output stays crisp.
-pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<CanvasItemKind> {
+/// Layout and a borrowed (or SVG-raster) pixel buffer for painting an image widget.
+pub(crate) struct ImagePaint<'a> {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub src_w: u32,
+    pub src_h: u32,
+    pub rgba: ImagePixels<'a>,
+    pub smooth: bool,
+}
+
+/// Pixel buffer for [`ImagePaint`]: a borrowed RGBA source, or a shared SVG raster.
+pub(crate) enum ImagePixels<'a> {
+    Borrowed(&'a [u8]),
+    Shared(Arc<[u8]>),
+}
+
+impl ImagePixels<'_> {
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        match self {
+            ImagePixels::Borrowed(s) => s,
+            ImagePixels::Shared(s) => s.as_ref(),
+        }
+    }
+}
+
+/// Computes the layout and pixel buffer for an image widget of logical size
+/// `w`×`h` at `scale`. RGBA sources are borrowed; SVG sources are rasterized
+/// at device resolution. Returns `None` if the widget is degenerate.
+pub(crate) fn paint_spec(data: &ImageData, w: f32, h: f32, scale: f32) -> Option<ImagePaint<'_>> {
     // Also rejects NaN / infinite sizes.
     if !(w >= 1.0 && h >= 1.0 && w.is_finite() && h.is_finite()) {
-        return Vec::new();
+        return None;
     }
     let (nat_w, nat_h) = data.natural_size();
     let (nat_w_f, nat_h_f) = (nat_w as f32, nat_h as f32);
@@ -201,47 +230,42 @@ pub(crate) fn build_items(data: &ImageData, w: f32, h: f32, scale: f32) -> Vec<C
     match &data.source {
         ImageSource::Rgba { w: sw, h: sh, rgba } => {
             if *sw == 0 || *sh == 0 {
-                return Vec::new();
+                return None;
             }
-            // A short buffer would make the renderer read out of bounds.
             let needed = (*sw as usize)
                 .checked_mul(*sh as usize)
                 .and_then(|n| n.checked_mul(4));
             match needed {
                 Some(n) if rgba.len() >= n => {}
-                _ => return Vec::new(),
+                _ => return None,
             }
-            // Pixel art should stay crisp when enlarged by an integer factor;
-            // any other scaling keeps bilinear smoothing.
             let smooth = !is_integer_upscale(dw, dh, *sw, *sh);
-            vec![CanvasItemKind::Image {
+            Some(ImagePaint {
                 x: dx,
                 y: dy,
                 w: dw,
                 h: dh,
                 src_w: *sw,
                 src_h: *sh,
-                rgba: rgba.clone(),
+                rgba: ImagePixels::Borrowed(rgba),
                 smooth,
-            }]
+            })
         }
         #[cfg(feature = "svg")]
         ImageSource::Svg(tree) => {
             let rw = ((dw * scale).round() as u32).max(1);
             let rh = ((dh * scale).round() as u32).max(1);
-            let Some(rgba) = render_svg_cached(tree, rw, rh) else {
-                return Vec::new();
-            };
-            vec![CanvasItemKind::Image {
+            let rgba = render_svg_cached(tree, rw, rh)?;
+            Some(ImagePaint {
                 x: dx,
                 y: dy,
                 w: dw,
                 h: dh,
                 src_w: rw,
                 src_h: rh,
-                rgba,
+                rgba: ImagePixels::Shared(rgba),
                 smooth: true,
-            }]
+            })
         }
     }
 }
