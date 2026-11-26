@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use crate::file_dialog::{FileFilter, matches_filters};
 use crate::layout::{Anchor, PackOpts, PlaceOpts, Side};
 use crate::tk::ModalFrame;
 use crate::widgets::{Button, Color, Combobox, Entry, Frame, Label, Listbox, Opt};
@@ -492,10 +493,8 @@ fn read_dir_entries(dir: &Path, filter_exts: &[&str]) -> (Vec<String>, Vec<Strin
             } else {
                 let matches_filter = if filter_exts.is_empty() || filter_exts.contains(&"*") {
                     true
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    filter_exts.iter().any(|f| f.eq_ignore_ascii_case(ext))
                 } else {
-                    false
+                    matches_filters(&path, &[FileFilter::new("", filter_exts)])
                 };
                 if matches_filter {
                     files.push(name);
@@ -652,6 +651,7 @@ pub fn ask_open_filename(
                 let file_path = cur_dir.borrow().join(item);
                 if let Some(f) = cb.borrow_mut().take() {
                     finish_modal(t, scrim);
+                    filter_var.destroy(t);
                     f(t, Some(file_path));
                 }
             }
@@ -661,10 +661,29 @@ pub fn ask_open_filename(
     let act_clone = make_action.clone();
     tk.set_command(open_btn, act_clone);
 
+    // Double-click / listbox activate uses the same Open path as Enter.
+    let act_activate = make_action.clone();
+    tk.listbox_bind_activate(listbox, move |t, _idx| {
+        act_activate(t);
+    });
+
+    // Changing the filter combobox must refresh the listing (B11).
+    let cur_dir_for_filter = cur_dir.clone();
+    let owned_filters_for_filter = owned_filters.clone();
+    tk.combobox_on_select(combobox, move |t, idx, _text| {
+        let filter_exts: Vec<&str> = owned_filters_for_filter
+            .get(idx)
+            .map(|(_, exts)| exts.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default();
+        let dir = cur_dir_for_filter.borrow().clone();
+        populate_file_list(t, listbox, &dir, &filter_exts);
+    });
+
     let cb_cancel = cb.clone();
     tk.set_command(cancel_btn, move |t| {
         if let Some(f) = cb_cancel.borrow_mut().take() {
             finish_modal(t, scrim);
+            filter_var.destroy(t);
             f(t, None);
         }
     });
@@ -673,6 +692,7 @@ pub fn ask_open_filename(
     tk.modal_cancel = Some(Box::new(move |t| {
         if let Some(f) = cb_esc.borrow_mut().take() {
             finish_modal(t, scrim);
+            filter_var.destroy(t);
             f(t, None);
         }
     }));
@@ -958,6 +978,20 @@ pub fn file_listbox(tk: &Tk) -> Option<WidgetId> {
     while let Some(id) = stack.pop() {
         let Some(node) = tk.node(id) else { continue };
         if node.kind == crate::widgets::Kind::Listbox {
+            return Some(id);
+        }
+        stack.extend(node.children.iter().rev().copied());
+    }
+    None
+}
+
+/// Returns the filter `Combobox` of the open file dialog, if any.
+pub fn file_filter_combobox(tk: &Tk) -> Option<WidgetId> {
+    let modal = tk.modal?;
+    let mut stack = vec![modal];
+    while let Some(id) = stack.pop() {
+        let Some(node) = tk.node(id) else { continue };
+        if node.kind == crate::widgets::Kind::Combobox {
             return Some(id);
         }
         stack.extend(node.children.iter().rev().copied());

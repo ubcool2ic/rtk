@@ -34,14 +34,16 @@ pub(crate) fn purge_scrollarea_bars_tk(tk: u64) {
     });
 }
 
+fn bars_cache_len_for(tk: u64) -> usize {
+    LINKED_BARS
+        .try_with(|map| map.borrow().keys().filter(|(id, _)| *id == tk).count())
+        .unwrap_or(0)
+}
+
 /// Drops `LINKED_BARS` entries for a destroyed widget `(tk, index, gen)`.
 ///
 /// Removes a cache entry keyed by that widget as a ScrollArea, and any
 /// entry that cached it as a linked scrollbar.
-fn bars_cache_len_for(tk: u64) -> usize {
-    LINKED_BARS.with(|map| map.borrow().keys().filter(|(id, _)| *id == tk).count())
-}
-
 pub(crate) fn purge_scrollarea_bars_widget(tk: u64, index: u32, gen: u32) {
     let _ = LINKED_BARS.try_with(|map| {
         let gone = WidgetId { index, gen };

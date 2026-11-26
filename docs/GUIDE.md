@@ -871,17 +871,18 @@ HiDPI: `tk.sim_scale_factor(2.0)` then render at physical dimensions.
 
 `rtk::testing` provides helpers for pixel-comparison tests:
 
-```rust
+```no_run
 # use rtk::testing::{assert_golden, GoldenOpts};
 # use rtk::Tk;
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let mut tk = Tk::new();
-assert_golden(&mut tk, "my_widget_light_1x.png", "my_widget", 64, 64, GoldenOpts::default());
+assert_golden(&mut tk, "tests/golden", "my_widget", 64, 64, GoldenOpts::default());
 # Ok(())
 # }
 ```
 
-Set `RTK_BLESS=1` in the environment to (re)write the golden file instead of comparing.
+A missing golden file fails the test unless `RTK_BLESS=1` is set, which writes
+(or rewrites) `<dir>/<name>.png` instead of comparing.
 
 ---
 

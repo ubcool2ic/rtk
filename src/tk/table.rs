@@ -34,6 +34,8 @@ pub(crate) struct TableState {
     pub(crate) on_select: Option<TableSelectCallback>,
     /// Re-entrancy guard for the selection callback.
     pub(crate) on_select_running: bool,
+    /// When true, `order` must be rebuilt before it is read.
+    pub(crate) order_dirty: bool,
 }
 
 impl TableState {
@@ -50,6 +52,7 @@ impl TableState {
             resize_drag: None,
             on_select: None,
             on_select_running: false,
+            order_dirty: false,
         }
     }
 
@@ -59,6 +62,42 @@ impl TableState {
         if let Some((col, asc)) = self.sort {
             self.apply_sort(col, asc);
         }
+        self.order_dirty = false;
+    }
+
+    /// Rebuilds `order` if a prior bulk insert left it stale.
+    pub(crate) fn ensure_order(&mut self) {
+        if self.order_dirty {
+            self.rebuild_order();
+        }
+    }
+
+    /// Insertion point in a currently-valid `order` for a newly inserted model row.
+    /// Matches a stable sort of the identity permutation.
+    fn sorted_insert_pos(&self, model: usize, col: usize, asc: bool) -> usize {
+        let key_of = |idx: usize| -> (f64, String) {
+            let cell = self.rows.get(idx).and_then(|r| r.get(col)).map(String::as_str).unwrap_or("");
+            match cell.trim().parse::<f64>() {
+                Ok(n) if !n.is_nan() => (n, String::new()),
+                _ => (f64::NAN, cell.to_lowercase()),
+            }
+        };
+        let new_key = key_of(model);
+        self.order.partition_point(|&existing| {
+            let old_key = key_of(existing);
+            let ord = match (old_key.0.is_nan(), new_key.0.is_nan()) {
+                (false, false) => old_key.0.partial_cmp(&new_key.0).unwrap_or(std::cmp::Ordering::Equal),
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                (true, true) => old_key.1.cmp(&new_key.1),
+            };
+            let ord = if asc { ord } else { ord.reverse() };
+            match ord {
+                std::cmp::Ordering::Less => true,
+                std::cmp::Ordering::Greater => false,
+                std::cmp::Ordering::Equal => existing < model,
+            }
+        })
     }
 
     /// Stable-sorts the permutation by column `col`; precomputes keys once.
@@ -141,6 +180,9 @@ impl Tk {
 
     /// Clamps `top` so the view stays within the row count.
     pub(crate) fn table_clamp_top(&mut self, id: WidgetId) {
+        if let Some(state) = self.table_state_mut(id) {
+            state.ensure_order();
+        }
         self.ensure_layout();
         let visible = self.table_visible_rows(id);
         let total = self.table_state(id).map(|s| s.order.len()).unwrap_or(0);
@@ -181,8 +223,21 @@ impl Tk {
                 state.selected = Some(sel + 1);
             }
         }
-        state.rebuild_order();
-        self.table_clamp_top(id);
+        if !state.order_dirty {
+            for idx in state.order.iter_mut() {
+                if *idx >= at {
+                    *idx += 1;
+                }
+            }
+            if let Some((col, asc)) = state.sort {
+                let pos = state.sorted_insert_pos(at, col, asc);
+                state.order.insert(pos, at);
+            } else {
+                state.order.insert(at.min(state.order.len()), at);
+            }
+        } else {
+            state.order_dirty = true;
+        }
         self.dirty = true;
         true
     }
@@ -192,6 +247,7 @@ impl Tk {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows.clear();
         state.order.clear();
+        state.order_dirty = false;
         let had_selection = state.selected.take().is_some();
         state.top = 0;
         self.dirty = true;
@@ -306,6 +362,9 @@ impl Tk {
 
     /// Scrolls so model row `row` is visible.
     pub fn table_see(&mut self, id: WidgetId, row: usize) -> bool {
+        if let Some(state) = self.table_state_mut(id) {
+            state.ensure_order();
+        }
         self.ensure_layout();
         let Some(state) = self.table_state(id) else { return false };
         let Some(display) = state.display_of(row) else { return false };
@@ -418,6 +477,9 @@ impl Tk {
 
     /// Scrolls the table by `lines` rows (positive scrolls down).
     pub(crate) fn table_scroll(&mut self, id: WidgetId, lines: f32) {
+        if let Some(state) = self.table_state_mut(id) {
+            state.ensure_order();
+        }
         let Some(state) = self.table_state_mut(id) else { return };
         let delta = lines.round() as i64;
         let old_top = state.top;

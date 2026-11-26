@@ -258,6 +258,7 @@ impl Tk {
         if cleared {
             self.dispatch_tree_select(id, None);
         }
+        self.tree_clamp_top(id);
         true
     }
 
@@ -321,6 +322,7 @@ impl Tk {
             node.open = open;
             state.dirty = true;
             self.dirty = true;
+            self.tree_clamp_top(id);
         }
         true
     }
@@ -340,6 +342,7 @@ impl Tk {
         }
         state.dirty = true;
         self.dirty = true;
+        self.tree_clamp_top(id);
         true
     }
 
@@ -351,6 +354,7 @@ impl Tk {
         }
         state.dirty = true;
         self.dirty = true;
+        self.tree_clamp_top(id);
         true
     }
 

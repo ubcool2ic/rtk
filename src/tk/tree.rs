@@ -83,6 +83,11 @@ impl Tk {
             // logic is otherwise unchanged.
             crate::render::purge_premul_cache(tk_id, current.index, current.gen);
             super::scroll_area::purge_scrollarea_bars_widget(tk_id, current.index, current.gen);
+            // Drop file-dnd closures and context-menu bindings for this widget
+            // now; bind_file_* used to be the only prune point (L3/L4).
+            self.dnd.drop.retain(|(wid, _)| *wid != current);
+            self.dnd.hover.retain(|(wid, _)| *wid != current);
+            self.menus.context.remove(&current);
             let Some(node) = slot.node.take() else { continue };
             pending.extend(node.children);
             if let Some(next) = slot.gen.checked_add(1) {

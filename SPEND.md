@@ -546,3 +546,19 @@ Two paid Kimi calls were made. The first returned empty content (`finish=length`
 |---|---|---|---|---:|---|---|
 | 2026-11-26 1:32 PM ET | — | — | Re-bless six m011_modal goldens; LINKED_BARS purge on Drop/destroy (try_with) | 0.000000 | measured | no call (hand-written) |
 | | | | **this bless+purge-batch own total** | **0.000000** | measured | |
+
+## WP5 Dialogs and data widgets (branch fix/wp5-dialogs, Reviewer2)
+
+Job cap $2.50 from this job's own generation ids. Account stop line 637.00 (backstop from 631.88 at 2:48 PM ET). Times are America/Indianapolis (ET).
+
+Account `total_usage` at first job check: **631.875889859** (2:50:19 PM ET). Immediately before the paid Carbon attempt: **631.875889859** (2:54:09 PM ET).
+
+`google/gemini-4-carbon` was required via `user-OpenRouterAPI` `send-message`. That call returned no diffs: Carbon asked for the source files rather than writing a patch (`finish_reason=stop`). Fixes were finished by hand. No second paid call.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 2:54 PM ET | google/gemini-4-carbon | wp5-dialogs (MCP send-message) | 2001 native / 1811 billed (1188 reasoning) | 1527 native / 688 billed | 0.019272 | measured | gen-1795722856-TxSoAZbUfiAQFA0byp46 | no diffs (asked for file contents); fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP5) | B11 filter refresh + activate, B12 tar.gz via matches_filters, L2 filter_var.destroy on Open-dialog dismiss, B13 tree_clamp_top after remove/collapse/set_open, B14 listbox_delete dispatches select, L3/L4 prune dnd and context menus in destroy + menu_destroy/unbind_context_menu, P8 store OpenMenu panel rect, P9 incremental table order (skip per-insert clamp), L5 64-byte dspin cap, B15 Spinbox/Combobox wheel callbacks, B16 inverted slider wheel, B20 missing golden fails without RTK_BLESS=1. #15 nits 1–3 (scroll_area doc + try_with, inset_edges zero-edge fast path). GUIDE.md golden doctest marked no_run so B20 does not fail docs. | | 0.00000 | | | |
+| | | **own measured total** | | | **0.019272** | | | |
+
+- Account `total_usage` at end (3:04:46 PM ET): **631.895161859**. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$8.10** (credits 640 − usage).

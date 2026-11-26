@@ -213,9 +213,15 @@ impl Tk {
             .and_then(|s| s.dspin_buffer.clone())
             .unwrap_or_else(|| self.dspin_edit_seed(id));
         for ch in text.chars() {
+            if buffer.len() >= 64 {
+                break;
+            }
             if ch.is_ascii_digit() || ch == '.' || ch == ',' || ch == '-' {
                 buffer.push(ch);
             }
+        }
+        if buffer.len() > 64 {
+            buffer.truncate(64);
         }
         if let Some(state) = self.dspin_state_mut(id) {
             state.dspin_buffer = Some(buffer);
