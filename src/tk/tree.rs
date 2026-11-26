@@ -71,6 +71,7 @@ impl Tk {
         // Evaluate before generations are bumped below, otherwise a root
         // lookup built from the live generation would no longer match `id`.
         let is_root = id == self.root();
+        let tk_id = self.tk_id;
         let mut pending = vec![id];
         while let Some(current) = pending.pop() {
             let Some(slot) = self.nodes.get_mut(current.index as usize) else { continue };
@@ -80,7 +81,7 @@ impl Tk {
             // Minimal hook: drop this widget+gen's Slot premul entries
             // before the arena index is recycled. Destroy's gen/free
             // logic is otherwise unchanged.
-            crate::render::purge_premul_cache(current.index, current.gen);
+            crate::render::purge_premul_cache(tk_id, current.index, current.gen);
             let Some(node) = slot.node.take() else { continue };
             pending.extend(node.children);
             if let Some(next) = slot.gen.checked_add(1) {

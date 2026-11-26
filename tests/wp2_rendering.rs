@@ -515,3 +515,99 @@ fn canvas_widget_slot_reuse_must_not_paint_stale_premul() {
         "expected blue center after widget-slot reuse, got {p2:?} at ({cx2},{cy2})"
     );
 }
+
+/// Two live `Tk` instances on one thread both mint a canvas at index 1, gen 0.
+/// The TLS premul cache is keyed by a per-Tk id, so B must not paint A's pixels.
+#[test]
+fn two_live_tks_must_not_share_premul_cache() {
+    let mut a = Tk::new();
+    let root_a = a.root();
+    let cv_a = Canvas::new(&mut a, root_a, 64.0, 64.0).unwrap();
+    a.pack(cv_a, Default::default());
+    let green = solid_rgba(32, 32, 20, 200, 20, 255);
+    a.canvas_create_image_rgba(cv_a, 0.0, 0.0, 32.0, 32.0, 32, 32, &green, false)
+        .unwrap();
+    let pa = a.render_to_pixmap(160, 120).unwrap();
+    let ra = a.widget_rect(cv_a).unwrap();
+    let xa = ((ra.x + 16.0).floor() as i32).clamp(0, pa.width() as i32 - 1) as u32;
+    let ya = ((ra.y + 16.0).floor() as i32).clamp(0, pa.height() as i32 - 1) as u32;
+    assert_eq!(pixel(&pa, xa, ya), [20, 200, 20, 255]);
+
+    let mut b = Tk::new();
+    let root_b = b.root();
+    let cv_b = Canvas::new(&mut b, root_b, 64.0, 64.0).unwrap();
+    assert_eq!(
+        cv_b.index, cv_a.index,
+        "fresh Tk canvases should share arena index 1"
+    );
+    assert_eq!(
+        cv_b.gen, cv_a.gen,
+        "fresh Tk canvases should both start at gen 0"
+    );
+    b.pack(cv_b, Default::default());
+    let blue = solid_rgba(32, 32, 20, 20, 200, 255);
+    b.canvas_create_image_rgba(cv_b, 0.0, 0.0, 32.0, 32.0, 32, 32, &blue, false)
+        .unwrap();
+    let pb = b.render_to_pixmap(160, 120).unwrap();
+    let rb = b.widget_rect(cv_b).unwrap();
+    let xb = ((rb.x + 16.0).floor() as i32).clamp(0, pb.width() as i32 - 1) as u32;
+    let yb = ((rb.y + 16.0).floor() as i32).clamp(0, pb.height() as i32 - 1) as u32;
+    let p2 = pixel(&pb, xb, yb);
+    assert_ne!(
+        p2,
+        [20, 200, 20, 255],
+        "stale green from the other live Tk at ({xb},{yb})"
+    );
+    assert_eq!(
+        p2,
+        [20, 20, 200, 255],
+        "expected blue center on Tk B, got {p2:?} at ({xb},{yb})"
+    );
+}
+
+/// Dropping a `Tk` without `destroy` must purge its premul entries. A new `Tk`
+/// that aliases the same arena index and gen must not paint the dropped pixels.
+#[test]
+fn dropped_tk_must_not_leave_stale_premul() {
+    {
+        let mut a = Tk::new();
+        let root = a.root();
+        let cv = Canvas::new(&mut a, root, 64.0, 64.0).unwrap();
+        assert_eq!(cv.index, 1);
+        assert_eq!(cv.gen, 0);
+        a.pack(cv, Default::default());
+        let green = solid_rgba(32, 32, 20, 200, 20, 255);
+        a.canvas_create_image_rgba(cv, 0.0, 0.0, 32.0, 32.0, 32, 32, &green, false)
+            .unwrap();
+        let pa = a.render_to_pixmap(160, 120).unwrap();
+        let ra = a.widget_rect(cv).unwrap();
+        let xa = ((ra.x + 16.0).floor() as i32).clamp(0, pa.width() as i32 - 1) as u32;
+        let ya = ((ra.y + 16.0).floor() as i32).clamp(0, pa.height() as i32 - 1) as u32;
+        assert_eq!(pixel(&pa, xa, ya), [20, 200, 20, 255]);
+    }
+
+    let mut b = Tk::new();
+    let root = b.root();
+    let cv = Canvas::new(&mut b, root, 64.0, 64.0).unwrap();
+    assert_eq!(cv.index, 1, "new Tk canvas should alias index 1");
+    assert_eq!(cv.gen, 0, "new Tk canvas should start at gen 0");
+    b.pack(cv, Default::default());
+    let blue = solid_rgba(32, 32, 20, 20, 200, 255);
+    b.canvas_create_image_rgba(cv, 0.0, 0.0, 32.0, 32.0, 32, 32, &blue, false)
+        .unwrap();
+    let pb = b.render_to_pixmap(160, 120).unwrap();
+    let rb = b.widget_rect(cv).unwrap();
+    let xb = ((rb.x + 16.0).floor() as i32).clamp(0, pb.width() as i32 - 1) as u32;
+    let yb = ((rb.y + 16.0).floor() as i32).clamp(0, pb.height() as i32 - 1) as u32;
+    let p2 = pixel(&pb, xb, yb);
+    assert_ne!(
+        p2,
+        [20, 200, 20, 255],
+        "stale green from a Tk dropped without destroy at ({xb},{yb})"
+    );
+    assert_eq!(
+        p2,
+        [20, 20, 200, 255],
+        "expected blue center after Tk drop, got {p2:?} at ({xb},{yb})"
+    );
+}

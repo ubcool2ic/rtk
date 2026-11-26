@@ -83,12 +83,13 @@ pub(super) struct InputPaint<'a> {
 /// Identity of a source RGBA buffer used to look up a premultiplied copy.
 ///
 /// `Slot` is for canvas image items and Image widgets (invalidated by
-/// `content_rev` and `WidgetId.gen`). `Hash` is a leftover path that also
-/// memcmps the source bytes so a 64-bit FNV collision cannot return the
-/// wrong pixels.
+/// `content_rev`, `WidgetId.gen`, and a per-`Tk` id). `Hash` is a leftover
+/// test path that also memcmps the source bytes so a 64-bit FNV collision
+/// cannot return the wrong pixels.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PremulKey {
     Slot {
+        tk: u64,
         widget: u32,
         gen: u32,
         index: u32,
@@ -96,6 +97,7 @@ enum PremulKey {
         w: u32,
         h: u32,
     },
+    #[cfg(test)]
     Hash {
         hash: u64,
         len: usize,
@@ -104,6 +106,7 @@ enum PremulKey {
     },
 }
 
+#[cfg(test)]
 fn hash_rgba(src: &[u8]) -> u64 {
     const OFFSET: u64 = 0xcbf29ce484222325;
     const PRIME: u64 = 0x100000001b3;
@@ -138,6 +141,7 @@ struct PremulEntry {
     key: PremulKey,
     premul: Arc<[u8]>,
     /// Source bytes, stored for `PremulKey::Hash` so a hash hit is memcmp'd.
+    #[cfg(test)]
     src: Option<Arc<[u8]>>,
 }
 
@@ -155,6 +159,7 @@ fn cached_premul(src: &[u8], key: PremulKey) -> Arc<[u8]> {
     PREMUL_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(pos) = cache.entries.iter().position(|e| e.key == key) {
+            #[cfg(test)]
             let src_ok = match key {
                 PremulKey::Slot { .. } => true,
                 PremulKey::Hash { .. } => cache.entries[pos]
@@ -162,12 +167,15 @@ fn cached_premul(src: &[u8], key: PremulKey) -> Arc<[u8]> {
                     .as_deref()
                     .is_some_and(|stored| stored == src),
             };
+            #[cfg(not(test))]
+            let src_ok = true;
             if src_ok {
                 return Arc::clone(&cache.entries[pos].premul);
             }
             cache.entries.remove(pos);
         }
         let data = premultiply_rgba(src);
+        #[cfg(test)]
         let src_arc = match key {
             PremulKey::Slot { .. } => None,
             PremulKey::Hash { .. } => Some(Arc::from(src)),
@@ -178,12 +186,14 @@ fn cached_premul(src: &[u8], key: PremulKey) -> Arc<[u8]> {
         cache.entries.push(PremulEntry {
             key,
             premul: Arc::clone(&data),
+            #[cfg(test)]
             src: src_arc,
         });
         data
     })
 }
 
+#[cfg(test)]
 fn cached_premul_hashed(src: &[u8], w: u32, h: u32) -> Arc<[u8]> {
     cached_premul(
         src,
@@ -196,17 +206,46 @@ fn cached_premul_hashed(src: &[u8], w: u32, h: u32) -> Arc<[u8]> {
     )
 }
 
-/// Drops premul-cache entries tagged with a destroyed widget `(index, gen)`.
-pub(crate) fn purge_premul_cache(index: u32, gen: u32) {
+/// Drops premul-cache entries tagged with a destroyed widget `(tk, index, gen)`.
+pub(crate) fn purge_premul_cache(tk: u64, index: u32, gen: u32) {
     PREMUL_CACHE.with(|cache| {
         cache.borrow_mut().entries.retain(|e| {
             !matches!(
                 e.key,
                 PremulKey::Slot {
+                    tk: t,
                     widget,
                     gen: g,
                     ..
-                } if widget == index && g == gen
+                } if t == tk && widget == index && g == gen
+            )
+        });
+    });
+}
+
+/// Drops every Slot entry belonging to a `Tk` instance (used from `Drop`).
+pub(crate) fn purge_premul_tk(tk: u64) {
+    PREMUL_CACHE.with(|cache| {
+        cache
+            .borrow_mut()
+            .entries
+            .retain(|e| !matches!(e.key, PremulKey::Slot { tk: t, .. } if t == tk));
+    });
+}
+
+/// Drops Slot entries for one canvas/image item, used when `content_rev` wraps.
+pub(crate) fn purge_premul_slot(tk: u64, index: u32, gen: u32, item: u32) {
+    PREMUL_CACHE.with(|cache| {
+        cache.borrow_mut().entries.retain(|e| {
+            !matches!(
+                e.key,
+                PremulKey::Slot {
+                    tk: t,
+                    widget,
+                    gen: g,
+                    index: i,
+                    ..
+                } if t == tk && widget == index && g == gen && i == item
             )
         });
     });
@@ -286,7 +325,10 @@ fn paint_cmd_from_kind(item: CanvasItemKind) -> PaintCmd {
             ih: h,
             src_w,
             src_h,
-            premul: cached_premul_hashed(&rgba, src_w, src_h),
+            // This leftover path has no content_rev (Chart does not emit
+            // Image items). Premultiply without the Hash cache so a source
+            // Arc is not stored; live Image/Canvas paint uses PremulKey::Slot.
+            premul: premultiply_rgba(&rgba),
             smooth,
         },
         other => PaintCmd::Other(other),
@@ -2000,6 +2042,7 @@ impl Tk {
                                     premul: cached_premul(
                                         spec.rgba.as_slice(),
                                         PremulKey::Slot {
+                                            tk: self.tk_id,
                                             widget: id.index,
                                             gen: id.gen,
                                             index: 0,
@@ -2044,6 +2087,7 @@ impl Tk {
                                             premul: cached_premul(
                                                 rgba,
                                                 PremulKey::Slot {
+                                                    tk: self.tk_id,
                                                     widget: id.index,
                                                     gen: id.gen,
                                                     index: i as u32,
@@ -2909,6 +2953,7 @@ mod premul_and_mask_tests {
             px.copy_from_slice(&[10, 220, 10, 255]);
         }
         let key_r1 = PremulKey::Slot {
+            tk: 1,
             widget: 42,
             gen: 1,
             index: 0,
@@ -2925,6 +2970,7 @@ mod premul_and_mask_tests {
             px.copy_from_slice(&[10, 10, 230, 255]);
         }
         let key_r2 = PremulKey::Slot {
+            tk: 1,
             widget: 42,
             gen: 1,
             index: 0,
@@ -2942,6 +2988,7 @@ mod premul_and_mask_tests {
         let green = [20u8, 200, 20, 255];
         let blue = [20u8, 20, 200, 255];
         let k_gen1 = PremulKey::Slot {
+            tk: 1,
             widget: 42,
             gen: 1,
             index: 0,
@@ -2950,6 +2997,7 @@ mod premul_and_mask_tests {
             h: 1,
         };
         let k_gen2 = PremulKey::Slot {
+            tk: 1,
             widget: 42,
             gen: 2,
             index: 0,
@@ -2971,6 +3019,7 @@ mod premul_and_mask_tests {
         let px_c = [70u8, 80, 90, 255];
         let px_new = [200u8, 210, 220, 255];
         let k_target = PremulKey::Slot {
+            tk: 1,
             widget: 7,
             gen: 3,
             index: 0,
@@ -2979,6 +3028,7 @@ mod premul_and_mask_tests {
             h: 1,
         };
         let k_other_gen = PremulKey::Slot {
+            tk: 1,
             widget: 7,
             gen: 4,
             index: 0,
@@ -2987,6 +3037,7 @@ mod premul_and_mask_tests {
             h: 1,
         };
         let k_other_widget = PremulKey::Slot {
+            tk: 1,
             widget: 8,
             gen: 3,
             index: 0,
@@ -2997,7 +3048,7 @@ mod premul_and_mask_tests {
         let t0 = cached_premul(&px_a, k_target);
         let og = cached_premul(&px_b, k_other_gen);
         let ow = cached_premul(&px_c, k_other_widget);
-        purge_premul_cache(7, 3);
+        purge_premul_cache(1, 7, 3);
         let t0_after = cached_premul(&px_new, k_target);
         assert!(!Arc::ptr_eq(&t0, &t0_after));
         assert_eq!(&t0_after[0..4], &px_new);
@@ -3024,5 +3075,100 @@ mod premul_and_mask_tests {
         assert_eq!(&p2[0..4], &src2);
         let p2_hit = cached_premul(&src2, colliding);
         assert!(Arc::ptr_eq(&p2, &p2_hit));
+    }
+
+    #[test]
+    fn slot_premul_cache_misses_on_tk_id() {
+        let green = [20u8, 200, 20, 255];
+        let blue = [20u8, 20, 200, 255];
+        let k_a = PremulKey::Slot {
+            tk: 10,
+            widget: 1,
+            gen: 0,
+            index: 0,
+            rev: 1,
+            w: 1,
+            h: 1,
+        };
+        let k_b = PremulKey::Slot {
+            tk: 11,
+            widget: 1,
+            gen: 0,
+            index: 0,
+            rev: 1,
+            w: 1,
+            h: 1,
+        };
+        let p1 = cached_premul(&green, k_a);
+        let p2 = cached_premul(&blue, k_b);
+        assert!(!Arc::ptr_eq(&p1, &p2));
+        assert_eq!(&p1[0..4], &[20, 200, 20, 255]);
+        assert_eq!(&p2[0..4], &[20, 20, 200, 255]);
+    }
+
+    #[test]
+    fn purge_premul_tk_drops_only_that_tk() {
+        let px_a = [10u8, 20, 30, 255];
+        let px_b = [40u8, 50, 60, 255];
+        let px_new = [200u8, 210, 220, 255];
+        let k_a = PremulKey::Slot {
+            tk: 10,
+            widget: 1,
+            gen: 0,
+            index: 0,
+            rev: 1,
+            w: 1,
+            h: 1,
+        };
+        let k_b = PremulKey::Slot {
+            tk: 11,
+            widget: 1,
+            gen: 0,
+            index: 0,
+            rev: 1,
+            w: 1,
+            h: 1,
+        };
+        let a0 = cached_premul(&px_a, k_a);
+        let b0 = cached_premul(&px_b, k_b);
+        purge_premul_tk(10);
+        let a1 = cached_premul(&px_new, k_a);
+        let b1 = cached_premul(&px_new, k_b);
+        assert!(!Arc::ptr_eq(&a0, &a1));
+        assert_eq!(&a1[0..4], &px_new);
+        assert!(Arc::ptr_eq(&b0, &b1));
+    }
+
+    #[test]
+    fn purge_premul_slot_drops_only_that_item() {
+        let px_a = [10u8, 20, 30, 255];
+        let px_b = [40u8, 50, 60, 255];
+        let px_new = [200u8, 210, 220, 255];
+        let k_item = PremulKey::Slot {
+            tk: 1,
+            widget: 7,
+            gen: 3,
+            index: 2,
+            rev: u64::MAX,
+            w: 1,
+            h: 1,
+        };
+        let k_other = PremulKey::Slot {
+            tk: 1,
+            widget: 7,
+            gen: 3,
+            index: 3,
+            rev: u64::MAX,
+            w: 1,
+            h: 1,
+        };
+        let a0 = cached_premul(&px_a, k_item);
+        let b0 = cached_premul(&px_b, k_other);
+        purge_premul_slot(1, 7, 3, 2);
+        let a1 = cached_premul(&px_new, k_item);
+        let b1 = cached_premul(&px_new, k_other);
+        assert!(!Arc::ptr_eq(&a0, &a1));
+        assert_eq!(&a1[0..4], &px_new);
+        assert!(Arc::ptr_eq(&b0, &b1));
     }
 }

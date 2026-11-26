@@ -445,3 +445,18 @@ Job cap still $2.50 from this job's own generation ids ($0.367548 already used i
 - Account `total_usage` immediately before this batch's paid call (~3:14 AM ET): **604.252412236**.
 - Account `total_usage` after (credits check 3:27 AM ET): **613.104866236**. Own spend this batch is $0.098074; the rest of the account delta is other bots on the shared account. The 605.00 stop line was already exceeded by the time of the post-call check; no further paid calls were made after that reading.
 - This job's own generation-id sum for the r2 fix batch: **$0.098074**. Combined with the Reviewer1 r1 fix batch ($0.367548) and the earlier WP2 implementation round ($0.000000): **$0.465622**. Still under the $2.50 job cap.
+
+### Reviewer1 PR #13 r3 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.465622 already used after the r1+r2 fix batches). Shared account stop line raised to 620.00. Times are America/Indianapolis (ET).
+
+**No paid model call was made.** Account `total_usage` was already **624.706070236** at the first credits check (4:17 AM ET), which is above the 620.00 stop line, so Carbon (`google/gemini-4-carbon`) was not invoked. The r3 must-fix and both nits were applied to the real Tk/Canvas/Image APIs from Reviewer1's report and verified with cargo test / clippy / release. No generation id.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 4:17 AM ET | — | — | WP2 PR#13 r3 must-fix (Tk id in Slot + Drop purge, wrap purge, leftover Image path); skipped paid Carbon because account stop line already exceeded | 0.000000 | measured | no call (total_usage 624.706070236 > 620.00) |
+| | | | **this r3 fix-batch own total** | **0.000000** | measured | |
+
+- Account `total_usage` at first check of this batch (4:17 AM ET): **624.706070236**.
+- Account `total_usage` after (credits check 4:25 AM ET): **624.706070236** (unchanged; no paid call).
+- This job's own generation-id sum for the r3 fix batch: **$0.000000**. Combined with the r1 fix batch ($0.367548) and the r2 fix batch ($0.098074): **$0.465622**. Still under the $2.50 job cap.

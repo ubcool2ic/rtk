@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use winit::event_loop::EventLoopProxy;
@@ -25,6 +26,11 @@ use crate::widgets::{
 };
 use crate::{Opt, RtkError, WidgetId};
 
+static NEXT_TK_ID: AtomicU64 = AtomicU64::new(1);
+
+fn alloc_tk_id() -> u64 {
+    NEXT_TK_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Active IME composition: target widget, preedit text and byte cursor range.
 pub(crate) type ImePreedit = (WidgetId, String, Option<(usize, usize)>);
@@ -203,6 +209,8 @@ const WHEEL_LINE_PX: f32 = 48.0;
 /// constructors, then either run the real window loop or drive it headlessly
 /// with the `sim_*` methods.
 pub struct Tk {
+    /// Unique id of this toolkit instance, used to key and purge the TLS premul cache.
+    pub(crate) tk_id: u64,
     nodes: Vec<WidgetSlot>,
     free: Vec<u32>,
     pub(crate) vars: Vec<VarSlot>,
@@ -309,12 +317,19 @@ impl Default for Tk {
     }
 }
 
+impl Drop for Tk {
+    fn drop(&mut self) {
+        crate::render::purge_premul_tk(self.tk_id);
+    }
+}
+
 impl Tk {
     /// Creates a toolkit with a root `Frame`, the Light theme and a 640×480 viewport.
     pub fn new() -> Self {
         let _ = crate::app::START.get_or_init(std::time::Instant::now);
         let style_engine = StyleEngine::new(Tokens::light());
         Self {
+            tk_id: alloc_tk_id(),
             nodes: vec![WidgetSlot {
                 gen: 0,
                 node: Some(WidgetNode::new(Kind::Frame, None, String::new())),

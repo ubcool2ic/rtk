@@ -29,6 +29,7 @@ impl Tk {
         if expected != Some(rgba.len()) {
             return false;
         }
+        let tk_id = self.tk_id;
         let Some(node) = self.node_mut(id) else {
             return false;
         };
@@ -45,6 +46,13 @@ impl Tk {
             .as_deref()
             .map(|d| d.content_rev.wrapping_add(1))
             .unwrap_or(1);
+        if node
+            .image_data
+            .as_deref()
+            .is_some_and(|d| content_rev < d.content_rev)
+        {
+            crate::render::purge_premul_slot(tk_id, id.index, id.gen, 0);
+        }
         node.image_data = Some(Box::new(ImageData {
             source: ImageSource::Rgba {
                 w,
@@ -107,6 +115,13 @@ impl Tk {
             .as_deref()
             .map(|d| d.content_rev.wrapping_add(1))
             .unwrap_or(1);
+        if node
+            .image_data
+            .as_deref()
+            .is_some_and(|d| content_rev < d.content_rev)
+        {
+            crate::render::purge_premul_slot(self.tk_id, id.index, id.gen, 0);
+        }
         let Some(node) = self.node_mut(id) else {
             return false;
         };
@@ -172,7 +187,7 @@ impl Tk {
         self.dirty = true;
         // Drop this live widget's Slot entries so a later set_rgba, which
         // starts again at content_rev 1, cannot reuse the previous pixels.
-        crate::render::purge_premul_cache(id.index, id.gen);
+        crate::render::purge_premul_cache(self.tk_id, id.index, id.gen);
         true
     }
 
