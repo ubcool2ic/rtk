@@ -7,8 +7,8 @@ use std::rc::Rc;
 
 use rtk::testing::compare_pixmaps;
 use rtk::{
-    Button, Canvas, Entry, Frame, FrameDamage, Label, Rect, Spinbox, Table, Text, Tk, TreeView,
-    WidgetId,
+    Button, Canvas, Entry, Frame, FrameDamage, Key, Label, Rect, Spinbox, Table, Text, Tk,
+    TreeView, WidgetId,
 };
 use tiny_skia::Pixmap;
 
@@ -357,12 +357,10 @@ fn table_and_tree_visible_rows_render() {
 }
 
 /// `Kind::has_command` used to omit Spinbox, so `set_command` returned false
-/// and never stored the callback. Wiring is the WP2 half of this; WP1 PR #12
-/// calls `run_command` from events.rs on arrow keys/clicks (and added
-/// `spinbox_on_change` as a workaround that writes `node.command` directly).
-/// This test checks the widgets.rs side only and does not click the widget,
-/// because this branch does not include the events.rs `run_command` calls.
-/// (Extended after merging origin/main, which has those event hooks.)
+/// and never stored the callback. After merging WP1, `run_command` is invoked
+/// from events.rs on arrow keys/clicks; `spinbox_on_change` writes the same
+/// `node.command` slot (and delegates to `set_command` now that has_command
+/// includes Spinbox).
 #[test]
 fn spinbox_set_command_wires() {
     let mut tk = Tk::new();
@@ -387,5 +385,80 @@ fn spinbox_set_command_wires() {
         hits.get(),
         0,
         "set_command must not run the callback when installing it"
+    );
+}
+
+/// A command installed with `set_command` must fire on arrow keys and the
+/// on-widget arrows. Installing `spinbox_on_change` as well must replace the
+/// callback, not stack a second fire.
+#[test]
+fn spinbox_set_command_fires_on_key_without_double_fire() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let var = tk.int_var(5);
+    let spin = Spinbox::new(&mut tk, root, 0, 10, var).unwrap();
+    tk.pack(spin, Default::default());
+    let via_set = Rc::new(Cell::new(0));
+    let via_change = Rc::new(Cell::new(0));
+    let h = via_set.clone();
+    assert!(
+        tk.set_command(spin, move |_| h.set(h.get() + 1)),
+        "set_command must accept a Spinbox"
+    );
+    tk.render_frame(400, 200).unwrap();
+    let r = tk.widget_rect(spin).unwrap();
+    tk.sim_click(r.x + r.width * 0.3, r.y + r.height * 0.5);
+
+    tk.sim_key(Key::Up);
+    assert_eq!(var.get(&tk), Some(6));
+    assert_eq!(
+        via_set.get(),
+        1,
+        "set_command callback must fire on Key::Up"
+    );
+    tk.sim_key(Key::Down);
+    assert_eq!(var.get(&tk), Some(5));
+    assert_eq!(
+        via_set.get(),
+        2,
+        "set_command callback must fire on Key::Down"
+    );
+    tk.sim_click(r.x + r.width - 5.0, r.y + r.height * 0.25);
+    assert_eq!(var.get(&tk), Some(6));
+    assert_eq!(
+        via_set.get(),
+        3,
+        "set_command callback must fire on an up-arrow click"
+    );
+
+    // Last setter wins; the two APIs share one slot and must not both run.
+    let h2 = via_change.clone();
+    assert!(tk.spinbox_on_change(spin, move |_| h2.set(h2.get() + 1)));
+    tk.sim_key(Key::Up);
+    assert_eq!(var.get(&tk), Some(7));
+    assert_eq!(
+        via_set.get(),
+        3,
+        "the replaced set_command callback must not fire again"
+    );
+    assert_eq!(
+        via_change.get(),
+        1,
+        "spinbox_on_change must fire exactly once after replacing set_command"
+    );
+
+    let h3 = via_set.clone();
+    assert!(tk.set_command(spin, move |_| h3.set(h3.get() + 1)));
+    tk.sim_key(Key::Down);
+    assert_eq!(var.get(&tk), Some(6));
+    assert_eq!(
+        via_change.get(),
+        1,
+        "the replaced spinbox_on_change callback must not fire again"
+    );
+    assert_eq!(
+        via_set.get(),
+        4,
+        "set_command after spinbox_on_change must fire exactly once (no double-fire)"
     );
 }
