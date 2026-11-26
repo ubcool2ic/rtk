@@ -475,6 +475,33 @@ Job cap still $2.50 from this job's own generation ids ($0.465622 already used).
 - Account stop line 620.00 was already exceeded before this batch; no credits lookup or paid call was made.
 - This job's own generation-id sum is unchanged: **$0.465622** (r1 $0.367548 + r2 $0.098074 + r3 $0 + r4 $0). Still under the $2.50 job cap.
 
+## WP3 Style/theme (branch fix/wp3-style, Reviewer2)
+
+Job cap $2.50 from this job's own generation ids. Account stop line 636.00 (backstop from 630.92 at 11:51 AM ET). Times are America/Indianapolis (ET).
+
+Account `total_usage` at first job check: **630.969073236** (11:54 AM ET). Immediately before the first paid attempt: **631.061091236**. The wrapper later warned that the account balance was **$8.87** (credits 640.00 − usage 631.13).
+
+Kimi (`moonshotai/kimi-k3.1-pro`) was required for this job. `user-OpenRouterAPI` `send-message` timed out with no generation id (MCP error -32001). The same prompt was then sent with `/workspace/bin/openrouter-call` (stream, id captured from headers). That call returned empty (`finish_reason=length`, all reasoning). Fixes, tests, and golden re-bless were finished by hand. No further paid call.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 ~12:00 PM ET | moonshotai/kimi-k3.1-pro | wp3-style-theme-fixes (MCP send-message) | — | — | — | unaccounted (may have been billed) | (id lost) | client timeout, no generation id; shared-account `total_usage` rose 631.061091236 → 631.125459968 in this window (may include other bots) |
+| 2026-11-26 12:01 PM ET | moonshotai/kimi-k3.1-pro | wp3-style-theme-fixes | 4511 (native 4265; 64 cached) | 17663 billed / 16384 native (17663 reasoning, 0 content) | 0.138685583 | measured | gen-1795712488-MxU5FLpxcR6s61HAGYTC | empty (finish=length); fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP3) | Implemented B4 inheritance order, B5 disabled-map rebuild with user-override preserve, B19 Switch CHECKED, B21 CSS validation, P2 `lookup_state` no-alloc map keys, L1 `unload_image`/`update_image_rgba`. Re-blessed `tristate_dark_{1,2}x` and `tristate_highcontrast_{1,2}x` (Tyler re-approved disabled-text Dark/HighContrast). Also re-blessed all six `m011_modal_*` goldens (Tyler is deciding whether to keep them). Verified against the light 1x/2x golden diffs: the dialog title becomes Subheading 16px/700 (`src/dialog.rs:209`), not Heading 22px/700; the accent Yes button turns white/bold and gets wider; the No button shifts; the body moves down 1 logical px and the buttons about 1.5 logical px (3 device px at 2x; 1 px at 1x from rounding). No resolved-style cache (would need a `Tk` field in `src/tk/mod.rs`, out of scope). | | 0.00000 | | | |
+| | | **own measured total** | | | **0.138685583** | | | |
+
+- Account `total_usage` at end (12:15 PM ET): **631.413208735**. Own measured generation-id sum: **$0.138685583**. Stop line 636.00 was not reached.
+
+Reviewer1 leftovers batch (no musts on #14 at a040456). Kimi via `user-OpenRouterAPI` `send-message` again returned empty (`finish_reason=length`, all reasoning). Fixes finished by hand. m011 goldens were not retouched. Did not merge `main` (N5: leave any SPEND.md tail conflict with #15 to whichever PR merges second).
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 12:35 PM ET | moonshotai/kimi-k3.1-pro | wp3-r1-leftovers (MCP send-message) | 741 (native 741; billed prompt 688) | 8192 native / 8525 billed (8525 reasoning, 0 content) | 0.069007124 | measured | gen-1795714510-gIJir8HXzvXqFetZPaQb | empty (finish=length); leftovers finished by hand |
+| 2026-11-26 | note | hand glue (WP3 r1 leftovers) | S2: re-merge all `user_state_maps` at end of `rebuild_theme_defaults`; test `user_hover_map_survives_theme_change`. N1: reject out-of-range transition durations; unify `s` into `to_ms`. N2: rename cache test (no cache exists). N3: `image_unload_and_update` now asserts rendered pixels. N4: relabel timed-out MCP row. S1: correct m011 description in this file and the PR body. | | 0.00000 | | | |
+| | | **own measured total** | | | **0.207692707** | | | |
+
+- Account `total_usage` after the leftovers Kimi call (12:36 PM ET): **631.765117859**. Own measured generation-id sum: **$0.207692707**. Stop line 636.00 was not reached.
+
 ### WP4 layout (2026-11-26)
 
 New $2.50 job cap from this job's own generation ids. Shared account stop line is 636.00. Model: `moonshotai/kimi-k3.1-pro`. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement).
