@@ -548,8 +548,12 @@ pub struct StyleEngine {
     tokens: Tokens,
     /// Base styles registered via configure, keyed by style name (e.g. "TButton", "Accent.TButton")
     styles: BTreeMap<String, StyleSpec>,
-    /// State maps: (style_name, state_bitmask) -> StyleSpec
-    state_maps: BTreeMap<(String, u8), StyleSpec>,
+    /// State maps keyed by style name, then state bitmask, so lookups
+    /// can borrow the name as `&str` without allocating.
+    state_maps: BTreeMap<String, BTreeMap<u8, StyleSpec>>,
+    /// User/stylesheet state specs, re-applied after a built-in rebuild so
+    /// theme changes do not drop `style_map` / stylesheet overrides.
+    user_state_maps: BTreeMap<String, BTreeMap<u8, StyleSpec>>,
 }
 
 impl Default for StyleEngine {
@@ -566,6 +570,7 @@ impl StyleEngine {
             tokens,
             styles: BTreeMap::new(),
             state_maps: BTreeMap::new(),
+            user_state_maps: BTreeMap::new(),
         };
         engine.rebuild_theme_defaults();
         engine
@@ -591,8 +596,16 @@ impl StyleEngine {
     /// Merges `spec` into the style for `name` in the given interaction `state`.
     pub fn map(&mut self, name: impl Into<String>, state: State, spec: StyleSpec) {
         let name = name.into();
-        let existing = self.state_maps.entry((name, state.bits())).or_default();
+        let bits = state.bits();
+        let user = self.user_state_maps.entry(name.clone()).or_default().entry(bits).or_default();
+        merge_spec(user, &spec);
+        let existing = self.state_maps.entry(name).or_default().entry(bits).or_default();
         merge_spec(existing, &spec);
+    }
+
+    /// Inserts or replaces a built-in state spec for `name`.
+    fn put_state(&mut self, name: &str, bits: u8, spec: StyleSpec) {
+        self.state_maps.entry(name.to_string()).or_default().insert(bits, spec);
     }
 
     /// Rebuilds all built-in widget styles from the current tokens.
@@ -623,14 +636,14 @@ impl StyleEngine {
 
         // Hover TButton
         let hover_bg = blend(p.surface, p.fg, 0.06);
-        self.state_maps.insert(("TButton".into(), State::HOVER.bits()), StyleSpec {
+        self.put_state("TButton", State::HOVER.bits(), StyleSpec {
             bg: Some(hover_bg),
             ..Default::default()
         });
 
         // Pressed TButton
         let pressed_bg = blend(p.surface, p.fg, 0.12);
-        self.state_maps.insert(("TButton".into(), State::PRESSED.bits()), StyleSpec {
+        self.put_state("TButton", State::PRESSED.bits(), StyleSpec {
             bg: Some(pressed_bg),
             ..Default::default()
         });
@@ -655,11 +668,11 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(120),
         });
-        self.state_maps.insert(("Accent.TButton".into(), State::HOVER.bits()), StyleSpec {
+        self.put_state("Accent.TButton", State::HOVER.bits(), StyleSpec {
             bg: Some(accent_hover),
             ..Default::default()
         });
-        self.state_maps.insert(("Accent.TButton".into(), State::PRESSED.bits()), StyleSpec {
+        self.put_state("Accent.TButton", State::PRESSED.bits(), StyleSpec {
             bg: Some(accent_pressed),
             ..Default::default()
         });
@@ -718,12 +731,12 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(100),
         });
-        self.state_maps.insert(("Sidebar.TButton".into(), State::HOVER.bits()), StyleSpec {
+        self.put_state("Sidebar.TButton", State::HOVER.bits(), StyleSpec {
             bg: Some(p.surface2),
             ..Default::default()
         });
         let selected_bg = Color::rgba(p.accent.r, p.accent.g, p.accent.b, 51);
-        self.state_maps.insert(("Sidebar.TButton".into(), State::SELECTED.bits()), StyleSpec {
+        self.put_state("Sidebar.TButton", State::SELECTED.bits(), StyleSpec {
             bg: Some(selected_bg),
             fg: Some(p.accent),
             ..Default::default()
@@ -746,11 +759,11 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(100),
         });
-        self.state_maps.insert(("Ghost.TButton".into(), State::HOVER.bits()), StyleSpec {
+        self.put_state("Ghost.TButton", State::HOVER.bits(), StyleSpec {
             bg: Some(p.surface2),
             ..Default::default()
         });
-        self.state_maps.insert(("Ghost.TButton".into(), State::PRESSED.bits()), StyleSpec {
+        self.put_state("Ghost.TButton", State::PRESSED.bits(), StyleSpec {
             bg: Some(blend(p.surface2, p.fg, 0.1)),
             ..Default::default()
         });
@@ -892,7 +905,7 @@ impl StyleEngine {
             italic: Some(false),
             transition_ms: Some(120),
         });
-        self.state_maps.insert(("TEntry".into(), State::FOCUSED.bits()), StyleSpec {
+        self.put_state("TEntry", State::FOCUSED.bits(), StyleSpec {
             border_color: Some(p.focus),
             border_width: Some(if r.sm == 0.0 { 3.0 } else { 2.0 }),
             ..Default::default()
@@ -1143,19 +1156,18 @@ impl StyleEngine {
             self.styles.insert("TText".into(), entry.clone());
             self.styles.insert("TCombobox".into(), entry);
         }
-        if let Some(focus) = self.state_maps.get(&("TEntry".into(), State::FOCUSED.bits())).cloned() {
-            self.state_maps.insert(("TText".into(), State::FOCUSED.bits()), focus.clone());
-            self.state_maps.insert(("TCombobox".into(), State::FOCUSED.bits()), focus);
+        if let Some(focus) = self.lookup_state("TEntry", State::FOCUSED).cloned() {
+            self.put_state("TText", State::FOCUSED.bits(), focus.clone());
+            self.put_state("TCombobox", State::FOCUSED.bits(), focus);
         }
         // TDoubleSpinbox inherits every TSpinbox state map (focused/hover/...).
         let spinbox_states: Vec<(u8, StyleSpec)> = self
             .state_maps
-            .iter()
-            .filter(|((name, _), _)| name == "TSpinbox")
-            .map(|((_, bits), spec)| (*bits, spec.clone()))
-            .collect();
+            .get("TSpinbox")
+            .map(|m| m.iter().map(|(bits, spec)| (*bits, spec.clone())).collect())
+            .unwrap_or_default();
         for (bits, spec) in spinbox_states {
-            self.state_maps.insert(("TDoubleSpinbox".into(), bits), spec);
+            self.put_state("TDoubleSpinbox", bits, spec);
         }
         if let Some(frame) = self.styles.get("TFrame").cloned() {
             self.styles.insert("TNotebook".into(), frame.clone());
@@ -1167,14 +1179,18 @@ impl StyleEngine {
             "TListbox", "TSpinbox", "TProgressbar", "TText", "TCombobox", "TNotebook",
             "TSwitch", "TProgressRing", "TSlider", "TDoubleSpinbox", "TScrollArea",
         ] {
-            self.state_maps
-                .entry((class.into(), State::DISABLED.bits()))
-                .or_insert_with(|| StyleSpec {
-                    fg: Some(p.muted),
-                    opacity: Some(0.55),
-                    shadow: Some(None),
-                    ..Default::default()
-                });
+            let bits = State::DISABLED.bits();
+            let builtin = StyleSpec {
+                fg: Some(p.muted),
+                opacity: Some(0.55),
+                shadow: Some(None),
+                ..Default::default()
+            };
+            self.put_state(class, bits, builtin);
+            if let Some(user) = self.user_state_maps.get(class).and_then(|m| m.get(&bits)).cloned() {
+                let slot = self.state_maps.entry(class.to_string()).or_default().entry(bits).or_default();
+                merge_spec(slot, &user);
+            }
         }
     }
 
@@ -1185,7 +1201,7 @@ impl StyleEngine {
 
     /// Returns the style for `name` in the given interaction `state`, if any.
     pub fn lookup_state(&self, name: &str, state: State) -> Option<&StyleSpec> {
-        self.state_maps.get(&(name.to_string(), state.bits()))
+        self.state_maps.get(name).and_then(|m| m.get(&state.bits()))
     }
 }
 
@@ -1588,13 +1604,22 @@ fn parse_declaration(prop: &str, val: &str, spec: &mut StyleSpec, line: usize) -
             spec.italic = Some(val.eq_ignore_ascii_case("italic"));
         }
         "transition" | "transition-duration" => {
+            let to_ms = |raw: f32| -> Result<u32, StyleError> {
+                if !raw.is_finite() || raw < 0.0 {
+                    return Err(err("invalid transition"));
+                }
+                Ok(raw as u32)
+            };
             let ms = if let Some(stripped) = val.strip_suffix("ms") {
-                stripped.trim().parse::<u32>().map_err(|_| err("invalid transition"))?
+                to_ms(stripped.trim().parse::<f32>().map_err(|_| err("invalid transition"))?)?
             } else if let Some(stripped) = val.strip_suffix('s') {
                 let s = stripped.trim().parse::<f32>().map_err(|_| err("invalid transition"))?;
+                if !s.is_finite() || s < 0.0 {
+                    return Err(err("invalid transition"));
+                }
                 (s * 1000.0) as u32
             } else {
-                val.trim().parse::<u32>().map_err(|_| err("invalid transition"))?
+                to_ms(val.trim().parse::<f32>().map_err(|_| err("invalid transition"))?)?
             };
             spec.transition_ms = Some(ms);
         }
@@ -1627,7 +1652,7 @@ fn parse_shadow(val: &str) -> Option<Shadow> {
     let dx = parts[0].trim_end_matches("px").parse::<f32>().ok()?;
     let dy = parts[1].trim_end_matches("px").parse::<f32>().ok()?;
     let blur = parts[2].trim_end_matches("px").parse::<f32>().ok()?;
-    if !(dx.is_finite() && dy.is_finite() && blur.is_finite()) {
+    if !(dx.is_finite() && dy.is_finite() && blur.is_finite()) || blur < 0.0 {
         return None;
     }
     let color = if parts.len() >= 4 {
@@ -1804,9 +1829,11 @@ mod font_weight_tests {
                     assert!(SAFE.contains(&w), "theme {theme}: style {name} uses font weight {w}");
                 }
             }
-            for ((name, state), spec) in &engine.state_maps {
-                if let Some(w) = spec.font_weight {
-                    assert!(SAFE.contains(&w), "theme {theme}: style {name} state {state} uses font weight {w}");
+            for (name, states) in &engine.state_maps {
+                for (state, spec) in states {
+                    if let Some(w) = spec.font_weight {
+                        assert!(SAFE.contains(&w), "theme {theme}: style {name} state {state} uses font weight {w}");
+                    }
                 }
             }
             assert_eq!(engine.lookup("TButton").and_then(|s| s.font_weight), Some(400), "theme {theme}: TButton");

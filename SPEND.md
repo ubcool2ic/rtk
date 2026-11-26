@@ -474,3 +474,20 @@ Job cap still $2.50 from this job's own generation ids ($0.465622 already used).
 
 - Account stop line 620.00 was already exceeded before this batch; no credits lookup or paid call was made.
 - This job's own generation-id sum is unchanged: **$0.465622** (r1 $0.367548 + r2 $0.098074 + r3 $0 + r4 $0). Still under the $2.50 job cap.
+
+## WP3 Style/theme (branch fix/wp3-style, Reviewer2)
+
+Job cap $2.50 from this job's own generation ids. Account stop line 636.00 (backstop from 630.92 at 11:51 AM ET). Times are America/Indianapolis (ET).
+
+Account `total_usage` at first job check: **630.969073236** (11:54 AM ET). Immediately before the first paid attempt: **631.061091236**. The wrapper later warned that the account balance was **$8.87** (credits 640.00 − usage 631.13).
+
+Kimi (`moonshotai/kimi-k3.1-pro`) was required for this job. `user-OpenRouterAPI` `send-message` timed out with no generation id (MCP error -32001). The same prompt was then sent with `/workspace/bin/openrouter-call` (stream, id captured from headers). That call returned empty (`finish_reason=length`, all reasoning). Fixes, tests, and golden re-bless were finished by hand. No further paid call.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 ~12:00 PM ET | moonshotai/kimi-k3.1-pro | wp3-style-theme-fixes (MCP send-message) | — | — | — | estimate | (id lost) | client timeout, no generation id; shared-account `total_usage` rose 631.061091236 → 631.125459968 in this window (may include other bots) |
+| 2026-11-26 12:01 PM ET | moonshotai/kimi-k3.1-pro | wp3-style-theme-fixes | 4511 (native 4265; 64 cached) | 17663 billed / 16384 native (17663 reasoning, 0 content) | 0.138685583 | measured | gen-1795712488-MxU5FLpxcR6s61HAGYTC | empty (finish=length); fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP3) | Implemented B4 inheritance order, B5 disabled-map rebuild with user-override preserve, B19 Switch CHECKED, B21 CSS validation, P2 `lookup_state` no-alloc map keys, L1 `unload_image`/`update_image_rgba`. Re-blessed `tristate_dark_{1,2}x` and `tristate_highcontrast_{1,2}x` (Tyler re-approved disabled-text Dark/HighContrast). Also re-blessed all six `m011_modal_*` goldens: the B4 inheritance fix correctly lets the dialog title keep Heading 22px/700; the old goldens encoded the clobber bug. No resolved-style cache (would need a `Tk` field in `src/tk/mod.rs`, out of scope). | | 0.00000 | | | |
+| | | **own measured total** | | | **0.138685583** | | | |
+
+- Account `total_usage` at end (12:15 PM ET): **631.413208735**. Own measured generation-id sum: **$0.138685583**. Stop line 636.00 was not reached.
