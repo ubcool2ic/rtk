@@ -133,6 +133,12 @@ impl Tk {
 
     /// Recomputes requested sizes for the whole widget tree in bottom-up order.
     pub(crate) fn update_requested(&mut self) {
+        self.update_requested_with_insets(&mut Vec::new());
+    }
+
+    /// Measures requested sizes and records each node's resolved margin and
+    /// padding in `insets`, indexed by slot, so `layout` can reuse them.
+    fn update_requested_with_insets(&mut self, insets: &mut Vec<(crate::Edges, crate::Edges)>) {
         let mut order = Vec::new();
         let mut pending = vec![self.root()];
         while let Some(id) = pending.pop() {
@@ -157,6 +163,11 @@ impl Tk {
         for id in order.into_iter().rev() {
             let Some(node) = self.node(id) else { continue };
             let resolved = self.resolved_style(id).unwrap_or_default();
+            let idx = id.index as usize;
+            if insets.len() <= idx {
+                insets.resize(idx + 1, Default::default());
+            }
+            insets[idx] = (resolved.margin, resolved.padding);
             let node_snap = NodeSnapshot {
                 scale: node.scale,
                 range: node.range,
@@ -342,7 +353,8 @@ impl Tk {
 
     /// Measures and lays out the mapped widget tree in logical pixels.
     pub(crate) fn layout(&mut self) {
-        self.update_requested();
+        let mut insets = Vec::with_capacity(self.nodes.len());
+        self.update_requested_with_insets(&mut insets);
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
                 node.visible = false;
@@ -356,9 +368,9 @@ impl Tk {
         );
         let mut pending = vec![(self.root(), rect, rect)];
         while let Some((id, rect, parent_clip)) = pending.pop() {
-            let (margin, padding) = self
-                .resolved_style(id)
-                .map(|style| (style.margin, style.padding))
+            let (margin, padding) = insets
+                .get(id.index as usize)
+                .copied()
                 .unwrap_or_default();
             // The allocated `rect` already includes style margin in requested size.
             let boxed = rect.inset_edges(margin.left, margin.top, margin.right, margin.bottom);
@@ -406,9 +418,8 @@ impl Tk {
                     // horizontal scrollbar, preserve the full-width minimum:
                     // horizontal scrolling uses rect.width as its page size.
                     // Natural content requests may exceed either minimum.
-                    let vbar_w = self.scrollarea_vbar_width(id);
+                    let (vbar_w, has_hbar) = self.scrollarea_bar_geometry(id);
                     let viewport_w = (boxed.width - vbar_w).max(0.0);
-                    let has_hbar = self.scrollarea_has_hbar(id);
                     let min_width = if has_hbar { boxed.width } else { viewport_w };
                     let cw = requested.width.max(min_width);
                     let ch = requested.height.max(boxed.height);

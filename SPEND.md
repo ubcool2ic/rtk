@@ -528,3 +528,12 @@ Two paid Kimi calls were made. The first returned empty content (`finish=length`
 |---|---|---|---|---:|---|---|
 | 2026-11-26 12:51 PM ET | — | — | WP4 r1: drop P5; P11 rescan on incomplete cache; B9 notebook/scroll boxed; B10 place ignores padding; nits | 0.000000 | measured | no call (hand-written) |
 | | | | **this r1 fix-batch own total** | **0.000000** | measured | |
+
+### WP4 Reviewer1 r2 leftovers (2026-11-26)
+
+**No paid model call was made.** Should-fixes S1–S3 and nits N1–N2 were hand-written (reuse measured margin/padding, one bar lookup per area, prune dead LINKED_BARS on insert, drop the extra blank line, document the third-bar cache edge case). Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:16 PM ET | — | — | WP4 r2 leftovers: S1 style reuse, S2 one bar lookup, S3 prune on insert, N1/N2 | 0.000000 | measured | no call (hand-written) |
+| | | | **this r2 leftovers-batch own total** | **0.000000** | measured | |

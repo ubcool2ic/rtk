@@ -23,7 +23,6 @@ thread_local! {
     static LINKED_BARS: RefCell<LinkedBars> = RefCell::new(HashMap::new());
 }
 
-
 /// Constructor namespace for scrollable viewport frames.
 pub struct ScrollArea;
 
@@ -152,10 +151,7 @@ impl Tk {
                 node.scroll_target = Some(area);
             }
         }
-        let tk_id = self.tk_id;
-        LINKED_BARS.with(|map| {
-            map.borrow_mut().insert((tk_id, area), (vbar, hbar));
-        });
+        self.store_linked_bars(area, (vbar, hbar));
         self.dirty = true;
         true
     }
@@ -224,13 +220,10 @@ impl Tk {
     /// reserved width is the bar's laid-out width when available, falling back
     /// to its requested width (and finally to the 16 px default) before the
     /// first layout pass has run.
-    pub(crate) fn scrollarea_vbar_width(&self, area: WidgetId) -> f32 {
-        self.scrollarea_linked_bars(area).0.map_or(0.0, |id| self.scrollbar_reserved_width(id))
-    }
-
-    /// True when a horizontal scrollbar is attached to `area`.
-    pub(crate) fn scrollarea_has_hbar(&self, area: WidgetId) -> bool {
-        self.scrollarea_linked_bars(area).1.is_some()
+    /// Reserved vbar width and whether an hbar is attached, from one cache lookup.
+    pub(crate) fn scrollarea_bar_geometry(&self, area: WidgetId) -> (f32, bool) {
+        let (vbar, hbar) = self.scrollarea_linked_bars(area);
+        (vbar.map_or(0.0, |id| self.scrollbar_reserved_width(id)), hbar.is_some())
     }
 
     /// Returns `(vbar, hbar)` for `area`, using the sidecar cache when valid.
@@ -240,6 +233,12 @@ impl Tk {
     /// so a missing slot always triggers a rescan. Both-bar attach hits stay
     /// cache-only. When several vertical bars point at the same area, the scan
     /// keeps the widest (same as the pre-WP4 arena walk).
+    ///
+    /// If both cached bars are still valid, a later third bar (for example a
+    /// wider replacement vbar that still shares `scroll_target`) is not seen
+    /// until a cached bar becomes invalid. `scrollbar_link` cannot invalidate
+    /// this cache (scroll.rs is out of scope). Main always took the max over
+    /// every attached bar; this is an edge case.
     fn scrollarea_linked_bars(&self, area: WidgetId) -> (Option<WidgetId>, Option<WidgetId>) {
         let tk_id = self.tk_id;
         if !self.node(area).is_some_and(|n| n.kind == Kind::ScrollArea) {
@@ -259,10 +258,21 @@ impl Tk {
             }
         }
         let found = self.scan_scrollbars_for(area);
-        LINKED_BARS.with(|map| {
-            map.borrow_mut().insert((tk_id, area), found);
-        });
+        self.store_linked_bars(area, found);
         found
+    }
+
+    /// Records `bars` for `area` and drops this toolkit's entries whose area is
+    /// no longer a live ScrollArea.
+    fn store_linked_bars(&self, area: WidgetId, bars: (Option<WidgetId>, Option<WidgetId>)) {
+        let tk_id = self.tk_id;
+        LINKED_BARS.with(|map| {
+            let mut map = map.borrow_mut();
+            map.retain(|&(id, cached_area), _| {
+                id != tk_id || self.node(cached_area).is_some_and(|n| n.kind == Kind::ScrollArea)
+            });
+            map.insert((tk_id, area), bars);
+        });
     }
 
     fn is_attached_scrollbar(&self, id: WidgetId, area: WidgetId, horizontal: bool) -> bool {
