@@ -86,6 +86,21 @@ impl Rect {
         )
     }
 
+    /// Shrinks the rectangle by the given per-edge amounts (clamped so it never inverts).
+    pub fn inset_edges(self, left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        let rect = self.normalized();
+        let left = length(left).min(rect.width);
+        let right = length(right).min((rect.width - left).max(0.0));
+        let top = length(top).min(rect.height);
+        let bottom = length(bottom).min((rect.height - top).max(0.0));
+        Self::new(
+            rect.x + left,
+            rect.y + top,
+            rect.width - left - right,
+            rect.height - top - bottom,
+        )
+    }
+
     /// Returns the overlapping area of two rectangles (zero-sized if disjoint).
     pub fn intersection(self, other: Self) -> Self {
         let a = self.normalized();
@@ -802,5 +817,15 @@ mod legacy_tests {
             grid(Rect::new(0.0, 0.0, 50.0, 16.0), &[item], &[], &[])[0],
             Rect::new(5.0, 3.0, 40.0, 10.0)
         );
+    }
+
+    #[test]
+    fn inset_edges_is_asymmetric() {
+        let r = Rect::new(10.0, 20.0, 100.0, 80.0);
+        let i = r.inset_edges(4.0, 6.0, 8.0, 10.0);
+        assert_eq!(i.x, 14.0);
+        assert_eq!(i.y, 26.0);
+        assert_eq!(i.width, 88.0);
+        assert_eq!(i.height, 64.0);
     }
 }

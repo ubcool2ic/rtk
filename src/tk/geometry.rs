@@ -133,6 +133,12 @@ impl Tk {
 
     /// Recomputes requested sizes for the whole widget tree in bottom-up order.
     pub(crate) fn update_requested(&mut self) {
+        self.update_requested_with_insets(&mut Vec::new());
+    }
+
+    /// Measures requested sizes and records each node's resolved margin and
+    /// padding in `insets`, indexed by slot, so `layout` can reuse them.
+    fn update_requested_with_insets(&mut self, insets: &mut Vec<(crate::Edges, crate::Edges)>) {
         let mut order = Vec::new();
         let mut pending = vec![self.root()];
         while let Some(id) = pending.pop() {
@@ -157,6 +163,11 @@ impl Tk {
         for id in order.into_iter().rev() {
             let Some(node) = self.node(id) else { continue };
             let resolved = self.resolved_style(id).unwrap_or_default();
+            let idx = id.index as usize;
+            if insets.len() <= idx {
+                insets.resize(idx + 1, Default::default());
+            }
+            insets[idx] = (resolved.margin, resolved.padding);
             let node_snap = NodeSnapshot {
                 scale: node.scale,
                 range: node.range,
@@ -342,7 +353,8 @@ impl Tk {
 
     /// Measures and lays out the mapped widget tree in logical pixels.
     pub(crate) fn layout(&mut self) {
-        self.update_requested();
+        let mut insets = Vec::with_capacity(self.nodes.len());
+        self.update_requested_with_insets(&mut insets);
         for slot in &mut self.nodes {
             if let Some(node) = &mut slot.node {
                 node.visible = false;
@@ -356,19 +368,41 @@ impl Tk {
         );
         let mut pending = vec![(self.root(), rect, rect)];
         while let Some((id, rect, parent_clip)) = pending.pop() {
+            let (margin, padding) = insets
+                .get(id.index as usize)
+                .copied()
+                .unwrap_or_default();
+            // The allocated `rect` already includes style margin in requested size.
+            let boxed = rect.inset_edges(margin.left, margin.top, margin.right, margin.bottom);
             let Some(node) = self.node_mut(id) else { continue };
-            let clip = rect.within(parent_clip);
-            node.rect = rect;
+            let clip = boxed.within(parent_clip);
+            node.rect = boxed;
             node.clip = clip;
             node.visible = true;
-            let content = if node.parent.is_some() { rect.inset(2.0, 2.0) } else { rect };
+            let kind = node.kind;
+            let nested = node.parent.is_some();
+            // Frame: 2px border on nested frames (see update_requested), then padding.
+            // Other parented widgets keep the historical 2px inset.
+            // Pack/grid see Frame padding; place does not (tkinter place ignores ttk padding).
+            let after_border = if kind == Kind::Frame {
+                if nested { boxed.inset(2.0, 2.0) } else { boxed }
+            } else if nested {
+                boxed.inset(2.0, 2.0)
+            } else {
+                boxed
+            };
+            let content = if kind == Kind::Frame {
+                after_border.inset_edges(padding.left, padding.top, padding.right, padding.bottom)
+            } else {
+                after_border
+            };
             self.paint_order.push(id);
             let Some(node) = self.node(id) else { continue };
 
             if node.kind == Kind::Notebook {
                 let sel = node.notebook_selected;
                 if let Some(&(page_id, _)) = node.notebook_pages.get(sel) {
-                    let page_area = Rect::new(rect.x, rect.y + 32.0, rect.width, (rect.height - 32.0).max(0.0));
+                    let page_area = Rect::new(boxed.x, boxed.y + 32.0, boxed.width, (boxed.height - 32.0).max(0.0));
                     pending.push((page_id, page_area, page_area.within(clip)));
                 }
                 continue;
@@ -384,17 +418,12 @@ impl Tk {
                     // horizontal scrollbar, preserve the full-width minimum:
                     // horizontal scrolling uses rect.width as its page size.
                     // Natural content requests may exceed either minimum.
-                    let vbar_w = self.scrollarea_vbar_width(id);
-                    let viewport_w = (rect.width - vbar_w).max(0.0);
-                    let has_hbar = self.nodes.iter().filter_map(|slot| slot.node.as_ref()).any(|bar| {
-                        bar.kind == Kind::Scrollbar
-                            && bar.scroll_target == Some(id)
-                            && bar.inputs.as_ref().is_some_and(|state| state.scrollbar_horizontal)
-                    });
-                    let min_width = if has_hbar { rect.width } else { viewport_w };
+                    let (vbar_w, has_hbar) = self.scrollarea_bar_geometry(id);
+                    let viewport_w = (boxed.width - vbar_w).max(0.0);
+                    let min_width = if has_hbar { boxed.width } else { viewport_w };
                     let cw = requested.width.max(min_width);
-                    let ch = requested.height.max(rect.height);
-                    let content_rect = Rect::new(rect.x - ox, rect.y - oy, cw, ch);
+                    let ch = requested.height.max(boxed.height);
+                    let content_rect = Rect::new(boxed.x - ox, boxed.y - oy, cw, ch);
                     pending.push((content_id, content_rect, clip));
                 }
                 continue;
@@ -439,8 +468,8 @@ impl Tk {
             for child in place_children.into_iter().rev() {
                 let Some(cnode) = self.node(child) else { continue };
                 if let Some(Manager::Place(opts)) = cnode.manager {
-                    let prect = layout::place_rect(content, cnode.requested, opts);
-                    place_entries.push((child, prect, content.within(clip)));
+                    let prect = layout::place_rect(after_border, cnode.requested, opts);
+                    place_entries.push((child, prect, after_border.within(clip)));
                 }
             }
             pending.extend(place_entries);
@@ -493,7 +522,6 @@ impl Tk {
         self.dirty = true;
         self.layout();
     }
-
 
     /// Unmaps a widget managed by place (tkinter `place_forget`).
     pub fn place_forget(&mut self, id: WidgetId) -> bool {

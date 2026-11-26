@@ -12,6 +12,45 @@
 #[allow(unused_imports)]
 use super::*;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+/// Cached scrollbar ids for a ScrollArea, keyed by `(tk_id, area)`.
+type BarKey = (u64, WidgetId);
+type LinkedBars = HashMap<BarKey, (Option<WidgetId>, Option<WidgetId>)>;
+
+thread_local! {
+    static LINKED_BARS: RefCell<LinkedBars> = RefCell::new(HashMap::new());
+}
+
+/// Drops every `LINKED_BARS` entry belonging to a `Tk` instance (used from `Drop`).
+///
+/// Uses `try_with` and ignores `AccessError` so a host that stores `Tk` in
+/// its own `thread_local` does not panic if this runs during thread teardown
+/// after `LINKED_BARS` has already been destroyed.
+pub(crate) fn purge_scrollarea_bars_tk(tk: u64) {
+    let _ = LINKED_BARS.try_with(|map| {
+        map.borrow_mut().retain(|&(id, _), _| id != tk);
+    });
+}
+
+/// Drops `LINKED_BARS` entries for a destroyed widget `(tk, index, gen)`.
+///
+/// Removes a cache entry keyed by that widget as a ScrollArea, and any
+/// entry that cached it as a linked scrollbar.
+fn bars_cache_len_for(tk: u64) -> usize {
+    LINKED_BARS.with(|map| map.borrow().keys().filter(|(id, _)| *id == tk).count())
+}
+
+pub(crate) fn purge_scrollarea_bars_widget(tk: u64, index: u32, gen: u32) {
+    let _ = LINKED_BARS.try_with(|map| {
+        let gone = WidgetId { index, gen };
+        map.borrow_mut().retain(|&(id, area), bars| {
+            id != tk || (area != gone && bars.0 != Some(gone) && bars.1 != Some(gone))
+        });
+    });
+}
+
 /// Constructor namespace for scrollable viewport frames.
 pub struct ScrollArea;
 
@@ -140,6 +179,7 @@ impl Tk {
                 node.scroll_target = Some(area);
             }
         }
+        self.store_linked_bars(area, (vbar, hbar));
         self.dirty = true;
         true
     }
@@ -208,32 +248,128 @@ impl Tk {
     /// reserved width is the bar's laid-out width when available, falling back
     /// to its requested width (and finally to the 16 px default) before the
     /// first layout pass has run.
-    pub(crate) fn scrollarea_vbar_width(&self, area: WidgetId) -> f32 {
+    /// Reserved vbar width and whether an hbar is attached, from one cache lookup.
+    pub(crate) fn scrollarea_bar_geometry(&self, area: WidgetId) -> (f32, bool) {
+        let (vbar, hbar) = self.scrollarea_linked_bars(area);
+        (vbar.map_or(0.0, |id| self.scrollbar_reserved_width(id)), hbar.is_some())
+    }
+
+    /// Returns `(vbar, hbar)` for `area`, using the sidecar cache when valid.
+    ///
+    /// A cached `None` is not treated as "there is no bar": `scrollbar_link`
+    /// (in `scroll.rs`, out of this file's allow-list) can attach a bar later,
+    /// so a missing slot always triggers a rescan. Both-bar attach hits stay
+    /// cache-only. When several vertical bars point at the same area, the scan
+    /// keeps the widest (same as the pre-WP4 arena walk).
+    ///
+    /// If both cached bars are still valid, a later third bar (for example a
+    /// wider replacement vbar that still shares `scroll_target`) is not seen
+    /// until a cached bar becomes invalid. `scrollbar_link` cannot invalidate
+    /// this cache (scroll.rs is out of scope). Main always took the max over
+    /// every attached bar; this is an edge case.
+    fn scrollarea_linked_bars(&self, area: WidgetId) -> (Option<WidgetId>, Option<WidgetId>) {
+        let tk_id = self.tk_id;
         if !self.node(area).is_some_and(|n| n.kind == Kind::ScrollArea) {
-            return 0.0;
+            // Drop stale entries for a destroyed or reused id.
+            LINKED_BARS.with(|map| {
+                map.borrow_mut().remove(&(tk_id, area));
+            });
+            return (None, None);
         }
-        let mut width = 0.0_f32;
-        for slot in &self.nodes {
+        let cached = LINKED_BARS.with(|map| map.borrow().get(&(tk_id, area)).copied());
+        if let Some((vbar, hbar)) = cached {
+            let v = vbar.filter(|&id| self.is_attached_scrollbar(id, area, false));
+            let h = hbar.filter(|&id| self.is_attached_scrollbar(id, area, true));
+            // Only a fully populated, still-valid pair can skip the scan.
+            if v.is_some() && h.is_some() && v == vbar && h == hbar {
+                return (v, h);
+            }
+        }
+        let found = self.scan_scrollbars_for(area);
+        self.store_linked_bars(area, found);
+        found
+    }
+
+    /// Records `bars` for `area` and drops this toolkit's entries whose area is
+    /// no longer a live ScrollArea.
+    fn store_linked_bars(&self, area: WidgetId, bars: (Option<WidgetId>, Option<WidgetId>)) {
+        let tk_id = self.tk_id;
+        LINKED_BARS.with(|map| {
+            let mut map = map.borrow_mut();
+            map.retain(|&(id, cached_area), _| {
+                id != tk_id || self.node(cached_area).is_some_and(|n| n.kind == Kind::ScrollArea)
+            });
+            map.insert((tk_id, area), bars);
+        });
+    }
+
+    /// Toolkit identity used to key sidecar caches. Test hook.
+    #[doc(hidden)]
+    pub fn toolkit_id(&self) -> u64 {
+        self.tk_id
+    }
+
+    /// Number of `LINKED_BARS` entries for this toolkit. Test hook.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_len(&self) -> usize {
+        bars_cache_len_for(self.tk_id)
+    }
+
+    /// Number of `LINKED_BARS` entries for `tk_id`. Test hook for use after `Drop`.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_len_for(tk_id: u64) -> usize {
+        bars_cache_len_for(tk_id)
+    }
+
+    /// Whether `area` has a `LINKED_BARS` entry for this toolkit. Test hook.
+    #[doc(hidden)]
+    pub fn scrollarea_bars_cache_contains(&self, area: WidgetId) -> bool {
+        LINKED_BARS.with(|map| map.borrow().contains_key(&(self.tk_id, area)))
+    }
+
+    fn is_attached_scrollbar(&self, id: WidgetId, area: WidgetId, horizontal: bool) -> bool {
+        self.node(id).is_some_and(|bar| {
+            bar.kind == Kind::Scrollbar
+                && bar.scroll_target == Some(area)
+                && bar.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal) == horizontal
+        })
+    }
+
+    fn scrollbar_reserved_width(&self, id: WidgetId) -> f32 {
+        let Some(bar) = self.node(id) else { return 0.0 };
+        let laid_out = bar.rect.width;
+        let requested = bar.requested.width;
+        if laid_out > 0.0 {
+            laid_out
+        } else if requested > 0.0 {
+            requested
+        } else {
+            16.0
+        }
+    }
+
+    fn scan_scrollbars_for(&self, area: WidgetId) -> (Option<WidgetId>, Option<WidgetId>) {
+        let mut vbar = None;
+        let mut vbar_w = 0.0_f32;
+        let mut hbar = None;
+        for (index, slot) in self.nodes.iter().enumerate() {
             let Some(bar) = slot.node.as_ref() else { continue };
             if bar.kind != Kind::Scrollbar || bar.scroll_target != Some(area) {
                 continue;
             }
+            let id = WidgetId { index: index as u32, gen: slot.gen };
             let horizontal = bar.inputs.as_ref().is_some_and(|s| s.scrollbar_horizontal);
             if horizontal {
-                continue;
-            }
-            let laid_out = bar.rect.width;
-            let requested = bar.requested.width;
-            let candidate = if laid_out > 0.0 {
-                laid_out
-            } else if requested > 0.0 {
-                requested
+                hbar = Some(id);
             } else {
-                16.0
-            };
-            width = width.max(candidate);
+                let width = self.scrollbar_reserved_width(id);
+                if vbar.is_none() || width >= vbar_w {
+                    vbar = Some(id);
+                    vbar_w = width;
+                }
+            }
         }
-        width
+        (vbar, hbar)
     }
 }
 

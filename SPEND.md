@@ -501,3 +501,48 @@ Reviewer1 leftovers batch (no musts on #14 at a040456). Kimi via `user-OpenRoute
 | | | **own measured total** | | | **0.207692707** | | | |
 
 - Account `total_usage` after the leftovers Kimi call (12:36 PM ET): **631.765117859**. Own measured generation-id sum: **$0.207692707**. Stop line 636.00 was not reached.
+
+### WP4 layout (2026-11-26)
+
+New $2.50 job cap from this job's own generation ids. Shared account stop line is 636.00. Model: `moonshotai/kimi-k3.1-pro`. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement).
+
+Two paid Kimi calls were made. The first returned empty content (`finish=length`, all completion tokens were reasoning). The retry was interrupted mid-stream (steering) and later settled-stale; it also produced no diffs. No third paid call was made (skill: retry-at-most-once for empty/timeout). The WP4 layout fixes were written by hand against the real `Tk` / `Rect` / `ScrollArea` APIs and verified with cargo test / clippy / release.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 12:07 PM ET | moonshotai/kimi-k3.1-pro | gen-1795712657-BugFHFhdWZmA0yk8jhbJ | WP4 layout: margin, Frame padding, ensure_layout skip, scroll-area bar ids + tests | 0.105007202 | measured | empty (finish=length; 17404 prompt / 12000 completion, 13483 reasoning, 0 content) |
+| 2026-11-26 12:11 PM ET | moonshotai/kimi-k3.1-pro | gen-1795712871-WEctQ9p2Dyr75MigKLEY | WP4 layout retry (emit diffs first); interrupted then settled-stale | 0.044055982 | measured | settled-stale / cancelled (17774 prompt / 4735 completion, all reasoning, 0 content) |
+| 2026-11-26 12:22 PM ET | — | — | WP4 layout hand-finish (B9/B10/P5/P11 + tests); no further paid call | 0.000000 | measured | no call (Kimi already retried once; finished by hand) |
+| | | | **this WP4 job own total** | **0.149063184** | measured | |
+
+- Account `total_usage` at first check of this job (11:55 AM ET): **631.013528236**. Immediate pre-first-call (12:04 PM ET): **631.125459968**.
+- Account `total_usage` after (credits check 12:22 PM ET): **631.464806735**. Own spend this job is $0.149063184; the rest of the account delta is other bots on the shared account.
+- Account `total_credits` 640; remaining ≈ **$8.54**. Low-balance warning (below $10). Relay via parent to Chief of Staff; do not send as Tyler.
+- This job's own generation-id sum: **$0.149063184** (empty $0.105007202 + settled-stale retry $0.044055982 + hand-finish $0). Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+### WP4 Reviewer1 r1 fixes (2026-11-26)
+
+**No paid model call was made.** Tyler asked to drop the P5 speed-up and fix Reviewer1's remaining musts/shoulds/nits by hand. Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 12:51 PM ET | — | — | WP4 r1: drop P5; P11 rescan on incomplete cache; B9 notebook/scroll boxed; B10 place ignores padding; nits | 0.000000 | measured | no call (hand-written) |
+| | | | **this r1 fix-batch own total** | **0.000000** | measured | |
+
+### WP4 Reviewer1 r2 leftovers (2026-11-26)
+
+**No paid model call was made.** Should-fixes S1–S3 and nits N1–N2 were hand-written (reuse measured margin/padding, one bar lookup per area, prune dead LINKED_BARS on insert, drop the extra blank line, document the third-bar cache edge case). Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:16 PM ET | — | — | WP4 r2 leftovers: S1 style reuse, S2 one bar lookup, S3 prune on insert, N1/N2 | 0.000000 | measured | no call (hand-written) |
+| | | | **this r2 leftovers-batch own total** | **0.000000** | measured | |
+
+### WP4 Tyler-approved goldens and LINKED_BARS purge (2026-11-26)
+
+**No paid model call was made.** Tyler approved re-blessing the six `m011_modal` goldens and adding a LINKED_BARS purge on Tk Drop / widget destroy. Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 1:32 PM ET | — | — | Re-bless six m011_modal goldens; LINKED_BARS purge on Drop/destroy (try_with) | 0.000000 | measured | no call (hand-written) |
+| | | | **this bless+purge-batch own total** | **0.000000** | measured | |

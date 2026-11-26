@@ -330,6 +330,7 @@ impl Default for Tk {
 impl Drop for Tk {
     fn drop(&mut self) {
         crate::render::purge_premul_tk(self.tk_id);
+        scroll_area::purge_scrollarea_bars_tk(self.tk_id);
     }
 }
 
