@@ -9,6 +9,8 @@ Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk
 - `Tk::unload_image` and `Tk::update_image_rgba` (replace pixels in place, no new id) ([#14](https://github.com/ubcool2ic/rtk/pull/14), WP3).
 - `Tk::menu_destroy` and `Tk::unbind_context_menu` ([#16](https://github.com/ubcool2ic/rtk/pull/16), WP5). Destroying a middle open submenu also closes its children; unknown menu ids are ignored.
 - `Tk::spinbox_on_change` and `Tk::set_command` support for `Spinbox` ([#12](https://github.com/ubcool2ic/rtk/pull/12), [#13](https://github.com/ubcool2ic/rtk/pull/13)).
+- `dialog::file_filter_combobox` ([#16](https://github.com/ubcool2ic/rtk/pull/16), WP5).
+- `Rect::inset_edges` ([#15](https://github.com/ubcool2ic/rtk/pull/15), WP4).
 - Headless `Tk::sim_modifiers` so Shift state follows `ModifiersChanged` and focus loss ([#12](https://github.com/ubcool2ic/rtk/pull/12)).
 
 ### Fixed
@@ -33,6 +35,7 @@ Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk
 **WP3 — Style and theme ([#14](https://github.com/ubcool2ic/rtk/pull/14))**
 
 - Heading-in-Card and Accent.TButton keep their named-style font and color; a plain Label still inherits ancestor fg/font.
+- `lookup_state` no longer allocates a `String` per lookup (P2).
 - Disabled text follows the Dark and HighContrast palettes. User state maps (hover, pressed, focus, selected, disabled) survive a theme change.
 - `Switch` sets `State::CHECKED` from its bound var so `TSwitch:checked` rules apply.
 - CSS `transition` / `transition-duration` must be finite, ≥ 0, and at most `u32::MAX` milliseconds; negative shadow blur is rejected.
@@ -55,7 +58,7 @@ Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk
 
 ### Changed
 
-- **B20:** `assert_golden` now fails if the golden file is missing, unless `RTK_BLESS=1`. It no longer writes a missing file and passes. The `docs/GUIDE.md` example is marked `no_run` so that rule does not fail the doctest.
+- **B20:** `assert_golden` now fails if the golden file is missing, unless `RTK_BLESS=1`. This reverses 1.0.2's documented behaviour: at v1.0.2, a missing golden was written on first run (`src/testing.rs` rustdoc said that if `RTK_BLESS=1` is set, or the golden file does not exist, the rendered image "is written"). Downstream tests that relied on first-run creation will now panic; run once with `RTK_BLESS=1` to create new goldens. The `docs/GUIDE.md` example is marked `no_run` so that rule does not fail the doctest.
 
 ### Goldens
 
@@ -67,6 +70,13 @@ These were re-blessed in WP3 and WP4 with Tyler's approval. This 1.1.0 PR does n
 ### Tests
 
 New integration tests in `tests/wp1_input.rs`, `tests/wp2_rendering.rs`, `tests/wp3_style.rs`, `tests/wp4_layout.rs`, and `tests/wp5_dialogs.rs`.
+
+### Not included / deferred
+
+- **P5:** `dirty` means both "relayout" and "repaint" and is only cleared after a render, so every event between frames (mouse moves at up to 1 kHz) that calls `ensure_layout` re-runs full layout. The suggested `layout_dirty` / `dirty` split was dropped per Tyler's call ("do the P5 speed-up later"; commit `4da9c3d`).
+- **P13:** Any visible overlay (open menu/combobox, tooltip, toast) forces a full repaint on every redraw (for example, each caret blink). A "nothing pending" early-return was reverted in 1.0.2 for hover correctness; giving overlays their own damage rects was left for a later pass (commit `c8eea2c`).
+- **L2 Var free list:** the Open dialog's `filter_var` is now destroyed on dismiss, but Var slots are still never reused (~48 B per created Var). A generational free list in `var.rs` is deferred.
+- **P7:** softbuffer partial present is used only when `buffer.age()==1`; on double-buffered backends (age 2) every frame copies and packs the full window. Tracking the previous frame's damage and presenting the union for age 2 was not in any work package.
 
 ## 1.0.2 (2026-11-13)
 
