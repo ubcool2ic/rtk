@@ -1,8 +1,10 @@
 //! WP4 layout regressions: style margin (B9), Frame padding (B10),
-//! input-event relayout skipping (P5), and ScrollArea scrollbar lookup (P11).
+//! and ScrollArea scrollbar lookup (P11). The P5 input-signature skip was
+//! dropped (Reviewer1 musts 1–2; Tyler 2026-11-26: do it later).
 
 use rtk::{
-    Button, Edges, Fill, Frame, Label, Opt, PackOpts, ScrollArea, Scrollbar, Side, StyleSpec, Tk,
+    dialog, Button, Edges, Fill, Frame, Label, Notebook, Opt, PackOpts, ScrollArea, Scrollbar,
+    Side, StyleSpec, Tk,
 };
 
 fn almost(a: f32, b: f32) -> bool {
@@ -78,7 +80,7 @@ fn style_margin_is_outside_the_widget_box() {
     );
 }
 
-/// Frame padding insets children after the 2px nested border; root has no border inset.
+/// Frame padding insets pack/grid children after the 2px nested border; root has no border inset.
 #[test]
 fn frame_padding_insets_children_after_border() {
     let mut tk = Tk::new();
@@ -170,60 +172,115 @@ fn frame_padding_insets_children_after_border() {
     );
 }
 
-/// Mouse-move events must not re-run layout once inputs are unchanged.
+/// B9: margin on a Notebook must not let the page escape the widget box.
 #[test]
-fn mouse_moves_do_not_rerun_layout() {
+fn b9_notebook_margin_page_inside_box() {
     let mut tk = Tk::new();
     let root = tk.root();
-    let btn = Button::new(&mut tk, root, "Hover").unwrap();
-    tk.pack(btn, PackOpts::default());
-    tk.sim_resize(400, 200);
-    tk.render_frame(400, 200).unwrap();
-    let after_render = tk.layout_pass_count();
-    assert!(after_render > 0, "initial layout should have run");
-
-    let rect = tk.widget_rect(btn).expect("button");
-    for i in 0..40 {
-        tk.sim_mouse_move(rect.x + 2.0 + i as f32 * 0.3, rect.y + 2.0);
-        let _ = tk.widget_rect(btn);
-    }
-    assert_eq!(
-        tk.layout_pass_count(),
-        after_render,
-        "hover/mouse-move must not re-run layout while inputs are unchanged"
+    let nb = Notebook::new(&mut tk, root).unwrap();
+    tk.config(
+        nb,
+        Opt::StyleOverride(StyleSpec {
+            margin: Some(Edges::all(20.0)),
+            ..StyleSpec::default()
+        }),
     );
-
-    let extra = Label::new(&mut tk, root, "extra").unwrap();
+    let page = Frame::new(&mut tk, nb).unwrap();
+    let l = Label::new(&mut tk, page, "page").unwrap();
+    tk.pack(l, PackOpts::default());
+    assert!(tk.notebook_add(nb, page, "Tab"));
     tk.pack(
-        extra,
+        nb,
         PackOpts {
-            side: Side::Top,
+            fill: Fill::Both,
+            expand: true,
             ..PackOpts::default()
         },
     );
-    let _ = tk.widget_rect(extra);
+    tk.sim_resize(400, 300);
+    let rn = tk.widget_rect(nb).unwrap();
+    let rp = tk.widget_rect(page).unwrap();
     assert!(
-        tk.layout_pass_count() > after_render,
-        "packing a new widget must run layout again"
+        rp.x >= rn.x - 0.5
+            && rp.y >= rn.y - 0.5
+            && rp.x + rp.width <= rn.x + rn.width + 0.5
+            && rp.y + rp.height <= rn.y + rn.height + 0.5,
+        "page escapes notebook box: nb={rn:?} page={rp:?}"
     );
 }
 
-/// Attaching scrollbars should not scan the arena on later layouts, and content
-/// geometry should still account for a vertical bar.
+/// B9: margin on a ScrollArea must not let the content escape the widget box.
 #[test]
-fn scroll_area_uses_stored_bar_ids() {
+fn b9_scrollarea_margin_content_inside_box() {
     let mut tk = Tk::new();
     let root = tk.root();
     let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
-    let content = tk.scrollarea_content(area).expect("content frame");
-    let tall = Label::new(&mut tk, content, "inside").unwrap();
+    tk.config(
+        area,
+        Opt::StyleOverride(StyleSpec {
+            margin: Some(Edges::all(20.0)),
+            ..StyleSpec::default()
+        }),
+    );
+    let content = tk.scrollarea_content(area).unwrap();
+    let l = Label::new(&mut tk, content, "x").unwrap();
+    tk.pack(l, PackOpts::default());
     tk.pack(
-        tall,
+        area,
         PackOpts {
-            side: Side::Top,
+            fill: Fill::Both,
+            expand: true,
             ..PackOpts::default()
         },
     );
+    tk.sim_resize(400, 300);
+    let ra = tk.widget_rect(area).unwrap();
+    let rc = tk.widget_rect(content).unwrap();
+    assert!(
+        rc.x >= ra.x - 0.5 && rc.y >= ra.y - 0.5,
+        "content escapes area box: area={ra:?} content={rc:?}"
+    );
+}
+
+/// B10: root TFrame padding must not shrink a place-managed modal scrim.
+#[test]
+fn b10_root_padding_vs_modal_scrim() {
+    fn corner(dialog_on: bool) -> [u8; 4] {
+        let mut tk = Tk::new();
+        tk.style_configure(
+            "TFrame",
+            StyleSpec {
+                padding: Some(Edges::all(12.0)),
+                ..StyleSpec::default()
+            },
+        );
+        let root = tk.root();
+        let b = Button::new(&mut tk, root, "x").unwrap();
+        tk.pack(b, PackOpts::default());
+        if dialog_on {
+            dialog::message_box(&mut tk, "T", "M", rtk::MessageKind::Info, |_| {});
+        }
+        let px = tk.render_to_pixmap(400, 300).unwrap();
+        let c = px.pixel(3, 3).unwrap();
+        [c.red(), c.green(), c.blue(), c.alpha()]
+    }
+    let plain = corner(false);
+    let dimmed = corner(true);
+    assert_ne!(
+        plain, dimmed,
+        "scrim does not cover the window corner when root TFrame has padding"
+    );
+}
+
+/// P11: a vbar linked after the area's first layout must still reserve width.
+#[test]
+fn p11_link_after_first_layout_reserves_vbar() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+    let content = tk.scrollarea_content(area).unwrap();
+    let l = Label::new(&mut tk, content, "inside").unwrap();
+    tk.pack(l, PackOpts::default());
     let vbar = Scrollbar::new(&mut tk, root).unwrap();
     tk.pack(
         area,
@@ -242,34 +299,32 @@ fn scroll_area_uses_stored_bar_ids() {
             ..PackOpts::default()
         },
     );
-    assert!(tk.scrollarea_attach_scrollbars(area, Some(vbar), None));
     tk.sim_resize(240, 140);
-
-    let before = tk.scrollarea_bar_scan_count();
-    let ra = tk.widget_rect(area).expect("area");
-    let _rv = tk.widget_rect(vbar).expect("vbar");
-    let _rc = tk.widget_rect(content).expect("content");
-    let after_first = tk.scrollarea_bar_scan_count();
-    assert_eq!(
-        after_first, before,
-        "attach stored the bar ids, so the first layout should not scan the arena"
-    );
-
-    // A second pass (still dirty until render) must not scan either.
     let _ = tk.widget_rect(area);
-    assert_eq!(tk.scrollarea_bar_scan_count(), after_first);
+    assert!(tk.link_scrollbar(vbar, area));
+    tk.sim_resize(240, 140);
+    let ra = tk.widget_rect(area).unwrap();
+    let rv = tk.widget_rect(vbar).unwrap();
+    let rc = tk.widget_rect(content).unwrap();
     assert!(
-        ra.width > 0.0 && ra.height > 0.0,
-        "scroll area should be laid out, {ra:?}"
+        (rc.width - (ra.width - rv.width)).abs() < 0.6,
+        "content must leave room for the linked vbar: area={ra:?} vbar={rv:?} content={rc:?}"
     );
+}
 
-    // link_scrollbar path: a new area without attach may scan once, then reuse the cache.
-    let mut tk2 = Tk::new();
-    let root2 = tk2.root();
-    let area2 = ScrollArea::new(&mut tk2, root2, 160.0, 100.0).unwrap();
-    let sb2 = Scrollbar::new(&mut tk2, root2).unwrap();
-    tk2.pack(
-        area2,
+/// P11: attach a vbar, then link an hbar later; min content width is the area width.
+#[test]
+fn p11_attach_then_link_hbar() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+    let content = tk.scrollarea_content(area).unwrap();
+    let l = Label::new(&mut tk, content, "x").unwrap();
+    tk.pack(l, PackOpts::default());
+    let vbar = Scrollbar::new(&mut tk, root).unwrap();
+    let hbar = Scrollbar::horizontal(&mut tk, root).unwrap();
+    tk.pack(
+        area,
         PackOpts {
             side: Side::Left,
             fill: Fill::Both,
@@ -277,27 +332,90 @@ fn scroll_area_uses_stored_bar_ids() {
             ..PackOpts::default()
         },
     );
-    tk2.pack(
-        sb2,
+    tk.pack(
+        vbar,
         PackOpts {
             side: Side::Right,
             fill: Fill::Y,
             ..PackOpts::default()
         },
     );
-    assert!(tk2.link_scrollbar(sb2, area2));
-    let scans0 = tk2.scrollarea_bar_scan_count();
-    assert_eq!(scans0, 0, "no scan before the first layout");
-    tk2.sim_resize(240, 140);
-    let scans1 = tk2.scrollarea_bar_scan_count();
-    assert!(
-        scans1 > scans0,
-        "link_scrollbar should fall back to one arena scan, before={scans0} after={scans1}"
+    tk.pack(
+        hbar,
+        PackOpts {
+            side: Side::Bottom,
+            fill: Fill::X,
+            ..PackOpts::default()
+        },
     );
-    let _ = tk2.widget_rect(area2);
-    assert_eq!(
-        tk2.scrollarea_bar_scan_count(),
-        scans1,
-        "subsequent layouts should reuse the cached bar ids"
+    assert!(tk.scrollarea_attach_scrollbars(area, Some(vbar), None));
+    tk.sim_resize(240, 140);
+    let _ = tk.widget_rect(area);
+    assert!(tk.link_scrollbar(hbar, area));
+    tk.sim_resize(240, 140);
+    let ra = tk.widget_rect(area).unwrap();
+    let rc = tk.widget_rect(content).unwrap();
+    assert!(
+        rc.width >= ra.width - 0.6,
+        "hbar link ignored: area={ra:?} content={rc:?}"
+    );
+}
+
+/// Attaching both bars still accounts for the vbar, and link_scrollbar after
+/// a first layout is covered by the P11 tests above.
+#[test]
+fn scroll_area_attach_reserves_vbar() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let area = ScrollArea::new(&mut tk, root, 160.0, 100.0).unwrap();
+    let content = tk.scrollarea_content(area).expect("content frame");
+    let tall = Label::new(&mut tk, content, "inside").unwrap();
+    tk.pack(
+        tall,
+        PackOpts {
+            side: Side::Top,
+            ..PackOpts::default()
+        },
+    );
+    let vbar = Scrollbar::new(&mut tk, root).unwrap();
+    let hbar = Scrollbar::horizontal(&mut tk, root).unwrap();
+    tk.pack(
+        area,
+        PackOpts {
+            side: Side::Left,
+            fill: Fill::Both,
+            expand: true,
+            ..PackOpts::default()
+        },
+    );
+    tk.pack(
+        vbar,
+        PackOpts {
+            side: Side::Right,
+            fill: Fill::Y,
+            ..PackOpts::default()
+        },
+    );
+    tk.pack(
+        hbar,
+        PackOpts {
+            side: Side::Bottom,
+            fill: Fill::X,
+            ..PackOpts::default()
+        },
+    );
+    assert!(tk.scrollarea_attach_scrollbars(area, Some(vbar), Some(hbar)));
+    tk.sim_resize(240, 140);
+    let ra = tk.widget_rect(area).expect("area");
+    let rv = tk.widget_rect(vbar).expect("vbar");
+    let rc = tk.widget_rect(content).expect("content");
+    assert!(
+        ra.width > 0.0 && ra.height > 0.0,
+        "scroll area should be laid out, {ra:?}"
+    );
+    // With an hbar, min content width is the area width (see layout()).
+    assert!(
+        rc.width >= ra.width - 0.6,
+        "attached hbar should keep content at least area-wide: area={ra:?} vbar={rv:?} content={rc:?}"
     );
 }

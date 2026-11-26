@@ -519,3 +519,12 @@ Two paid Kimi calls were made. The first returned empty content (`finish=length`
 - Account `total_usage` after (credits check 12:22 PM ET): **631.464806735**. Own spend this job is $0.149063184; the rest of the account delta is other bots on the shared account.
 - Account `total_credits` 640; remaining ≈ **$8.54**. Low-balance warning (below $10). Relay via parent to Chief of Staff; do not send as Tyler.
 - This job's own generation-id sum: **$0.149063184** (empty $0.105007202 + settled-stale retry $0.044055982 + hand-finish $0). Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+### WP4 Reviewer1 r1 fixes (2026-11-26)
+
+**No paid model call was made.** Tyler asked to drop the P5 speed-up and fix Reviewer1's remaining musts/shoulds/nits by hand. Own generation-id sum for the WP4 job is unchanged: **$0.149063184**. Under the $2.50 job cap. Account stop line 636.00 was not reached.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 12:51 PM ET | — | — | WP4 r1: drop P5; P11 rescan on incomplete cache; B9 notebook/scroll boxed; B10 place ignores padding; nits | 0.000000 | measured | no call (hand-written) |
+| | | | **this r1 fix-batch own total** | **0.000000** | measured | |
