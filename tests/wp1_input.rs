@@ -398,3 +398,95 @@ fn text_arrows_and_drag_select_stay_correct() {
         "drag-select replaced the wrong range: {got:?}"
     );
 }
+
+/// A single Spinbox Up key must run the command exactly once.
+#[test]
+fn spinbox_key_fires_command_exactly_once() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let var = tk.int_var(5);
+    let spin = Spinbox::new(&mut tk, root, 0, 10, var).unwrap();
+    let hits = Rc::new(Cell::new(0));
+    let h = hits.clone();
+    assert!(tk.spinbox_on_change(spin, move |_| h.set(h.get() + 1)));
+    tk.pack(spin, Default::default());
+    tk.render_frame(400, 200).unwrap();
+    click_xy(&mut tk, spin, 0.3, 0.5);
+    tk.sim_key(Key::Up);
+    assert_eq!(var.get(&tk), Some(6));
+    assert_eq!(hits.get(), 1, "Up must fire the command exactly once");
+    tk.sim_key(Key::Up);
+    assert_eq!(var.get(&tk), Some(7));
+    assert_eq!(hits.get(), 2, "a second Up must fire exactly once more");
+}
+
+/// `spinbox_on_change` and `set_command` share one `node.command` slot; last setter wins.
+#[test]
+fn spinbox_setters_share_one_command_slot() {
+    fn make() -> (Tk, rtk::WidgetId, rtk::Var<i64>) {
+        let mut tk = Tk::new();
+        let root = tk.root();
+        let var = tk.int_var(5);
+        let spin = Spinbox::new(&mut tk, root, 0, 10, var).unwrap();
+        tk.pack(spin, Default::default());
+        tk.render_frame(400, 200).unwrap();
+        click_xy(&mut tk, spin, 0.3, 0.5);
+        (tk, spin, var)
+    }
+
+    // Two spinbox_on_change calls: last wins.
+    let (mut tk, spin, var) = make();
+    let hits = Rc::new(Cell::new(0));
+    let h1 = hits.clone();
+    let h2 = hits.clone();
+    assert!(tk.spinbox_on_change(spin, move |_| h1.set(h1.get() + 1)));
+    assert!(tk.spinbox_on_change(spin, move |_| h2.set(h2.get() + 10)));
+    tk.sim_key(Key::Up);
+    assert_eq!(var.get(&tk), Some(6));
+    assert_eq!(
+        hits.get(),
+        10,
+        "second spinbox_on_change must replace the first"
+    );
+
+    // spinbox_on_change then set_command.
+    let (mut tk, spin, var) = make();
+    let hits = Rc::new(Cell::new(0));
+    let h1 = hits.clone();
+    let h2 = hits.clone();
+    assert!(tk.spinbox_on_change(spin, move |_| h1.set(h1.get() + 1)));
+    if tk.set_command(spin, move |_| h2.set(h2.get() + 10)) {
+        tk.sim_key(Key::Up);
+        assert_eq!(var.get(&tk), Some(6));
+        assert_eq!(
+            hits.get(),
+            10,
+            "set_command after spinbox_on_change must replace the callback"
+        );
+    } else {
+        // Pre-WP2: set_command still rejects Spinbox, so the first callback remains.
+        tk.sim_key(Key::Up);
+        assert_eq!(var.get(&tk), Some(6));
+        assert_eq!(
+            hits.get(),
+            1,
+            "rejected set_command must not add a second callback"
+        );
+    }
+
+    // set_command then spinbox_on_change (only when set_command accepts Spinbox).
+    let (mut tk, spin, var) = make();
+    let hits = Rc::new(Cell::new(0));
+    let h1 = hits.clone();
+    let h2 = hits.clone();
+    if tk.set_command(spin, move |_| h1.set(h1.get() + 10)) {
+        assert!(tk.spinbox_on_change(spin, move |_| h2.set(h2.get() + 1)));
+        tk.sim_key(Key::Up);
+        assert_eq!(var.get(&tk), Some(6));
+        assert_eq!(
+            hits.get(),
+            1,
+            "spinbox_on_change after set_command must replace the callback"
+        );
+    }
+}

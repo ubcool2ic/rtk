@@ -376,4 +376,6 @@ Account `total_usage` before the job's first paid call: **582.958074236** (1:34 
 |---|---|---|---:|---:|---:|---|---|---|
 | 2026-11-26 1:35 AM ET | google/gemini-4-carbon | wp1-input-fixes | 11429 (native 13860; 0 cached) | 8193 (native 9184; 0 reasoning) | 0.11956 | measured | gen-1795674846-rGECm2i0yNRefJREbQyY | ok; diffs applied and finished by hand |
 | 2026-11-26 | note | hand glue (WP1) | Wrote `tests/wp1_input.rs`. Carbon's unified diffs were malformed in shortcuts/events/text/edit; the intended edits were applied by hand and checked against the code. Added `spinbox_on_change` because `Kind::has_command` (widgets.rs, out of WP1 scope) still rejects `set_command` on Spinbox. ShiftTab shortcut labels now render as `Shift+Tab`. No version bump or CHANGELOG. | | 0.00000 | | | |
-| | | **own total** | | | **0.11956** | | | |
+| 2026-11-26 1:56 AM ET | google/gemini-4-carbon | wp1-command-slot | 908 (native 1103; 0 cached) | 1417 billed / 6000 native (5997 reasoning, 0 content) | 0.062206 | measured | gen-1795676084-v8ovnZkkAU1LBlQkxIoI | empty (finish=length); wrapper and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP1 command slot) | `spinbox_on_change` now delegates to `set_command` when `Kind::has_command` includes Spinbox, otherwise still writes `node.command`. Added tests for exactly-once fire and last-setter-wins. | | 0.00000 | | | |
+| | | **own total** | | | **0.181766** | | | |

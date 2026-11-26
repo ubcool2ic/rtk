@@ -1006,20 +1006,29 @@ impl Tk {
     /// Registers a callback fired when the user changes a Spinbox value with
     /// the arrow keys or the on-widget arrows.
     ///
-    /// `Tk::set_command` does not accept Spinbox today (`Kind::has_command` in
-    /// `widgets.rs`, outside this work package). This method writes `command`
-    /// directly so the events.rs `run_command` path is usable.
+    /// Writes the same `node.command` slot as [`Tk::set_command`]. The last
+    /// setter wins; the two APIs never stack callbacks. If `Kind::has_command`
+    /// already includes Spinbox (WP2), this delegates to `set_command`.
+    /// Otherwise it stores the callback directly, which is the pre-WP2 fallback.
     pub fn spinbox_on_change(
         &mut self,
         id: WidgetId,
         command: impl FnMut(&mut Tk) + 'static,
     ) -> bool {
-        match self.node_mut(id) {
-            Some(node) if node.kind == Kind::Spinbox => {
-                node.command = Some(Box::new(command));
-                true
-            }
-            _ => false,
+        let Some(kind) = self.node(id).map(|n| n.kind) else {
+            return false;
+        };
+        if kind != Kind::Spinbox {
+            return false;
+        }
+        if kind.has_command() {
+            return self.set_command(id, command);
+        }
+        if let Some(node) = self.node_mut(id) {
+            node.command = Some(Box::new(command));
+            true
+        } else {
+            false
         }
     }
 
