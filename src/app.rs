@@ -544,7 +544,16 @@ impl ApplicationHandler<RtkUserEvent> for App {
                 let (x, y) = self.tk.pointer;
                 self.tk.sim_right_click(x, y);
             }
-            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                let state = modifiers.state();
+                self.modifiers = state;
+                self.tk.sim_modifiers(Modifiers {
+                    ctrl: state.control_key(),
+                    shift: state.shift_key(),
+                    alt: state.alt_key(),
+                    meta: state.super_key(),
+                });
+            }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 self.tk.sim_ime_preedit(&text, cursor);
                 if let Some(window) = &self.window {
@@ -627,19 +636,8 @@ impl ApplicationHandler<RtkUserEvent> for App {
                     }
                     _ => None,
                 };
-                if let Some(key) = key {
-                    // Mapped keys (including shortcut chords) are always
-                    // dispatched; only raw text insertion is gated.
-                    self.tk.sim_key_with(key, mods);
-                } else if accepts_key_input(
-                    self.modifiers.control_key(),
-                    self.modifiers.alt_key(),
-                    self.modifiers.super_key(),
-                ) {
-                    if let Some(text) = event.text {
-                        self.tk.sim_text(&text);
-                    }
-                }
+                self.tk
+                    .sim_key_or_text(key, event.text.as_deref().unwrap_or(""), mods);
             }
             WindowEvent::HoveredFile(path) => {
                 let (x, y) = self.tk.pointer;
