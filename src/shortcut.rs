@@ -141,10 +141,12 @@ impl Shortcut {
             }
         }
 
-        Ok(Self {
-            mods,
-            key: parse_key(key_name)?,
-        })
+        let mut key = parse_key(key_name)?;
+        if (key == Key::Tab && mods.shift) || key == Key::ShiftTab {
+            key = Key::ShiftTab;
+            mods.shift = true;
+        }
+        Ok(Self { mods, key })
     }
 
     /// Formats a menu label using platform-appropriate modifier notation.
@@ -266,7 +268,7 @@ fn key_label(key: Key) -> String {
         Key::Home => "Home".into(),
         Key::End => "End".into(),
         Key::Tab => "Tab".into(),
-        Key::ShiftTab => "ShiftTab".into(),
+        Key::ShiftTab => "Tab".into(),
         Key::Enter => "Enter".into(),
         Key::Space => "Space".into(),
         Key::PageUp => "PageUp".into(),
