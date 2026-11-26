@@ -584,3 +584,12 @@ Account `total_usage` at first job check: **631.875889859** (2:50:19 PM ET). Imm
 | 2026-11-26 5:52 PM ET | — | WP5 r2 leftover (hand-written) | — | — | 0.000000 | measured | — | no call: drop 2s timing assert; keep 20k order/count checks; add doc(hidden) order-shift visit probe |
 | | | **this r2 leftover-batch own total** | | | **0.000000** | measured | | |
 | | | **WP5 job own measured total** | | | **0.019272** | | | |
+
+## 1.1.0 release (branch release/rtk-audit, Reviewer2)
+
+**No paid model call was made.** Version bump to 1.1.0, CHANGELOG for WP1–WP5 (#12–#16), golden check with RTK_BLESS unset, and the wp5_dialogs import-group nit were hand-written at $0.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 6:15 PM ET | — | 1.1.0 release PR (hand-written) | — | — | 0.000000 | measured | — | no call: bump 1.0.2 → 1.1.0, CHANGELOG, import nit, golden check |
+| | | **this release-batch own total** | | | **0.000000** | measured | | |
