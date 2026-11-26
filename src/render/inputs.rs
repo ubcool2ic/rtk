@@ -6,11 +6,11 @@
 
 use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
-use super::{fill, outline};
+use super::{fill, outline, ClipMaskScratch, InputPaint};
 use crate::layout::Rect;
 use crate::style::ResolvedStyle;
 use crate::tk::inputs_state::RingMode;
-use crate::widgets::{Color, Kind};
+use crate::widgets::Color;
 use crate::Tk;
 
 /// Builds a stroked arc path from `start` sweeping `sweep` radians clockwise,
@@ -35,17 +35,13 @@ fn arc_path(cx: f32, cy: f32, radius: f32, start: f32, sweep: f32) -> Option<tin
     pb.finish()
 }
 
-/// Builds a pixel mask covering `clip` (physical px); `None` if the clip is empty.
-fn clip_mask(pixmap: &Pixmap, clip: Rect) -> Option<Mask> {
-    let r = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height)?;
-    let mut mask = Mask::new(pixmap.width(), pixmap.height())?;
-    mask.fill_path(
-        &PathBuilder::from_rect(r),
-        tiny_skia::FillRule::Winding,
-        false,
-        Transform::identity(),
-    );
-    Some(mask)
+/// Fills `scratch` with a pixel mask covering `clip` (physical px).
+fn clip_mask<'a>(
+    scratch: &'a mut ClipMaskScratch,
+    pixmap: &Pixmap,
+    clip: Rect,
+) -> Option<&'a Mask> {
+    scratch.clip(pixmap.width(), pixmap.height(), clip)
 }
 
 /// Returns true when `clip` contains `bounds` with a 1px safety margin, so a
@@ -58,7 +54,13 @@ fn clip_covers(clip: Rect, bounds: Rect) -> bool {
 }
 
 /// Strokes `path` with a round-capped line of `width` px in `color`, limited to `mask`.
-fn stroke_arc(pixmap: &mut Pixmap, path: &tiny_skia::Path, width: f32, color: Color, mask: Option<&Mask>) {
+fn stroke_arc(
+    pixmap: &mut Pixmap,
+    path: &tiny_skia::Path,
+    width: f32,
+    color: Color,
+    mask: Option<&Mask>,
+) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.r, color.g, color.b, color.a);
     paint.anti_alias = true;
@@ -76,19 +78,35 @@ pub(super) fn draw_ring(
     tk: &mut Tk,
     pixmap: &mut Pixmap,
     id: crate::WidgetId,
-    logical: Rect,
-    clip: Rect,
-    scale: f32,
-    resolved: &ResolvedStyle,
+    paint: InputPaint<'_>,
 ) {
+    let InputPaint {
+        logical,
+        clip,
+        scale,
+        resolved,
+        masks,
+    } = paint;
+
     let Some(node) = tk.node(id) else { return };
     let diameter = node.progress_length.min(logical.width).min(logical.height);
     let fraction = node.progress_f64.and_then(|v| v.get(tk)).unwrap_or(0.0);
-    let fraction = if fraction.is_nan() { 0.0 } else { fraction.clamp(0.0, 1.0) } as f32;
+    let fraction = if fraction.is_nan() {
+        0.0
+    } else {
+        fraction.clamp(0.0, 1.0)
+    } as f32;
     let (mode, show_text, thickness, phase) = node
         .inputs
         .as_ref()
-        .map(|s| (s.ring_mode, s.ring_show_text, s.ring_thickness, s.ring_phase))
+        .map(|s| {
+            (
+                s.ring_mode,
+                s.ring_show_text,
+                s.ring_thickness,
+                s.ring_phase,
+            )
+        })
         .unwrap_or((RingMode::Percent, false, 0.0, 0.0));
     let accent = tk.style_engine.tokens().palette.accent;
     let track = tk.style_engine.tokens().palette.border;
@@ -108,10 +126,10 @@ pub(super) fn draw_ring(
     // full-window mask allocation when the clip cannot cut it.
     let ring_d = diameter * scale;
     let ring_bounds = Rect::new(cx - ring_d / 2.0, cy - ring_d / 2.0, ring_d, ring_d);
-    let mask: Option<Mask> = if clip_covers(clip, ring_bounds) {
+    let mask: Option<&Mask> = if clip_covers(clip, ring_bounds) {
         None
     } else {
-        match clip_mask(pixmap, clip) {
+        match clip_mask(masks, pixmap, clip) {
             Some(m) => Some(m),
             None => return,
         }
@@ -119,7 +137,7 @@ pub(super) fn draw_ring(
 
     // Full track circle.
     if let Some(path) = arc_path(cx, cy, radius, 0.0, std::f32::consts::TAU) {
-        stroke_arc(pixmap, &path, stroke_w, track, mask.as_ref());
+        stroke_arc(pixmap, &path, stroke_w, track, mask);
     }
 
     match mode {
@@ -128,7 +146,7 @@ pub(super) fn draw_ring(
                 // Start at 12 o'clock (-PI/2) and sweep clockwise.
                 let sweep = fraction * std::f32::consts::TAU;
                 if let Some(path) = arc_path(cx, cy, radius, -std::f32::consts::FRAC_PI_2, sweep) {
-                    stroke_arc(pixmap, &path, stroke_w, accent, mask.as_ref());
+                    stroke_arc(pixmap, &path, stroke_w, accent, mask);
                 }
             }
             if show_text {
@@ -155,7 +173,7 @@ pub(super) fn draw_ring(
             let sweep = std::f32::consts::FRAC_PI_2;
             let start = -std::f32::consts::FRAC_PI_2 + phase * std::f32::consts::TAU;
             if let Some(path) = arc_path(cx, cy, radius, start, sweep) {
-                stroke_arc(pixmap, &path, stroke_w, accent, mask.as_ref());
+                stroke_arc(pixmap, &path, stroke_w, accent, mask);
             }
         }
     }
@@ -166,17 +184,30 @@ pub(super) fn draw_switch(
     tk: &mut Tk,
     pixmap: &mut Pixmap,
     id: crate::WidgetId,
-    logical: Rect,
-    clip: Rect,
-    scale: f32,
-    resolved: &ResolvedStyle,
+    paint: InputPaint<'_>,
 ) {
+    let InputPaint {
+        logical,
+        clip,
+        scale,
+        resolved,
+        masks,
+    } = paint;
+
     let Some(node) = tk.node(id) else { return };
     let on = node.check.and_then(|v| v.get(tk)).unwrap_or(false);
     let knob = node
         .inputs
         .as_ref()
-        .map(|s| if s.switch_initialised { s.switch_knob } else if on { 1.0 } else { 0.0 })
+        .map(|s| {
+            if s.switch_initialised {
+                s.switch_knob
+            } else if on {
+                1.0
+            } else {
+                0.0
+            }
+        })
         .unwrap_or(if on { 1.0 } else { 0.0 });
     let disabled = node.disabled;
     let text = node.text.clone();
@@ -189,10 +220,10 @@ pub(super) fn draw_switch(
     let track_rect = Rect::new(track_x, track_y, track_w, track_h).scaled(scale);
     // Track and knob both lie inside `track_rect`; skip the full-window mask
     // allocation when the clip cannot cut them.
-    let mask: Option<Mask> = if clip_covers(clip, track_rect) {
+    let mask: Option<&Mask> = if clip_covers(clip, track_rect) {
         None
     } else {
-        match clip_mask(pixmap, clip) {
+        match clip_mask(masks, pixmap, clip) {
             Some(m) => Some(m),
             None => return,
         }
@@ -208,7 +239,13 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), mask.as_ref());
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            mask,
+        );
     }
 
     // Knob: 16 px diameter, travels from 2 px to track_w - 18 px.
@@ -216,7 +253,11 @@ pub(super) fn draw_switch(
     let travel = track_w - knob_d - 4.0;
     let knob_x = track_x + 2.0 + travel * knob.clamp(0.0, 1.0);
     let knob_y = track_y + (track_h - knob_d) / 2.0;
-    let knob_color = if on { palette.accent_fg } else { palette.surface };
+    let knob_color = if on {
+        palette.accent_fg
+    } else {
+        palette.surface
+    };
     let knob_color = if disabled {
         Color::rgba(knob_color.r, knob_color.g, knob_color.b, 160)
     } else {
@@ -227,7 +268,13 @@ pub(super) fn draw_switch(
         let mut paint = Paint::default();
         paint.set_color_rgba8(knob_color.r, knob_color.g, knob_color.b, knob_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), mask.as_ref());
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            mask,
+        );
     }
 
     if !text.is_empty() {
@@ -268,13 +315,43 @@ pub(super) fn draw_progress_bar(
     let (show_percent, label, smooth, drawn) = node
         .inputs
         .as_ref()
-        .map(|s| (s.progress_show_percent, s.progress_label.clone(), s.progress_smooth, s.progress_drawn))
+        .map(|s| {
+            (
+                s.progress_show_percent,
+                s.progress_label.clone(),
+                s.progress_smooth,
+                s.progress_drawn,
+            )
+        })
         .unwrap_or((false, None, false, 0.0));
 
     // The filled rectangle in logical px, used both for drawing the fill and
     // for clipping the accent-coloured text overlay.
     let indeterminate = node.progress_indeterminate;
-    let fill_color = if node.progress_indeterminate { accent } else { resolved.fg };
+    let fill_color = if node.progress_indeterminate {
+        accent
+    } else {
+        resolved.fg
+    };
+    let frac = if indeterminate {
+        0.0
+    } else if smooth {
+        drawn
+    } else if let Some(v64) = node.progress_f64 {
+        v64.get(tk).unwrap_or(0.0).clamp(0.0, 1.0) as f32
+    } else {
+        (node
+            .scale
+            .and_then(|v| v.get(tk))
+            .unwrap_or(0)
+            .clamp(0, 100) as f32)
+            / 100.0
+    };
+    let frac = if frac.is_nan() {
+        0.0
+    } else {
+        frac.clamp(0.0, 1.0)
+    };
     let filled_rect = if node.progress_indeterminate {
         let block_w = (inner.width * 0.3).max(10.0);
         let travel = inner.width + block_w;
@@ -285,14 +362,6 @@ pub(super) fn draw_progress_bar(
         }
         r
     } else {
-        let frac = if smooth {
-            drawn
-        } else if let Some(v64) = node.progress_f64 {
-            v64.get(tk).unwrap_or(0.0).clamp(0.0, 1.0) as f32
-        } else {
-            (node.scale.and_then(|v| v.get(tk)).unwrap_or(0).clamp(0, 100) as f32) / 100.0
-        };
-        let frac = if frac.is_nan() { 0.0 } else { frac.clamp(0.0, 1.0) };
         let filled_w = inner.width * frac;
         let r = Rect::new(inner.x, inner.y, filled_w, inner.height);
         if filled_w > 0.0 {
@@ -302,12 +371,7 @@ pub(super) fn draw_progress_bar(
     };
 
     if show_percent || label.is_some() {
-        let text = match (&label, show_percent) {
-            (Some(l), true) => format!("{l} {}%", (progress_fraction(tk, id) * 100.0).round() as i32),
-            (Some(l), false) => l.clone(),
-            (None, true) => format!("{}%", (progress_fraction(tk, id) * 100.0).round() as i32),
-            (None, false) => String::new(),
-        };
+        let text = progress_caption(label.as_deref(), show_percent, indeterminate, frac);
         if !text.is_empty() {
             let m = tk.measure_with(&text, resolved);
             let origin = (
@@ -316,7 +380,8 @@ pub(super) fn draw_progress_bar(
             );
             let palette = tk.style_engine.tokens().palette;
             let filled_clip = clip.intersection(filled_rect.scaled(scale));
-            let unfilled_clip = clip.intersection(unfilled_rect(logical, filled_rect).scaled(scale));
+            let unfilled_clip =
+                clip.intersection(unfilled_rect(logical, filled_rect).scaled(scale));
             // Track (unfilled) pass: the more readable of fg/bg over the track
             // colour (resolved.bg), so HighContrast's white-on-white track is
             // fixed. Clipped to the unfilled part so it never bleeds over the
@@ -420,14 +485,21 @@ fn readable_on(bg: Color, a: Color, b: Color) -> Color {
 }
 
 /// Returns the current fraction of a progress bar in `0.0..=1.0`.
-fn progress_fraction(tk: &Tk, id: crate::WidgetId) -> f64 {
-    let Some(node) = tk.node(id).filter(|n| n.kind == Kind::ProgressBar) else { return 0.0 };
-    let value = if let Some(v64) = node.progress_f64 {
-        v64.get(tk).unwrap_or(0.0)
-    } else {
-        node.scale.and_then(|v| v.get(tk)).unwrap_or(0) as f64 / 100.0
-    };
-    if value.is_nan() { 0.0 } else { value.clamp(0.0, 1.0) }
+/// Caption drawn on a progress bar. Hides the percent when the bar is
+/// indeterminate, and uses the already-computed (possibly animated) `frac`
+/// rather than the target value.
+fn progress_caption(
+    label: Option<&str>,
+    show_percent: bool,
+    indeterminate: bool,
+    frac: f32,
+) -> String {
+    match (label, show_percent, indeterminate) {
+        (Some(l), true, false) => format!("{l} {}%", (frac * 100.0).round() as i32),
+        (Some(l), _, _) => l.to_string(),
+        (None, true, false) => format!("{}%", (frac * 100.0).round() as i32),
+        (None, _, _) => String::new(),
+    }
 }
 
 /// Keeps `outline` referenced so the import stays used if drawing changes.
@@ -441,13 +513,23 @@ pub(super) fn draw_slider(
     tk: &mut Tk,
     pixmap: &mut Pixmap,
     id: crate::WidgetId,
-    logical: Rect,
-    clip: Rect,
-    scale: f32,
-    resolved: &ResolvedStyle,
+    paint: InputPaint<'_>,
 ) {
+    let InputPaint {
+        logical,
+        clip,
+        scale,
+        resolved,
+        masks,
+    } = paint;
+
     let Some(node) = tk.node(id) else { return };
-    let orient = node.inputs.as_ref().map_or(crate::tk::inputs_state::Orient::Horizontal, |s| s.slider_orient);
+    let orient = node
+        .inputs
+        .as_ref()
+        .map_or(crate::tk::inputs_state::Orient::Horizontal, |s| {
+            s.slider_orient
+        });
     let ticks = node.inputs.as_ref().and_then(|s| s.slider_ticks);
     let (from, to) = node.range_f64;
     let disabled = node.disabled;
@@ -455,11 +537,19 @@ pub(super) fn draw_slider(
     let palette = tk.style_engine.tokens().palette;
     // Track always uses the theme border colour; the filled portion the accent.
     let track_color = palette.border;
-    let fill_color = if disabled { palette.muted } else { palette.accent };
+    let fill_color = if disabled {
+        palette.muted
+    } else {
+        palette.accent
+    };
     let thumb_border = palette.border;
     // A transparent widget background means "show the surface through", so the
     // thumb uses the theme surface; otherwise it matches the widget background.
-    let thumb_fill = if resolved.bg.a == 0 { palette.surface } else { resolved.bg };
+    let thumb_fill = if resolved.bg.a == 0 {
+        palette.surface
+    } else {
+        resolved.bg
+    };
 
     let track_w = 4.0;
     let thumb_d = 16.0;
@@ -483,7 +573,7 @@ pub(super) fn draw_slider(
 
     // Clip mask so the path-based drawing below honours `clip`. Skipped (no
     // full-window allocation) when the clip cannot cut the track or thumb.
-    let clip_mask: Option<Mask> = {
+    let clip_mask: Option<&Mask> = {
         let ts = track_rect.scaled(scale);
         let half = (thumb_d / 2.0 + 2.0) * scale;
         let tcx = thumb_center.0 * scale;
@@ -495,40 +585,61 @@ pub(super) fn draw_slider(
         if clip_covers(clip, Rect::new(left, top, right - left, bottom - top)) {
             None
         } else {
-            let mut m = tiny_skia::Mask::new(pixmap.width(), pixmap.height());
-            if let Some(mm) = m.as_mut() {
-                if let Some(r) = tiny_skia::Rect::from_xywh(clip.x, clip.y, clip.width, clip.height) {
-                    mm.fill_path(&tiny_skia::PathBuilder::from_rect(r), tiny_skia::FillRule::Winding, false, Transform::identity());
-                }
+            match clip_mask(masks, pixmap, clip) {
+                Some(m) => Some(m),
+                None => return,
             }
-            m
         }
     };
 
     // Track background.
-    if let Some(path) = crate::style::build_rounded_rect_path(track_rect.scaled(scale), track_w / 2.0 * scale) {
+    if let Some(path) =
+        crate::style::build_rounded_rect_path(track_rect.scaled(scale), track_w / 2.0 * scale)
+    {
         let mut paint = Paint::default();
         paint.set_color_rgba8(track_color.r, track_color.g, track_color.b, track_color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            clip_mask,
+        );
     }
 
     // Filled portion.
     let filled = match orient {
-        crate::tk::inputs_state::Orient::Horizontal => {
-            Rect::new(track_rect.x, track_rect.y, track_rect.width * fraction, track_rect.height)
-        }
+        crate::tk::inputs_state::Orient::Horizontal => Rect::new(
+            track_rect.x,
+            track_rect.y,
+            track_rect.width * fraction,
+            track_rect.height,
+        ),
         crate::tk::inputs_state::Orient::Vertical => {
             let h = track_rect.height * fraction;
-            Rect::new(track_rect.x, track_rect.y + track_rect.height - h, track_rect.width, h)
+            Rect::new(
+                track_rect.x,
+                track_rect.y + track_rect.height - h,
+                track_rect.width,
+                h,
+            )
         }
     };
     if filled.width > 0.0 && filled.height > 0.0 {
-        if let Some(path) = crate::style::build_rounded_rect_path(filled.scaled(scale), track_w / 2.0 * scale) {
+        if let Some(path) =
+            crate::style::build_rounded_rect_path(filled.scaled(scale), track_w / 2.0 * scale)
+        {
             let mut paint = Paint::default();
             paint.set_color_rgba8(fill_color.r, fill_color.g, fill_color.b, fill_color.a);
             paint.anti_alias = true;
-            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
+            pixmap.fill_path(
+                &path,
+                &paint,
+                tiny_skia::FillRule::Winding,
+                Transform::identity(),
+                clip_mask,
+            );
         }
     }
 
@@ -572,17 +683,38 @@ pub(super) fn draw_slider(
         thumb_center.1 - thumb_d / 2.0,
         thumb_d,
         thumb_d,
-    ).scaled(scale);
+    )
+    .scaled(scale);
     if let Some(path) = crate::style::build_rounded_rect_path(thumb_rect, thumb_d / 2.0 * scale) {
         let mut paint = Paint::default();
         paint.set_color_rgba8(thumb_fill.r, thumb_fill.g, thumb_fill.b, thumb_fill.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), clip_mask.as_ref());
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            clip_mask,
+        );
         let mut stroke_paint = Paint::default();
-        stroke_paint.set_color_rgba8(thumb_border.r, thumb_border.g, thumb_border.b, thumb_border.a);
+        stroke_paint.set_color_rgba8(
+            thumb_border.r,
+            thumb_border.g,
+            thumb_border.b,
+            thumb_border.a,
+        );
         stroke_paint.anti_alias = true;
-        let stroke = Stroke { width: 1.5 * scale, ..Stroke::default() };
-        pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), clip_mask.as_ref());
+        let stroke = Stroke {
+            width: 1.5 * scale,
+            ..Stroke::default()
+        };
+        pixmap.stroke_path(
+            &path,
+            &stroke_paint,
+            &stroke,
+            Transform::identity(),
+            clip_mask,
+        );
     }
 }
 
@@ -604,7 +736,12 @@ pub(super) fn draw_dspin(
 
     // Arrow column width in logical px; the text field occupies the rest.
     let arrow_w = 20.0_f32.min(logical.width);
-    let inner = Rect::new(logical.x, logical.y, (logical.width - arrow_w).max(0.0), logical.height);
+    let inner = Rect::new(
+        logical.x,
+        logical.y,
+        (logical.width - arrow_w).max(0.0),
+        logical.height,
+    );
     let m = tk.measure_with(&text, resolved);
     let origin = (
         (inner.x + 6.0) * scale,
@@ -626,11 +763,28 @@ pub(super) fn draw_dspin(
     // Buttons on the right, matching the integer Spinbox in `render.rs`:
     // resolved.bg background, resolved.border_color outline and separator,
     // resolved.fg arrow glyphs (visible in HighContrast).
-    let btn_rect = Rect::new(logical.x + logical.width - arrow_w, logical.y, arrow_w, logical.height).scaled(scale);
+    let btn_rect = Rect::new(
+        logical.x + logical.width - arrow_w,
+        logical.y,
+        arrow_w,
+        logical.height,
+    )
+    .scaled(scale);
     fill(pixmap, btn_rect, clip, resolved.bg);
-    outline(pixmap, btn_rect, clip, scale, (resolved.border_color, resolved.border_color));
+    outline(
+        pixmap,
+        btn_rect,
+        clip,
+        scale,
+        (resolved.border_color, resolved.border_color),
+    );
     let half_h = btn_rect.height / 2.0;
-    fill(pixmap, Rect::new(btn_rect.x, btn_rect.y + half_h, btn_rect.width, scale), clip, resolved.border_color);
+    fill(
+        pixmap,
+        Rect::new(btn_rect.x, btn_rect.y + half_h, btn_rect.width, scale),
+        clip,
+        resolved.border_color,
+    );
     let up_text = "▲";
     let dn_text = "▼";
     let up_m = tk.measure(up_text, 8.0);
@@ -642,7 +796,10 @@ pub(super) fn draw_dspin(
         None,
         400,
         false,
-        (btn_rect.x + (btn_rect.width - up_m.width * scale) / 2.0, btn_rect.y + (half_h - up_m.height * scale) / 2.0),
+        (
+            btn_rect.x + (btn_rect.width - up_m.width * scale) / 2.0,
+            btn_rect.y + (half_h - up_m.height * scale) / 2.0,
+        ),
         clip,
         resolved.opacity,
     );
@@ -653,8 +810,29 @@ pub(super) fn draw_dspin(
         None,
         400,
         false,
-        (btn_rect.x + (btn_rect.width - dn_m.width * scale) / 2.0, btn_rect.y + half_h + (half_h - dn_m.height * scale) / 2.0),
+        (
+            btn_rect.x + (btn_rect.width - dn_m.width * scale) / 2.0,
+            btn_rect.y + half_h + (half_h - dn_m.height * scale) / 2.0,
+        ),
         clip,
         resolved.opacity,
     );
+}
+
+#[cfg(test)]
+mod progress_caption_tests {
+    use super::progress_caption;
+
+    #[test]
+    fn uses_animated_fraction_not_a_hidden_target() {
+        assert_eq!(progress_caption(None, true, false, 0.25), "25%");
+        assert_eq!(progress_caption(Some("Load"), true, false, 0.5), "Load 50%");
+    }
+
+    #[test]
+    fn hides_percent_when_indeterminate() {
+        assert_eq!(progress_caption(None, true, true, 0.0), "");
+        assert_eq!(progress_caption(Some("Load"), true, true, 0.0), "Load");
+        assert_eq!(progress_caption(Some("Load"), false, true, 0.0), "Load");
+    }
 }

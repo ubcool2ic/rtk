@@ -131,20 +131,84 @@ pub struct CanvasItem {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum CanvasItemKind {
-    Rect { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
-    Oval { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
-    Line { x0: f32, y0: f32, x1: f32, y1: f32, color: Color },
-    Text { x: f32, y: f32, text: String, color: Color },
+    Rect {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        color: Color,
+    },
+    Oval {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        color: Color,
+    },
+    Line {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        color: Color,
+    },
+    Text {
+        x: f32,
+        y: f32,
+        text: String,
+        color: Color,
+    },
     /// Rounded rectangle; filled when `fill` is set, stroked when `outline` is set.
-    RoundRect { x0: f32, y0: f32, x1: f32, y1: f32, radius: f32, fill: Option<Color>, outline: Option<(Color, f32)> },
+    RoundRect {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        radius: f32,
+        fill: Option<Color>,
+        outline: Option<(Color, f32)>,
+    },
     /// Open polyline (stroked) or closed polygon (filled).
-    Path { points: Vec<(f32, f32)>, color: Color, width: f32, filled: bool },
+    Path {
+        points: Vec<(f32, f32)>,
+        color: Color,
+        width: f32,
+        filled: bool,
+    },
     /// Stroked ellipse outline.
-    Ring { x0: f32, y0: f32, x1: f32, y1: f32, color: Color, width: f32 },
+    Ring {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        color: Color,
+        width: f32,
+    },
     /// Text with explicit pixel size and weight (100-900).
-    TextEx { x: f32, y: f32, text: String, color: Color, size: f32, weight: u16 },
+    TextEx {
+        x: f32,
+        y: f32,
+        text: String,
+        color: Color,
+        size: f32,
+        weight: u16,
+    },
     /// Scaled raw RGBA image item.
-    Image { x: f32, y: f32, w: f32, h: f32, src_w: u32, src_h: u32, rgba: Vec<u8>, smooth: bool },
+    ///
+    /// `rgba` stays a straight-alpha `Vec<u8>` so `image`/`chart` (outside this
+    /// work package) can keep constructing the variant. The renderer caches a
+    /// premultiplied `Arc<[u8]>` and iterates canvas items by reference so a
+    /// frame does not deep-clone or re-premultiply the buffer.
+    Image {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        src_w: u32,
+        src_h: u32,
+        rgba: Vec<u8>,
+        smooth: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -242,8 +306,6 @@ pub struct Chart;
 pub struct Sparkline;
 /// Constructor namespace for image widgets (PNG/RGBA/SVG).
 pub struct Image;
-
-
 
 #[allow(clippy::new_ret_no_self)]
 impl Frame {
@@ -548,7 +610,10 @@ impl Chart {
         let id = tk.add(Kind::Chart, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
             node.canvas_size = (w.max(0.0), h.max(0.0));
-            let state = crate::chart::ChartState { kind, ..Default::default() };
+            let state = crate::chart::ChartState {
+                kind,
+                ..Default::default()
+            };
             node.chart = Some(Box::new(state));
         }
         Ok(id)
@@ -575,8 +640,14 @@ impl Sparkline {
         let id = tk.add(Kind::Chart, parent, String::new())?;
         if let Some(node) = tk.node_mut(id) {
             node.canvas_size = (w.max(0.0), h.max(0.0));
-            let mut state = crate::chart::ChartState { sparkline: true, legend: false, ..Default::default() };
-            state.series.push(crate::chart::SeriesData::new("value".to_string()));
+            let mut state = crate::chart::ChartState {
+                sparkline: true,
+                legend: false,
+                ..Default::default()
+            };
+            state
+                .series
+                .push(crate::chart::SeriesData::new("value".to_string()));
             node.chart = Some(Box::new(state));
         }
         Ok(id)
@@ -655,6 +726,7 @@ impl Kind {
                 | Self::Scale
                 | Self::Listbox
                 | Self::Radiobutton
+                | Self::Spinbox
                 | Self::Switch
                 | Self::Slider
                 | Self::DoubleSpinbox

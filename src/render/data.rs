@@ -56,7 +56,13 @@ fn triangle(pixmap: &mut Pixmap, cx: f32, cy: f32, half: f32, up: bool, color: c
         let mut paint = Paint::default();
         paint.set_color_rgba8(color.r, color.g, color.b, color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -78,8 +84,9 @@ struct TableSnapshot {
     top: usize,
     /// Total number of model rows.
     rows_len: usize,
-    /// Visible rows as `(display_index, cells)` for `top..top+visible+1`.
-    visible_rows: Vec<(usize, Vec<String>)>,
+    /// Visible rows as `(display_index, model_index)` for `top..top+visible+1`.
+    /// Cell strings are borrowed later, one at a time, into a reused buffer.
+    visible_rows: Vec<(usize, usize)>,
 }
 
 impl TableSnapshot {
@@ -98,12 +105,16 @@ impl TableSnapshot {
         // (rows outside it are never drawn, so a full lookup is wasted work).
         let mut selected_display = None;
         for display in top..end {
-            let Some(&model) = state.order.get(display) else { continue };
+            let Some(&model) = state.order.get(display) else {
+                continue;
+            };
             if state.selected == Some(model) {
                 selected_display = Some(display);
             }
-            let Some(row) = state.rows.get(model) else { continue };
-            visible_rows.push((display, row.clone()));
+            if state.rows.get(model).is_none() {
+                continue;
+            }
+            visible_rows.push((display, model));
         }
         Some(Self {
             columns: state.columns.clone(),
@@ -125,8 +136,9 @@ impl TableSnapshot {
 struct TreeSnapshot {
     /// Selected node key.
     selected: Option<usize>,
-    /// Visible rows as `(key, depth, text, has_children, open)` for the window.
-    visible_rows: Vec<(usize, usize, String, bool, bool)>,
+    /// Visible rows as `(key, depth, has_children, open)` for the window.
+    /// Row text is borrowed later into a reused buffer.
+    visible_rows: Vec<(usize, usize, bool, bool)>,
 }
 
 impl TreeSnapshot {
@@ -146,12 +158,17 @@ impl TreeSnapshot {
         let state = tk.tree_state_mut(id)?;
         state.ensure_visible_robust();
         let top = state.top;
-        let end = top.saturating_add(visible).saturating_add(1).min(state.visible.len());
+        let end = top
+            .saturating_add(visible)
+            .saturating_add(1)
+            .min(state.visible.len());
         let mut visible_rows = Vec::with_capacity(end.saturating_sub(top));
         for display in top..end {
-            let Some(&(key, depth)) = state.visible.get(display) else { continue };
+            let Some(&(key, depth)) = state.visible.get(display) else {
+                continue;
+            };
             let Some(n) = state.get(key) else { continue };
-            visible_rows.push((key, depth, n.text.clone(), !n.children.is_empty(), n.open));
+            visible_rows.push((key, depth, !n.children.is_empty(), n.open));
         }
         Some(Self {
             selected: state.selected,
@@ -196,14 +213,23 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
             let mut paint = Paint::default();
             paint.set_color_rgba8(bg.r, bg.g, bg.b, bg_alpha);
             paint.anti_alias = true;
-            pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            pixmap.fill_path(
+                &path,
+                &paint,
+                tiny_skia::FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
             let border = palette.border;
             let border_alpha = (border.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
             if border_alpha > 0 {
                 let mut stroke_paint = Paint::default();
                 stroke_paint.set_color_rgba8(border.r, border.g, border.b, border_alpha);
                 stroke_paint.anti_alias = true;
-                let stroke = tiny_skia::Stroke { width: scale, ..tiny_skia::Stroke::default() };
+                let stroke = tiny_skia::Stroke {
+                    width: scale,
+                    ..tiny_skia::Stroke::default()
+                };
                 pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
             }
         }
@@ -211,7 +237,8 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
         // Leading kind icon.
         let icon_color = crate::tk::toast::kind_color(tk, kind);
         let icon_alpha = (icon_color.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
-        let cx = (rect.x + crate::tk::toast::TOAST_PAD_X + crate::tk::toast::TOAST_ICON_W / 2.0) * scale;
+        let cx =
+            (rect.x + crate::tk::toast::TOAST_PAD_X + crate::tk::toast::TOAST_ICON_W / 2.0) * scale;
         let cy = (rect.y + rect.height / 2.0) * scale;
         let r = 6.0 * scale;
         let mut paint = Paint::default();
@@ -220,7 +247,13 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
         match kind {
             crate::tk::ToastKind::Info => {
                 if let Some(path) = PathBuilder::from_circle(cx, cy, r) {
-                    pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                    pixmap.fill_path(
+                        &path,
+                        &paint,
+                        tiny_skia::FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
                 }
             }
             crate::tk::ToastKind::Success => {
@@ -245,7 +278,13 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
                 pb.line_to(cx - r, cy + r * 0.8);
                 pb.close();
                 if let Some(path) = pb.finish() {
-                    pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                    pixmap.fill_path(
+                        &path,
+                        &paint,
+                        tiny_skia::FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
                 }
             }
             crate::tk::ToastKind::Error => {
@@ -268,10 +307,18 @@ pub(super) fn draw_toast_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
         // Message text.
         let fg = palette.fg;
         let text_x = rect.x + crate::tk::toast::TOAST_PAD_X + crate::tk::toast::TOAST_ICON_W + 8.0;
-        let origin = (text_x * scale, (rect.y + (rect.height - font_size * 1.3) / 2.0) * scale);
+        let origin = (
+            text_x * scale,
+            (rect.y + (rect.height - font_size * 1.3) / 2.0) * scale,
+        );
         let text_clip = clip.intersection(
-            Rect::new(text_x, rect.y, (rect.x + rect.width - crate::tk::toast::TOAST_PAD_X - text_x).max(0.0), rect.height)
-                .scaled(scale),
+            Rect::new(
+                text_x,
+                rect.y,
+                (rect.x + rect.width - crate::tk::toast::TOAST_PAD_X - text_x).max(0.0),
+                rect.height,
+            )
+            .scaled(scale),
         );
         tk.text_engine.draw_styled(
             pixmap,
@@ -300,8 +347,12 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
     let full_clip = Rect::new(0.0, 0.0, pixmap.width() as f32, pixmap.height() as f32);
 
     for level in 0..levels {
-        let Some(rect) = tk.menu_panel_rect(level) else { continue };
-        let Some(open) = tk.menus.open.get(level).copied() else { continue };
+        let Some(rect) = tk.menu_panel_rect(level) else {
+            continue;
+        };
+        let Some(open) = tk.menus.open.get(level).copied() else {
+            continue;
+        };
         let menu = open.menu;
         let highlight = open.highlight;
         let items: Vec<MenuRow> = tk
@@ -311,9 +362,11 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
                 m.items
                     .iter()
                     .map(|item| match item {
-                        crate::tk::menu::MenuItem::Command { label, accel, enabled } => {
-                            (Some(label.clone()), accel.clone(), *enabled, false, false)
-                        }
+                        crate::tk::menu::MenuItem::Command {
+                            label,
+                            accel,
+                            enabled,
+                        } => (Some(label.clone()), accel.clone(), *enabled, false, false),
                         crate::tk::menu::MenuItem::Check { label, var } => {
                             let checked = var.get(tk).unwrap_or(false);
                             (Some(label.clone()), None, true, true, checked)
@@ -330,10 +383,30 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
         // Panel background.
         fill(pixmap, rect.scaled(scale), full_clip, surface);
         // 1px border.
-        fill(pixmap, Rect::new(rect.x, rect.y, rect.width, 1.0).scaled(scale), full_clip, border);
-        fill(pixmap, Rect::new(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0).scaled(scale), full_clip, border);
-        fill(pixmap, Rect::new(rect.x, rect.y, 1.0, rect.height).scaled(scale), full_clip, border);
-        fill(pixmap, Rect::new(rect.x + rect.width - 1.0, rect.y, 1.0, rect.height).scaled(scale), full_clip, border);
+        fill(
+            pixmap,
+            Rect::new(rect.x, rect.y, rect.width, 1.0).scaled(scale),
+            full_clip,
+            border,
+        );
+        fill(
+            pixmap,
+            Rect::new(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0).scaled(scale),
+            full_clip,
+            border,
+        );
+        fill(
+            pixmap,
+            Rect::new(rect.x, rect.y, 1.0, rect.height).scaled(scale),
+            full_clip,
+            border,
+        );
+        fill(
+            pixmap,
+            Rect::new(rect.x + rect.width - 1.0, rect.y, 1.0, rect.height).scaled(scale),
+            full_clip,
+            border,
+        );
 
         for (idx, (label, accel, enabled, is_check, checked)) in items.iter().enumerate() {
             let iy = rect.y + 4.0 + idx as f32 * ih;
@@ -341,7 +414,12 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
             let Some(label) = label else {
                 // Separator: 1px line in the middle.
                 let sy = iy + ih / 2.0;
-                fill(pixmap, Rect::new(rect.x + 6.0, sy, rect.width - 12.0, 1.0).scaled(scale), full_clip, border);
+                fill(
+                    pixmap,
+                    Rect::new(rect.x + 6.0, sy, rect.width - 12.0, 1.0).scaled(scale),
+                    full_clip,
+                    border,
+                );
                 continue;
             };
             let is_hl = highlight == Some(idx) && *enabled;
@@ -367,11 +445,17 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
                     let mut paint = Paint::default();
                     paint.set_color_rgba8(fg.r, fg.g, fg.b, fg.a);
                     paint.anti_alias = true;
-                    let stroke = tiny_skia::Stroke { width: 1.5 * scale, ..tiny_skia::Stroke::default() };
+                    let stroke = tiny_skia::Stroke {
+                        width: 1.5 * scale,
+                        ..tiny_skia::Stroke::default()
+                    };
                     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
                 }
             }
-            let origin = ((rect.x + 24.0) * scale, (iy + (ih - font_size * 1.3) / 2.0) * scale);
+            let origin = (
+                (rect.x + 24.0) * scale,
+                (iy + (ih - font_size * 1.3) / 2.0) * scale,
+            );
             tk.text_engine.draw_styled(
                 pixmap,
                 label,
@@ -416,7 +500,10 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
                     let mut paint = Paint::default();
                     paint.set_color_rgba8(fg.r, fg.g, fg.b, fg.a);
                     paint.anti_alias = true;
-                    let stroke = tiny_skia::Stroke { width: 1.5 * scale, ..tiny_skia::Stroke::default() };
+                    let stroke = tiny_skia::Stroke {
+                        width: 1.5 * scale,
+                        ..tiny_skia::Stroke::default()
+                    };
                     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
                 }
             }
@@ -425,7 +512,14 @@ pub(super) fn draw_menu_overlay(tk: &mut Tk, pixmap: &mut Pixmap, scale: f32) {
 }
 
 /// Draws a small disclosure triangle centred on `(cx, cy)`.
-fn tree_triangle(pixmap: &mut Pixmap, cx: f32, cy: f32, half: f32, open: bool, color: crate::Color) {
+fn tree_triangle(
+    pixmap: &mut Pixmap,
+    cx: f32,
+    cy: f32,
+    half: f32,
+    open: bool,
+    color: crate::Color,
+) {
     let mut pb = PathBuilder::new();
     if open {
         pb.move_to(cx - half, cy - half * 0.5);
@@ -441,11 +535,28 @@ fn tree_triangle(pixmap: &mut Pixmap, cx: f32, cy: f32, half: f32, open: bool, c
         let mut paint = Paint::default();
         paint.set_color_rgba8(color.r, color.g, color.b, color.a);
         paint.anti_alias = true;
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
 /// Draws the whole tree view: virtualized rows, disclosure triangles, selection.
+fn table_cell_text(tk: &Tk, id: crate::WidgetId, model: usize, col: usize) -> Option<&str> {
+    let node = tk.node(id)?;
+    let row = node.table.as_ref()?.rows.get(model)?;
+    row.get(col).map(String::as_str)
+}
+
+fn tree_row_text(tk: &Tk, id: crate::WidgetId, key: usize) -> Option<&str> {
+    let node = tk.node(id)?;
+    Some(node.tree.as_ref()?.get(key)?.text.as_str())
+}
+
 pub(crate) fn draw_tree(
     tk: &mut Tk,
     pixmap: &mut Pixmap,
@@ -472,13 +583,16 @@ pub(crate) fn draw_tree(
         tk.node(id).map(|n| n.requested.height).unwrap_or(0.0)
     };
     let visible = (height / rh).floor().max(0.0) as usize;
-    let Some(snap) = TreeSnapshot::capture(tk, id, visible) else { return };
+    let Some(snap) = TreeSnapshot::capture(tk, id, visible) else {
+        return;
+    };
 
     let palette = tk.style_engine.tokens().palette;
     let opacity = resolved.opacity;
 
     // Body rows (virtualized; only the snapshot window is drawn).
-    for (row_idx, (key, depth, text, has_children, open)) in snap.visible_rows.iter().enumerate() {
+    let mut text_buf = String::new();
+    for (row_idx, (key, depth, has_children, open)) in snap.visible_rows.iter().enumerate() {
         let row_y = logical.y + row_idx as f32 * rh;
         let row_rect = Rect::new(logical.x, row_y, logical.width, rh);
         let row_clip = clip.intersection(row_rect.scaled(scale));
@@ -486,15 +600,27 @@ pub(crate) fn draw_tree(
             continue;
         }
         let is_selected = snap.selected == Some(*key);
-        let bg = if is_selected { palette.select_bg } else { palette.bg };
+        let bg = if is_selected {
+            palette.select_bg
+        } else {
+            palette.bg
+        };
         fill(pixmap, row_rect.scaled(scale), clip, bg);
-        let fg = if is_selected { palette.select_fg } else { palette.fg };
+        let fg = if is_selected {
+            palette.select_fg
+        } else {
+            palette.fg
+        };
 
         let indent = *depth as f32 * 16.0;
         if *has_children {
             let cx = (logical.x + indent + 8.0) * scale;
             let cy = (row_y + rh / 2.0) * scale;
             tree_triangle(pixmap, cx, cy, 4.0 * scale, *open, fg);
+        }
+        text_buf.clear();
+        if let Some(text) = tree_row_text(tk, id, *key) {
+            text_buf.push_str(text);
         }
         let text_x = logical.x + indent + 16.0;
         let origin = (
@@ -503,7 +629,7 @@ pub(crate) fn draw_tree(
         );
         tk.text_engine.draw_styled(
             pixmap,
-            text,
+            &text_buf,
             (font_size * scale, fg),
             resolved.font_family.as_deref(),
             400,
@@ -514,18 +640,26 @@ pub(crate) fn draw_tree(
         );
     }
 
-
-
     // Outer border.
     let border = palette.border;
-    fill(pixmap, Rect::new(rect.x, rect.y, rect.width, scale).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x, rect.y, rect.width, scale).intersection(clip),
+        clip,
+        border,
+    );
     fill(
         pixmap,
         Rect::new(rect.x, rect.y + rect.height - scale, rect.width, scale).intersection(clip),
         clip,
         border,
     );
-    fill(pixmap, Rect::new(rect.x, rect.y, scale, rect.height).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x, rect.y, scale, rect.height).intersection(clip),
+        clip,
+        border,
+    );
     fill(
         pixmap,
         Rect::new(rect.x + rect.width - scale, rect.y, scale, rect.height).intersection(clip),
@@ -558,7 +692,9 @@ pub(crate) fn draw_table(
     // Number of fully visible body rows, then snapshot only that window.
     let body_h = (logical.height - hh).max(0.0);
     let visible = (body_h / rh).floor().max(0.0) as usize;
-    let Some(snap) = TableSnapshot::capture(tk, id, visible) else { return };
+    let Some(snap) = TableSnapshot::capture(tk, id, visible) else {
+        return;
+    };
     let _ = snap.rows_len;
 
     let palette = tk.style_engine.tokens().palette;
@@ -620,8 +756,10 @@ pub(crate) fn draw_table(
 
     // Body rows (virtualized; only the snapshot window is drawn).
     let body_top = logical.y + hh;
-    for (display, cells) in &snap.visible_rows {
+    let mut text_buf = String::new();
+    for (display, model) in &snap.visible_rows {
         let display = *display;
+        let model = *model;
         let row_y = body_top + display.saturating_sub(snap.top) as f32 * rh;
         let row_rect = Rect::new(logical.x, row_y, logical.width, rh);
         let row_clip = clip.intersection(row_rect.scaled(scale));
@@ -629,24 +767,40 @@ pub(crate) fn draw_table(
             continue;
         }
         let is_selected = snap.selected == Some(display);
-        let stripe = if display % 2 == 0 { palette.surface } else { palette.bg };
-        let bg = if is_selected { palette.select_bg } else { stripe };
+        let stripe = if display % 2 == 0 {
+            palette.surface
+        } else {
+            palette.bg
+        };
+        let bg = if is_selected {
+            palette.select_bg
+        } else {
+            stripe
+        };
         fill(pixmap, row_rect.scaled(scale), clip, bg);
-        let fg = if is_selected { palette.select_fg } else { palette.fg };
+        let fg = if is_selected {
+            palette.select_fg
+        } else {
+            palette.fg
+        };
 
         let mut cx = logical.x;
         for (col, w) in snap.widths.iter().enumerate() {
             let cell = Rect::new(cx, row_y, *w, rh);
             let cell_clip = clip.intersection(cell.scaled(scale));
             if cell_clip.width > 0.0 {
-                if let Some(text) = cells.get(col) {
+                text_buf.clear();
+                if let Some(text) = table_cell_text(tk, id, model, col) {
+                    text_buf.push_str(text);
+                }
+                if !text_buf.is_empty() {
                     let origin = (
                         (cx + 6.0) * scale,
                         (row_y + (rh - font_size * 1.3) / 2.0) * scale,
                     );
                     tk.text_engine.draw_styled(
                         pixmap,
-                        text,
+                        &text_buf,
                         (font_size * scale, fg),
                         resolved.font_family.as_deref(),
                         400,
@@ -663,14 +817,24 @@ pub(crate) fn draw_table(
 
     // Outer border.
     let border = palette.border;
-    fill(pixmap, Rect::new(rect.x, rect.y, rect.width, scale).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x, rect.y, rect.width, scale).intersection(clip),
+        clip,
+        border,
+    );
     fill(
         pixmap,
         Rect::new(rect.x, rect.y + rect.height - scale, rect.width, scale).intersection(clip),
         clip,
         border,
     );
-    fill(pixmap, Rect::new(rect.x, rect.y, scale, rect.height).intersection(clip), clip, border);
+    fill(
+        pixmap,
+        Rect::new(rect.x, rect.y, scale, rect.height).intersection(clip),
+        clip,
+        border,
+    );
     fill(
         pixmap,
         Rect::new(rect.x + rect.width - scale, rect.y, scale, rect.height).intersection(clip),
