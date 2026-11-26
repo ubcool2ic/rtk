@@ -286,11 +286,20 @@ impl Tk {
         let Some(node) = self.node_mut(id) else { return };
         if node.kind == Kind::Text {
             if let Some(max) = node.text_max_lines {
-                super::text::trim_lines(&mut node.text, max);
+                let drained = super::text::trim_lines(&mut node.text, max);
+                if drained > 0 {
+                    node.cursor = node.cursor.saturating_sub(drained);
+                    if let Some(anchor) = node.selection_anchor.as_mut() {
+                        *anchor = anchor.saturating_sub(drained);
+                    }
+                }
             }
         }
         let len = node.text.len();
         node.cursor = floor_char_boundary(&node.text, node.cursor.min(len));
+        if let Some(anchor) = node.selection_anchor {
+            node.selection_anchor = Some(floor_char_boundary(&node.text, anchor.min(len)));
+        }
         if node.kind == Kind::Text {
             let vis_rows = node.text_dimensions.1;
             let cur_line = node.text[..node.cursor].bytes().filter(|&b| b == b'\n').count();

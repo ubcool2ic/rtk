@@ -487,8 +487,9 @@ impl Tk {
                 Kind::Canvas => {
                     let (local_x, local_y) =
                         (x - node.rect.x + node.view.0, y - node.rect.y + node.view.1);
-                    if node.scrollregion.is_some() {
-                        self.focused = Some(id);
+                    let should_focus = node.scrollregion.is_some();
+                    if should_focus {
+                        self.set_focused(Some(id));
                     }
                     self.drag_active = Some(id);
                     self.drag_start = (local_x, local_y);

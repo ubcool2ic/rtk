@@ -4,18 +4,22 @@
 use super::*;
 
 /// Trims the text to at most the given number of lines, dropping the oldest lines first.
-pub(crate) fn trim_lines(text: &mut String, max: usize) {
-    // 0 means "unlimited", matching `text_set_max_lines`.
+///
+/// Returns the number of leading bytes drained, or 0 if nothing was removed.
+/// 0 as `max` means "unlimited", matching [`Tk::text_set_max_lines`].
+pub(crate) fn trim_lines(text: &mut String, max: usize) -> usize {
     if max == 0 {
-        return;
+        return 0;
     }
     let newlines = text.bytes().filter(|&b| b == b'\n').count();
     if newlines + 1 > max {
         let drop_count = newlines + 1 - max;
         if let Some((pos, _)) = text.match_indices('\n').nth(drop_count - 1) {
             text.drain(..=pos);
+            return pos + 1;
         }
     }
+    0
 }
 
 impl Tk {

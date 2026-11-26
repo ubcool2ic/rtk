@@ -156,20 +156,66 @@ fn text_max_lines_enforced_on_paste_and_undo() {
     tk.clipboard_clear();
     tk.clipboard_append("a\nb\nc\nd\ne");
     tk.sim_key_with(Key::Char('v'), Modifiers::primary());
-    let n = tk.text_get(t).unwrap().split('\n').count();
-    assert!(n <= 3, "lines after paste with max 3: {n}");
+    let pasted = tk.text_get(t).unwrap();
+    assert!(pasted.split('\n').count() <= 3, "lines after paste with max 3: {}", pasted.split('\n').count());
+    assert_eq!(pasted, "c\nd\ne");
 
-    // Undo the paste, type three lines, then redo should still be clamped.
     tk.sim_key_with(Key::Char('z'), Modifiers::primary());
-    tk.sim_text("1");
+    assert_eq!(tk.text_get(t).as_deref(), Some(""));
+
+    tk.sim_key_with(Key::Char('y'), Modifiers::primary());
+    let redone = tk.text_get(t).unwrap();
+    assert_eq!(redone, pasted);
+    assert!(redone.split('\n').count() <= 3, "lines after redo with max 3: {}", redone.split('\n').count());
+}
+
+/// B8: trimming leading lines must shift cursor (and a drained anchor) so a
+/// mid-buffer Enter then type does not land in the wrong line.
+#[test]
+fn text_max_lines_shifts_cursor_after_mid_buffer_enter() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let t = Text::new(&mut tk, root, 30, 4).unwrap();
+    tk.pack(t, Default::default());
+    tk.text_set(t, "aaaa\nbbbb\ncccc");
+    tk.text_set_max_lines(t, 3);
+    tk.render_frame(400, 200).unwrap();
+    let r = tk.widget_rect(t).unwrap();
+    tk.sim_click(r.x + 5.0, r.y + 10.0);
+    // Caret at the start of "bbbb".
+    tk.text_select_range(t, 5, 5);
     tk.sim_key(Key::Enter);
-    tk.sim_text("2");
-    tk.sim_key(Key::Enter);
-    tk.sim_text("3");
-    tk.sim_key(Key::Enter);
-    tk.sim_text("4");
-    let n = tk.text_get(t).unwrap().split('\n').count();
-    assert!(n <= 3, "lines after typed overflow with max 3: {n}");
+    tk.sim_text("X");
+    // After Enter, trim drops "aaaa\n" and leaves "\nbbbb\ncccc"; a shifted
+    // caret is at byte 1, so X is inserted after the leftover leading newline.
+    // Unfixed, the caret stays at 6 and this becomes "\nbbbb\nXcccc".
+    assert_eq!(tk.text_get(t).as_deref(), Some("\nXbbbb\ncccc"));
+}
+
+/// B8: an undo that restores a snapshot whose cursor/anchor sit in a line
+/// that `text_max_lines` then drains must clamp both to 0, not leave them
+/// pointing into the kept text.
+#[test]
+fn text_max_lines_clamps_anchor_inside_drained_prefix() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let t = Text::new(&mut tk, root, 30, 4).unwrap();
+    tk.pack(t, Default::default());
+    tk.text_set(t, "aaaa\nbbbb\ncccc\ndddd");
+    tk.render_frame(400, 200).unwrap();
+    let r = tk.widget_rect(t).unwrap();
+    tk.sim_click(r.x + 5.0, r.y + 10.0);
+    // Snapshot will record cursor/anchor inside the first line.
+    tk.text_select_range(t, 2, 4);
+    tk.sim_text("Z");
+    tk.text_set_max_lines(t, 3);
+    tk.sim_key_with(Key::Char('z'), Modifiers::primary());
+    // Undo restores the 4-line text; sync_after_edit drains "aaaa\n" and
+    // must clamp the restored cursor (4) and anchor (2) to 0.
+    assert_eq!(tk.text_get(t).as_deref(), Some("bbbb\ncccc\ndddd"));
+    assert_eq!(tk.text_selection(t), None);
+    tk.sim_text("X");
+    assert_eq!(tk.text_get(t).as_deref(), Some("Xbbbb\ncccc\ndddd"));
 }
 
 /// B2: AltGr (Ctrl+Alt) / Option characters must be inserted, not dropped.

@@ -370,7 +370,7 @@ Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were nee
 
 ### WP1 Input/keyboard (branch fix/wp1-input, Reviewer2)
 
-Account `total_usage` before the job's first paid call: **582.958074236** (1:34 AM ET). Job cap $2.50; account stop line 586.29. After the call: **584.975028236** (1:36 AM ET). Own generation-id sum: **$0.11956**. The remaining account delta was other bots on the shared account (WP2 ran in parallel).
+Account `total_usage` before the job's first paid call: **582.958074236** (1:34 AM ET). Job cap $2.50; account stop line for later follow-ups is 595.00 (the first call used 586.29). After the first call: **584.975028236** (1:36 AM ET). Own generation-id sum: **$0.184686**. The remaining account delta was other bots on the shared account.
 
 | Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
 |---|---|---|---:|---:|---:|---|---|---|
@@ -378,4 +378,6 @@ Account `total_usage` before the job's first paid call: **582.958074236** (1:34 
 | 2026-11-26 | note | hand glue (WP1) | Wrote `tests/wp1_input.rs`. Carbon's unified diffs were malformed in shortcuts/events/text/edit; the intended edits were applied by hand and checked against the code. Added `spinbox_on_change` because `Kind::has_command` (widgets.rs, out of WP1 scope) still rejects `set_command` on Spinbox. ShiftTab shortcut labels now render as `Shift+Tab`. No version bump or CHANGELOG. | | 0.00000 | | | |
 | 2026-11-26 1:56 AM ET | google/gemini-4-carbon | wp1-command-slot | 908 (native 1103; 0 cached) | 1417 billed / 6000 native (5997 reasoning, 0 content) | 0.062206 | measured | gen-1795676084-v8ovnZkkAU1LBlQkxIoI | empty (finish=length); wrapper and tests finished by hand |
 | 2026-11-26 | note | hand glue (WP1 command slot) | `spinbox_on_change` now delegates to `set_command` when `Kind::has_command` includes Spinbox, otherwise still writes `node.command`. Added tests for exactly-once fire and last-setter-wins. | | 0.00000 | | | |
-| | | **own total** | | | **0.181766** | | | |
+| 2026-11-26 2:17 AM ET | google/gemini-4-carbon | wp1-r1-should-fix | 974 (native 1135; 0 cached) | 49 (native 65; 0 reasoning) | 0.00292 | measured | gen-1795677424-UiXwAM02PU7bp6Fq9Qku | ok; asked for file contents, no diff; fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP1 r1 should-fix) | Carbon produced no patch. `trim_lines` now returns drained bytes; `sync_after_edit` shifts cursor and a drained-prefix anchor; Canvas press uses `set_focused`; paste/undo test asserts undo and redo; mid-buffer trim tests added. | | 0.00000 | | | |
+| | | **own total** | | | **0.184686** | | | |
