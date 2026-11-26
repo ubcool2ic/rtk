@@ -367,3 +367,17 @@ Total: 8 calls, $0.0363 (cap $1.50). No openai/gpt-6-sol fallback calls were nee
 | 2026-11-13 | anthropic/claude-fable-5.2 | c15-tests | 46220 (0 cached) | 5581 (1892 reasoning) | 0.5930 | 7.6466 |
 | 2026-11-13 | anthropic/claude-fable-5.2 | c16-docs | 8959 (0 cached) | 5233 (2321 reasoning) | 0.2810 | 7.9276 |
 | 2026-11-13 | note | hand glue (1.0.2) | Reverted two Fable edits: always-rebuilt `:disabled` state map in style.rs (changed the blessed dark tristate golden: disabled text got lighter) and a render_frame "nothing pending" early return in damage.rs (combobox popup/menu hover is drawn from the pointer without setting `dirty`, so it could leave stale hover). `cargo clippy --fix` (3 needless borrows). Added `sim_resize` to one Fable test. README line rewrap. `.gitignore` for the GUIDE doctest outputs `out.png` / `my_widget_light_1x.png/`. Version bump in Cargo.toml + Cargo.lock | | | |
+
+### WP1 Input/keyboard (branch fix/wp1-input, Reviewer2)
+
+Account `total_usage` before the job's first paid call: **582.958074236** (1:34 AM ET). Job cap $2.50; account stop line for later follow-ups is 595.00 (the first call used 586.29). After the first call: **584.975028236** (1:36 AM ET). Own generation-id sum: **$0.184686**. The remaining account delta was other bots on the shared account.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 1:35 AM ET | google/gemini-4-carbon | wp1-input-fixes | 11429 (native 13860; 0 cached) | 8193 (native 9184; 0 reasoning) | 0.11956 | measured | gen-1795674846-rGECm2i0yNRefJREbQyY | ok; diffs applied and finished by hand |
+| 2026-11-26 | note | hand glue (WP1) | Wrote `tests/wp1_input.rs`. Carbon's unified diffs were malformed in shortcuts/events/text/edit; the intended edits were applied by hand and checked against the code. Added `spinbox_on_change` because `Kind::has_command` (widgets.rs, out of WP1 scope) still rejects `set_command` on Spinbox. ShiftTab shortcut labels now render as `Shift+Tab`. No version bump or CHANGELOG. | | 0.00000 | | | |
+| 2026-11-26 1:56 AM ET | google/gemini-4-carbon | wp1-command-slot | 908 (native 1103; 0 cached) | 1417 billed / 6000 native (5997 reasoning, 0 content) | 0.062206 | measured | gen-1795676084-v8ovnZkkAU1LBlQkxIoI | empty (finish=length); wrapper and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP1 command slot) | `spinbox_on_change` now delegates to `set_command` when `Kind::has_command` includes Spinbox, otherwise still writes `node.command`. Added tests for exactly-once fire and last-setter-wins. | | 0.00000 | | | |
+| 2026-11-26 2:17 AM ET | google/gemini-4-carbon | wp1-r1-should-fix | 974 (native 1135; 0 cached) | 49 (native 65; 0 reasoning) | 0.00292 | measured | gen-1795677424-UiXwAM02PU7bp6Fq9Qku | ok; asked for file contents, no diff; fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP1 r1 should-fix) | Carbon produced no patch. `trim_lines` now returns drained bytes; `sync_after_edit` shifts cursor and a drained-prefix anchor; Canvas press uses `set_focused`; paste/undo test asserts undo and redo; mid-buffer trim tests added. | | 0.00000 | | | |
+| | | **own total** | | | **0.184686** | | | |

@@ -37,12 +37,21 @@ impl Tk {
 
     /// Returns every currently bound shortcut, in binding order.
     pub fn shortcuts(&self) -> Vec<(ShortcutId, Shortcut)> {
-        self.shortcuts.iter().map(|(id, sc, _)| (*id, *sc)).collect()
+        self.shortcuts
+            .iter()
+            .map(|(id, sc, _)| (*id, *sc))
+            .collect()
     }
 
     /// Returns the modifier set of the most recent key press.
     pub fn modifiers(&self) -> Modifiers {
         self.mods
+    }
+
+    /// Headless harness: sets the current modifier state (window `ModifiersChanged`).
+    #[doc(hidden)]
+    pub fn sim_modifiers(&mut self, mods: Modifiers) {
+        self.mods = mods;
     }
 
     /// Headless harness: delivers a key press with the given modifiers.
@@ -53,7 +62,7 @@ impl Tk {
     /// 2. Otherwise a matching bound shortcut runs (last bound wins).
     /// 3. Otherwise falls through to [`Tk::sim_key`] for non-`Char` keys.
     #[doc(hidden)]
-    pub fn sim_key_with(&mut self, key: Key, mods: Modifiers) {
+    pub fn sim_key_with(&mut self, key: Key, mods: Modifiers) -> bool {
         self.ensure_layout();
         self.mods = mods;
 
@@ -66,7 +75,7 @@ impl Tk {
                         || (n.kind == Kind::Combobox && n.combo_editable)
                 }) {
                     self.handle_edit_chord(id, key, mods);
-                    return;
+                    return true;
                 }
             }
         }
@@ -93,12 +102,31 @@ impl Tk {
                 slot.2 = cb;
             }
             self.dirty = true;
-            return;
+            return true;
         }
 
         // (c) Fall through to existing handling for non-Char keys.
         if !matches!(key, Key::Char(_)) {
             self.sim_key_raw(key);
+            return true;
+        }
+
+        false
+    }
+
+    /// Headless harness: dispatches a key the same way the window event loop does.
+    ///
+    /// If `key` is consumed by a shortcut or widget, stop. Otherwise, when
+    /// `accepts_key_input` allows it, insert `text` into the focused editor.
+    #[doc(hidden)]
+    pub fn sim_key_or_text(&mut self, key: Option<Key>, text: &str, mods: Modifiers) {
+        if let Some(key) = key {
+            if self.sim_key_with(key, mods) {
+                return;
+            }
+        }
+        if crate::app::accepts_key_input(mods.ctrl, mods.alt, mods.meta) && !text.is_empty() {
+            self.sim_text(text);
         }
     }
 
