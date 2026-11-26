@@ -32,7 +32,7 @@ impl Tk {
         let Some(node) = self.node(id) else { return };
         // A widget inside a ScrollArea scrolls the nearest area unless it
         // consumes the wheel itself (Listbox, Canvas, Text, Slider, ...).
-        if !matches!(node.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::Slider | Kind::DoubleSpinbox | Kind::Combobox | Kind::Table | Kind::TreeView) {
+        if !matches!(node.kind, Kind::Listbox | Kind::Canvas | Kind::Text | Kind::Slider | Kind::DoubleSpinbox | Kind::Combobox | Kind::Spinbox | Kind::Table | Kind::TreeView) {
             if let Some(area) = self.nearest_scroll_area(id) {
                 let k = if pixels { 1.0 } else { WHEEL_LINE_PX };
                 self.scrollarea_scroll_by(area, -dx * k, -dy * k);
@@ -64,10 +64,30 @@ impl Tk {
             Kind::Slider if dy != 0.0 => {
                 let step = node.inputs.as_ref().map_or(0.0, |s| s.slider_step);
                 let (from, to) = node.range_f64;
-                let unit = if step > 0.0 { step } else { (to - from).abs() * 0.01 };
+                // Match slider_key: increase moves toward `to`, even when inverted.
+                let dir = if from <= to { 1.0 } else { -1.0 };
+                let unit = dir * if step > 0.0 { step } else { (to - from).abs() * 0.01 };
                 let current = node.progress_f64.and_then(|v| v.get(self)).unwrap_or(from);
                 let direction = if dy > 0.0 { 1.0 } else { -1.0 };
                 self.slider_user_set(id, current + direction * unit);
+            }
+            Kind::Spinbox if dy != 0.0 && !node.disabled => {
+                let (from, to) = node.range;
+                let step = if to >= from { 1 } else { -1 };
+                let old = node.scale.and_then(|v| v.get(self)).unwrap_or(from);
+                let val = if dy > 0.0 {
+                    old.saturating_add(step)
+                } else {
+                    old.saturating_sub(step)
+                };
+                let val = val.clamp(from.min(to), from.max(to));
+                let var = node.scale;
+                if let Some(var) = var {
+                    var.set(self, val);
+                }
+                if val != old {
+                    self.run_command(id);
+                }
             }
             Kind::DoubleSpinbox if dy != 0.0 => {
                 let direction = if dy > 0.0 { 1 } else { -1 };
@@ -81,15 +101,14 @@ impl Tk {
                 let lines = if pixels { dy / 20.0 } else { dy };
                 self.tree_scroll(id, -lines * 3.0);
             }
-            Kind::Combobox if !node.combo_open && dy != 0.0 => {
+            Kind::Combobox if !node.combo_open && dy != 0.0 && !node.disabled => {
                 let old = node.combo_var.and_then(|v| v.get(self)).unwrap_or(0);
                 let max_idx = node.combo_values.len().saturating_sub(1) as i64;
                 let step = if dy > 0.0 { -1 } else { 1 };
                 let new_val = (old + step).clamp(0, max_idx);
-                if let Some(var) = node.combo_var {
-                    var.set(self, new_val);
+                if new_val != old {
+                    self.combo_select_value(id, new_val as usize);
                 }
-                self.dirty = true;
             }
             _ => {}
         }

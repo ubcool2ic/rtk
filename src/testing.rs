@@ -15,7 +15,8 @@
 //! ```
 //!
 //! Set the environment variable `RTK_BLESS=1` to (re)write golden images
-//! instead of comparing against them.
+//! instead of comparing against them. A missing golden fails unless that
+//! variable is set; the helper will not create the file on a normal run.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -98,9 +99,9 @@ pub fn compare_pixmaps(a: &Pixmap, b: &Pixmap, tolerance: u8) -> (usize, u8) {
 
 /// Renders `tk` at `width`×`height` and compares it against `<dir>/<name>.png`.
 ///
-/// * If `RTK_BLESS=1` is set, or the golden file does not exist, the rendered
-///   image is written to `<dir>/<name>.png` (creating directories as needed)
-///   and the function returns.
+/// * If `RTK_BLESS=1` is set, the rendered image is written to
+///   `<dir>/<name>.png` (creating directories as needed) and the function
+///   returns. A missing golden file is an error unless `RTK_BLESS=1`.
 /// * On a size mismatch, the function panics.
 /// * On a pixel mismatch exceeding `opts.max_diff_pixels`, it writes
 ///   `<dir>/<name>.actual.png` and `<dir>/<name>.diff.png` (differing pixels in
@@ -126,9 +127,16 @@ pub fn assert_golden(
     let golden_path = dir.join(format!("{name}.png"));
     let bless = std::env::var("RTK_BLESS").map(|v| v == "1").unwrap_or(false);
 
-    if bless || !golden_path.exists() {
+    if bless {
         write_png(&golden_path, &actual, name);
         return;
+    }
+    if !golden_path.exists() {
+        panic!(
+            "missing golden for '{name}': {} does not exist. \
+             Re-run with RTK_BLESS=1 to create it.",
+            golden_path.display()
+        );
     }
 
     let golden = Pixmap::load_png(&golden_path).unwrap_or_else(|err| {

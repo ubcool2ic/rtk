@@ -34,6 +34,8 @@ pub(crate) struct TableState {
     pub(crate) on_select: Option<TableSelectCallback>,
     /// Re-entrancy guard for the selection callback.
     pub(crate) on_select_running: bool,
+    /// Test probe: number of existing `order` entries the shift loop has visited.
+    pub(crate) order_shift_visits: usize,
 }
 
 impl TableState {
@@ -50,6 +52,7 @@ impl TableState {
             resize_drag: None,
             on_select: None,
             on_select_running: false,
+            order_shift_visits: 0,
         }
     }
 
@@ -59,6 +62,34 @@ impl TableState {
         if let Some((col, asc)) = self.sort {
             self.apply_sort(col, asc);
         }
+    }
+
+    /// Insertion point in a currently-valid `order` for a newly inserted model row.
+    /// Matches a stable sort of the identity permutation.
+    fn sorted_insert_pos(&self, model: usize, col: usize, asc: bool) -> usize {
+        let key_of = |idx: usize| -> (f64, String) {
+            let cell = self.rows.get(idx).and_then(|r| r.get(col)).map(String::as_str).unwrap_or("");
+            match cell.trim().parse::<f64>() {
+                Ok(n) if !n.is_nan() => (n, String::new()),
+                _ => (f64::NAN, cell.to_lowercase()),
+            }
+        };
+        let new_key = key_of(model);
+        self.order.partition_point(|&existing| {
+            let old_key = key_of(existing);
+            let ord = match (old_key.0.is_nan(), new_key.0.is_nan()) {
+                (false, false) => old_key.0.partial_cmp(&new_key.0).unwrap_or(std::cmp::Ordering::Equal),
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                (true, true) => old_key.1.cmp(&new_key.1),
+            };
+            let ord = if asc { ord } else { ord.reverse() };
+            match ord {
+                std::cmp::Ordering::Less => true,
+                std::cmp::Ordering::Greater => false,
+                std::cmp::Ordering::Equal => existing < model,
+            }
+        })
     }
 
     /// Stable-sorts the permutation by column `col`; precomputes keys once.
@@ -181,8 +212,24 @@ impl Tk {
                 state.selected = Some(sel + 1);
             }
         }
-        state.rebuild_order();
-        self.table_clamp_top(id);
+        // Appends cannot bump any existing index (new model id is max), so
+        // skip the O(n) shift and just push when unsorted.
+        if at < state.rows.len() - 1 {
+            state.order_shift_visits = state.order_shift_visits.saturating_add(state.order.len());
+            for idx in state.order.iter_mut() {
+                if *idx >= at {
+                    *idx += 1;
+                }
+            }
+        }
+        if let Some((col, asc)) = state.sort {
+            let pos = state.sorted_insert_pos(at, col, asc);
+            state.order.insert(pos, at);
+        } else if at < state.rows.len() - 1 {
+            state.order.insert(at.min(state.order.len()), at);
+        } else {
+            state.order.push(at);
+        }
         self.dirty = true;
         true
     }
@@ -192,6 +239,7 @@ impl Tk {
         let Some(state) = self.table_state_mut(id) else { return false };
         state.rows.clear();
         state.order.clear();
+        state.order_shift_visits = 0;
         let had_selection = state.selected.take().is_some();
         state.top = 0;
         self.dirty = true;
@@ -204,6 +252,14 @@ impl Tk {
     /// Number of model rows.
     pub fn table_row_count(&self, id: WidgetId) -> usize {
         self.table_state(id).map(|s| s.rows.len()).unwrap_or(0)
+    }
+
+    /// Test probe: how many existing `order` entries the shift loop has visited
+    /// on this table. Appends must leave this at zero; mid-table inserts add
+    /// `order.len()` as of just after `rows.insert`.
+    #[doc(hidden)]
+    pub fn table_order_shift_visits(&self, id: WidgetId) -> usize {
+        self.table_state(id).map(|s| s.order_shift_visits).unwrap_or(0)
     }
 
     /// Cell text at model `(row, col)`, if present.

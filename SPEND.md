@@ -546,3 +546,41 @@ Two paid Kimi calls were made. The first returned empty content (`finish=length`
 |---|---|---|---|---:|---|---|
 | 2026-11-26 1:32 PM ET | — | — | Re-bless six m011_modal goldens; LINKED_BARS purge on Drop/destroy (try_with) | 0.000000 | measured | no call (hand-written) |
 | | | | **this bless+purge-batch own total** | **0.000000** | measured | |
+
+## WP5 Dialogs and data widgets (branch fix/wp5-dialogs, Reviewer2)
+
+Job cap $2.50 from this job's own generation ids. Account stop line 637.00 (backstop from 631.88 at 2:48 PM ET). Times are America/Indianapolis (ET).
+
+Account `total_usage` at first job check: **631.875889859** (2:50:19 PM ET). Immediately before the paid Carbon attempt: **631.875889859** (2:54:09 PM ET).
+
+`google/gemini-4-carbon` was required via `user-OpenRouterAPI` `send-message`. That call returned no diffs: Carbon asked for the source files rather than writing a patch (`finish_reason=stop`). Fixes were finished by hand. No second paid call.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 2:54 PM ET | google/gemini-4-carbon | wp5-dialogs (MCP send-message) | 2001 native / 1811 billed (1188 reasoning) | 1527 native / 688 billed | 0.019272 | measured | gen-1795722856-TxSoAZbUfiAQFA0byp46 | no diffs (asked for file contents); fixes and tests finished by hand |
+| 2026-11-26 | note | hand glue (WP5) | B11 filter refresh + activate, B12 tar.gz via matches_filters, L2 filter_var.destroy on Open-dialog dismiss, B13 tree_clamp_top after remove/collapse/set_open, B14 listbox_delete dispatches select, L3/L4 prune dnd and context menus in destroy + menu_destroy/unbind_context_menu, P8 store OpenMenu panel rect, P9 incremental table order (skip per-insert clamp), L5 64-byte dspin cap, B15 Spinbox/Combobox wheel callbacks, B16 inverted slider wheel, B20 missing golden fails without RTK_BLESS=1. #15 nits 1–3 (scroll_area doc + try_with, inset_edges zero-edge fast path). GUIDE.md golden doctest marked no_run so B20 does not fail docs. | | 0.00000 | | | |
+| | | **own measured total** | | | **0.019272** | | | |
+
+- Account `total_usage` at end (3:04:46 PM ET): **631.895161859**. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$8.10** (credits 640 − usage).
+
+### WP5 Reviewer1 #16 leftovers (2026-11-26)
+
+**No paid model call was made for this leftovers batch.** Carbon's earlier WP5 call (`gen-1795722856-TxSoAZbUfiAQFA0byp46`, $0.019272) had returned no diffs, so MUST/SHOULD/NIT fixes were hand-written at $0. Own generation-id sum for the WP5 job is unchanged: **$0.019272**. Under the $2.50 job cap. Account stop line 637.00 was not reached.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 5:35 PM ET | — | WP5 r1 leftovers (hand-written) | — | — | 0.000000 | measured | — | no call: M1 re-measure open panels in menu_add; M2/S1 disabled wheel guards for Spinbox and Combobox; S2 skip order shift on append; S3 remove dead order_dirty/ensure_order; S4 truncate child menus on destroy and skip unknown ids; N1–N4 |
+| | | **this leftovers-batch own total** | | | **0.000000** | measured | | |
+| | | **WP5 job own measured total** | | | **0.019272** | | | |
+
+- Account `total_usage` after this leftovers batch (5:35 PM ET): **632.030955859**. Delta since the first WP5 Carbon call (631.895161859) is other account spend, not this job. Own measured generation-id sum: **$0.019272**. Stop line 637.00 was not reached. Shared balance about **$7.97** (credits 640 − usage).
+
+### WP5 Reviewer1 #16 r2 leftover (2026-11-26)
+
+**No paid model call was made.** The flaky 20k-append wall-clock assert was replaced by a deterministic `table_order_shift_visits` probe, by hand at $0. Own generation-id sum for the WP5 job is unchanged: **$0.019272**. Under the $2.50 job cap. Account stop line 637.00 was not reached.
+
+| Date | Model | Task | Prompt tok | Completion tok | Cost (USD) | kind | generation id | Result |
+|---|---|---|---:|---:|---:|---|---|---|
+| 2026-11-26 5:52 PM ET | — | WP5 r2 leftover (hand-written) | — | — | 0.000000 | measured | — | no call: drop 2s timing assert; keep 20k order/count checks; add doc(hidden) order-shift visit probe |
+| | | **this r2 leftover-batch own total** | | | **0.000000** | measured | | |
+| | | **WP5 job own measured total** | | | **0.019272** | | | |

@@ -34,6 +34,7 @@ impl Tk {
         }
         let end = (last.saturating_add(1)).min(node.list_items.len());
         if first < end {
+            let old_sel = node.list_selection;
             node.list_items.drain(first..end);
             if let Some(sel) = node.list_selection {
                 if sel >= first && sel < end {
@@ -46,7 +47,11 @@ impl Tk {
             let vis = node.list_height.max(1);
             let max_scroll = total.saturating_sub(vis);
             node.list_scroll = node.list_scroll.min(max_scroll);
+            let new_sel = node.list_selection;
             self.dirty = true;
+            if new_sel != old_sel {
+                self.dispatch_list_select(id, new_sel);
+            }
             true
         } else {
             false

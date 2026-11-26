@@ -88,6 +88,11 @@ impl Rect {
 
     /// Shrinks the rectangle by the given per-edge amounts (clamped so it never inverts).
     pub fn inset_edges(self, left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        if left == 0.0 && top == 0.0 && right == 0.0 && bottom == 0.0
+            && self.width >= 0.0 && self.height >= 0.0
+        {
+            return self;
+        }
         let rect = self.normalized();
         let left = length(left).min(rect.width);
         let right = length(right).min((rect.width - left).max(0.0));
