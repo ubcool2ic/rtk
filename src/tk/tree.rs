@@ -77,6 +77,10 @@ impl Tk {
             if slot.gen != current.gen {
                 continue;
             }
+            // Minimal hook: drop this widget+gen's Slot premul entries
+            // before the arena index is recycled. Destroy's gen/free
+            // logic is otherwise unchanged.
+            crate::render::purge_premul_cache(current.index, current.gen);
             let Some(node) = slot.node.take() else { continue };
             pending.extend(node.children);
             if let Some(next) = slot.gen.checked_add(1) {

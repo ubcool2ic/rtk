@@ -29,7 +29,9 @@ impl Tk {
         if expected != Some(rgba.len()) {
             return false;
         }
-        let Some(node) = self.node_mut(id) else { return false };
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
         if node.kind != Kind::Image {
             return false;
         }
@@ -38,9 +40,19 @@ impl Tk {
             .as_deref()
             .map(|d| d.fit)
             .unwrap_or_default();
+        let content_rev = node
+            .image_data
+            .as_deref()
+            .map(|d| d.content_rev.wrapping_add(1))
+            .unwrap_or(1);
         node.image_data = Some(Box::new(ImageData {
-            source: ImageSource::Rgba { w, h, rgba: rgba.to_vec() },
+            source: ImageSource::Rgba {
+                w,
+                h,
+                rgba: rgba.to_vec(),
+            },
             fit,
+            content_rev,
         }));
         self.dirty = true;
         true
@@ -76,7 +88,9 @@ impl Tk {
     /// Sets the image of `id` from SVG bytes. Returns false for invalid SVG.
     #[cfg(feature = "svg")]
     pub fn image_set_svg(&mut self, id: WidgetId, svg: &[u8]) -> bool {
-        let Some(node) = self.node(id) else { return false };
+        let Some(node) = self.node(id) else {
+            return false;
+        };
         if node.kind != Kind::Image {
             return false;
         }
@@ -88,10 +102,18 @@ impl Tk {
             .as_deref()
             .map(|d| d.fit)
             .unwrap_or_default();
-        let Some(node) = self.node_mut(id) else { return false };
+        let content_rev = node
+            .image_data
+            .as_deref()
+            .map(|d| d.content_rev.wrapping_add(1))
+            .unwrap_or(1);
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
         node.image_data = Some(Box::new(ImageData {
             source: ImageSource::Svg(std::sync::Arc::new(tree)),
             fit,
+            content_rev,
         }));
         self.dirty = true;
         true
@@ -99,7 +121,9 @@ impl Tk {
 
     /// Sets the fit mode of `id`. Returns false if `id` is not a live image.
     pub fn image_set_fit(&mut self, id: WidgetId, fit: ImageFit) -> bool {
-        let Some(node) = self.node_mut(id) else { return false };
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
         if node.kind != Kind::Image {
             return false;
         }
@@ -113,8 +137,13 @@ impl Tk {
             None => {
                 // No source yet: remember the fit for when one is set.
                 node.image_data = Some(Box::new(ImageData {
-                    source: ImageSource::Rgba { w: 1, h: 1, rgba: vec![0, 0, 0, 0] },
+                    source: ImageSource::Rgba {
+                        w: 1,
+                        h: 1,
+                        rgba: vec![0, 0, 0, 0],
+                    },
                     fit,
+                    content_rev: 1,
                 }));
             }
         }
@@ -133,12 +162,17 @@ impl Tk {
 
     /// Clears the image of `id`, leaving an empty widget. Returns false if not a live image.
     pub fn image_clear(&mut self, id: WidgetId) -> bool {
-        let Some(node) = self.node_mut(id) else { return false };
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
         if node.kind != Kind::Image {
             return false;
         }
         node.image_data = None;
         self.dirty = true;
+        // Drop this live widget's Slot entries so a later set_rgba, which
+        // starts again at content_rev 1, cannot reuse the previous pixels.
+        crate::render::purge_premul_cache(id.index, id.gen);
         true
     }
 

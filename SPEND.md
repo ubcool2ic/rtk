@@ -432,3 +432,16 @@ Account `total_usage` before the job's first paid call: **582.958074236** (1:34 
 | 2026-11-26 2:17 AM ET | google/gemini-4-carbon | wp1-r1-should-fix | 974 (native 1135; 0 cached) | 49 (native 65; 0 reasoning) | 0.00292 | measured | gen-1795677424-UiXwAM02PU7bp6Fq9Qku | ok; asked for file contents, no diff; fixes and tests finished by hand |
 | 2026-11-26 | note | hand glue (WP1 r1 should-fix) | Carbon produced no patch. `trim_lines` now returns drained bytes; `sync_after_edit` shifts cursor and a drained-prefix anchor; Canvas press uses `set_focused`; paste/undo test asserts undo and redo; mid-buffer trim tests added. | | 0.00000 | | | |
 | | | **own total** | | | **0.184686** | | | |
+
+### Reviewer1 PR #13 r2 fix batch (2026-11-26)
+
+Job cap still $2.50 from this job's own generation ids ($0.367548 already used in the r1 fix batch, $2.13 left at the start of this batch). Shared account stop line raised to 605.00. Times are America/Indianapolis (ET). Costs below are measured from `GET /api/v1/generation` (and the openrouter-call wrapper settlement). Carbon's patches invented APIs (ImageSource variants, a destroy rewrite, cache cap 64, argument-order swap); the design was applied to the real Tk/Canvas/Image APIs and verified.
+
+| time (ET) | model | generation_id | purpose | total_cost | kind | result |
+|---|---|---|---|---:|---|---|
+| 2026-11-26 3:16 AM ET | google/gemini-4-carbon | gen-1795680867-9YNfKezm9hpt14zkG969 | WP2 PR#13 r2 must-fix: Slot key gen + purge, hash memcmp, Image paint_spec/rev, nits+repro test | 0.098074 | measured | ok (finish=stop; 1617 prompt / 9484 completion tokens, 0 reasoning) |
+| | | | **this r2 fix-batch own total** | **0.098074** | measured | |
+
+- Account `total_usage` immediately before this batch's paid call (~3:14 AM ET): **604.252412236**.
+- Account `total_usage` after (credits check 3:27 AM ET): **613.104866236**. Own spend this batch is $0.098074; the rest of the account delta is other bots on the shared account. The 605.00 stop line was already exceeded by the time of the post-call check; no further paid calls were made after that reading.
+- This job's own generation-id sum for the r2 fix batch: **$0.098074**. Combined with the Reviewer1 r1 fix batch ($0.367548) and the earlier WP2 implementation round ($0.000000): **$0.465622**. Still under the $2.50 job cap.

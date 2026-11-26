@@ -76,7 +76,7 @@ impl Tk {
             let slot = items.get_mut(index)?;
             slot.item = Some(kind);
             slot.seq = seq;
-            slot.content_rev = slot.content_rev.saturating_add(1);
+            slot.content_rev = slot.content_rev.wrapping_add(1);
             CanvasItem { index: u32::try_from(index).ok()?, gen: slot.gen }
         } else {
             if items.len() >= MAX_CANVAS_ITEMS {
@@ -251,7 +251,7 @@ impl Tk {
             }
             _ => return false,
         }
-        slot.content_rev = slot.content_rev.saturating_add(1);
+        slot.content_rev = slot.content_rev.wrapping_add(1);
         self.dirty = true;
         true
     }

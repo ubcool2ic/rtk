@@ -462,3 +462,56 @@ fn spinbox_set_command_fires_on_key_without_double_fire() {
         "set_command after spinbox_on_change must fire exactly once (no double-fire)"
     );
 }
+
+/// Destroying a canvas and creating another that reuses the arena index
+/// must not paint the previous widget's premul-cache pixels. `PremulKey::Slot`
+/// includes `WidgetId.gen`, and destroy purges that widget's cache entries.
+#[test]
+fn canvas_widget_slot_reuse_must_not_paint_stale_premul() {
+    let mut tk = Tk::new();
+    let root = tk.root();
+    let cv1 = Canvas::new(&mut tk, root, 64.0, 64.0).unwrap();
+    let idx = cv1.index;
+    let gen1 = cv1.gen;
+    tk.pack(cv1, Default::default());
+    let green = solid_rgba(32, 32, 20, 200, 20, 255);
+    tk.canvas_create_image_rgba(cv1, 0.0, 0.0, 32.0, 32.0, 32, 32, &green, false)
+        .unwrap();
+    let a = tk.render_to_pixmap(160, 120).unwrap();
+    let cr = tk.widget_rect(cv1).unwrap();
+    let cx = ((cr.x + 16.0).floor() as i32).clamp(0, a.width() as i32 - 1) as u32;
+    let cy = ((cr.y + 16.0).floor() as i32).clamp(0, a.height() as i32 - 1) as u32;
+    let p1 = pixel(&a, cx, cy);
+    assert_eq!(
+        p1,
+        [20, 200, 20, 255],
+        "expected green center before destroy, got {p1:?} at ({cx},{cy})"
+    );
+
+    assert!(tk.destroy(cv1));
+    let cv2 = Canvas::new(&mut tk, root, 64.0, 64.0).unwrap();
+    assert_eq!(
+        cv2.index, idx,
+        "canvas widget index should be reused from the free list"
+    );
+    assert_ne!(cv2.gen, gen1, "reused slot must have a new generation");
+    tk.pack(cv2, Default::default());
+    let blue = solid_rgba(32, 32, 20, 20, 200, 255);
+    tk.canvas_create_image_rgba(cv2, 0.0, 0.0, 32.0, 32.0, 32, 32, &blue, false)
+        .unwrap();
+    let b = tk.render_to_pixmap(160, 120).unwrap();
+    let cr2 = tk.widget_rect(cv2).unwrap();
+    let cx2 = ((cr2.x + 16.0).floor() as i32).clamp(0, b.width() as i32 - 1) as u32;
+    let cy2 = ((cr2.y + 16.0).floor() as i32).clamp(0, b.height() as i32 - 1) as u32;
+    let p2 = pixel(&b, cx2, cy2);
+    assert_ne!(
+        p2,
+        [20, 200, 20, 255],
+        "stale green from the destroyed canvas at ({cx2},{cy2})"
+    );
+    assert_eq!(
+        p2,
+        [20, 20, 200, 255],
+        "expected blue center after widget-slot reuse, got {p2:?} at ({cx2},{cy2})"
+    );
+}

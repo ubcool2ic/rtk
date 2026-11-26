@@ -502,12 +502,6 @@ fn progress_caption(
     }
 }
 
-/// Keeps `outline` referenced so the import stays used if drawing changes.
-#[allow(dead_code)]
-fn _keep_outline_import(pixmap: &mut Pixmap, rect: Rect, clip: Rect, scale: f32, color: Color) {
-    outline(pixmap, rect, clip, scale, (color, color));
-}
-
 /// Draws a Slider: rounded track, accent fill, round thumb, optional ticks.
 pub(super) fn draw_slider(
     tk: &mut Tk,
