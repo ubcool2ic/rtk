@@ -2,6 +2,8 @@
 
 ## 1.2.0 (2026-11-26)
 
+This release was first tagged `v1.1.0` (commit `c73586b4`) on 2026-11-26 and renumbered to 1.2.0 with no code changes. The `v1.1.0` tag was replaced by `v1.2.0`.
+
 Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk/pull/12)–[#16](https://github.com/ubcool2ic/rtk/pull/16)), merged into main as `8ce3a5b4`. This is a minor release: new public APIs were added and no existing public items were removed or renamed.
 
 ### Added
@@ -62,7 +64,7 @@ Audit fixes from work packages WP1–WP5 ([#12](https://github.com/ubcool2ic/rtk
 
 ### Goldens
 
-These were re-blessed in WP3 and WP4 with Tyler's approval. This 1.2.0 PR does not add or re-bless any goldens.
+These were re-blessed in WP3 and WP4 with Tyler's approval. The release PRs (#17, #18) do not add or re-bless any goldens.
 
 - `tristate_dark_{1,2}x` and `tristate_highcontrast_{1,2}x` were updated so disabled text follows the Dark and HighContrast palettes. Light tristate goldens are unchanged.
 - All six `m011_modal_*` goldens were updated in two steps: the dialog title is Subheading (16 px / 700) rather than Heading (22 px / 700), the accent Yes button is white/bold and wider, and the No button shifts (WP3 inheritance); then the Card content moved down 16 logical px (32 device px at 2×) once Frame padding was actually applied (WP4).
