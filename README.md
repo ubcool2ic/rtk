@@ -1,23 +1,23 @@
 # rtk
 
 A small tkinter-style GUI crate for Rust 1.85, edition 2021. The current version is
-1.1.0; it includes the advanced styling layer added in 0.4 (design tokens, ttk-style
+1.2.0; it includes the advanced styling layer added in 0.4 (design tokens, ttk-style
 named styles, state maps with animated transitions, rounded corners, shadows, gradients, fonts, CSS-like stylesheets with hot reload,
 five built-in themes) on top of the unchanged basic API.
 
-> **1.1.0.** The crate is consumed as a **git dependency**; the crates.io
+> **1.2.0.** The crate is consumed as a **git dependency**; the crates.io
 > name `rtk` is taken by an unrelated project, so it is not published there.
 >
 > ```toml
 > [dependencies]
-> rtk = { git = "https://github.com/ubcool2ic/rtk", tag = "v1.1.0" }
+> rtk = { git = "https://github.com/ubcool2ic/rtk", tag = "v1.2.0" }
 > ```
 
 ## Documentation
 
 - [docs/GUIDE.md](docs/GUIDE.md) — task-oriented guide: widgets, layout, styling, events, testing.
 - [docs/RTK_1.0_ROADMAP.md](docs/RTK_1.0_ROADMAP.md) — what 1.0 covers and what is deferred.
-- [CHANGELOG.md](CHANGELOG.md) — release notes, including the 1.1.0 section.
+- [CHANGELOG.md](CHANGELOG.md) — release notes, including the 1.2.0 section.
 - API reference: `cargo doc --open` (rustdoc for every public item).
 
 ## Gallery
